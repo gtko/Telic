@@ -44,3 +44,8 @@ coverage
 
 # agent scratch space (test docs, drafts)
 .workspace/
+
+# opennext / wrangler (apps/web)
+.open-next
+.wrangler
+.dev.vars

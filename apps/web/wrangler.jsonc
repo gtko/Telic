@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telic-web",
+  "main": ".open-next/worker.js",
+  // Recent enough for nodejs_compat to populate process.env from `vars` and secrets,
+  // which is how utils/runtimeEnv reads API_URL, PRIVACY_URL and TERMS_URL.
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "images": { "binding": "IMAGES" },
+  "observability": { "enabled": true },
+  // Origins the browser needs, set per environment at deploy time (wrangler secret or
+  // --var); local preview reads them from .dev.vars (see .dev.vars.example).
+  "vars": {},
+}
