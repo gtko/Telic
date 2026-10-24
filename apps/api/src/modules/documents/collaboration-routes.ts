@@ -27,8 +27,8 @@ export const documentCollaborationRoutes = new Elysia({
   .use(guards)
   .post(
     '/projects/:projectKey/documents/:documentId/session',
-    ({ project, params, user, body }) =>
-      openDocumentSession(project.id, params.documentId, requireUser(user).id, body),
+    ({ db, project, params, user, body }) =>
+      openDocumentSession(db, project.id, params.documentId, requireUser(user).id, body),
     {
       permission: ['documents', 'edit'],
       params: documentParams,
@@ -39,8 +39,9 @@ export const documentCollaborationRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/steps',
-    ({ project, params, user, query }) =>
+    ({ db, project, params, user, query }) =>
       getDocumentSteps(
+        db,
         project.id,
         params.documentId,
         requireUser(user).id,
@@ -57,8 +58,8 @@ export const documentCollaborationRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/steps',
-    ({ project, params, user, body }) =>
-      saveDocumentSteps(project.id, params.documentId, requireUser(user).id, body),
+    ({ db, project, params, user, body }) =>
+      saveDocumentSteps(db, project.id, params.documentId, requireUser(user).id, body),
     {
       permission: ['documents', 'edit'],
       params: documentParams,
@@ -69,8 +70,8 @@ export const documentCollaborationRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/comments',
-    ({ project, params, user }) =>
-      listDocumentComments(project.id, params.documentId, requireUser(user).id),
+    ({ db, project, params, user }) =>
+      listDocumentComments(db, project.id, params.documentId, requireUser(user).id),
     {
       permission: ['documents', 'read'],
       params: documentParams,
@@ -80,9 +81,9 @@ export const documentCollaborationRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/comments',
-    ({ project, params, user, body, set }) => {
+    ({ db, project, params, user, body, set }) => {
       set.status = 201;
-      return addDocumentComment(project.id, params.documentId, requireUser(user).id, body);
+      return addDocumentComment(db, project.id, params.documentId, requireUser(user).id, body);
     },
     {
       permission: ['documents', 'edit'],
@@ -94,8 +95,9 @@ export const documentCollaborationRoutes = new Elysia({
   )
   .patch(
     '/projects/:projectKey/documents/:documentId/comments/:commentId',
-    ({ project, params, user, body }) =>
+    ({ db, project, params, user, body }) =>
       updateDocumentComment(
+        db,
         project.id,
         params.documentId,
         requireUser(user).id,

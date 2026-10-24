@@ -2234,6 +2234,23 @@ export const projectDocument = sqliteTable(
 // tree operations get the same history as writes made through the Documents API. The
 // document_rebalance / document_checkpoint rows of trigger_flag switch them off / force a
 // new snapshot.
+// Optimistic lock of one project's document tree (ODY-296). D1 has no advisory lock, so
+// every write that changes the tree (create, move, archive, restore, delete, lock) reads
+// a snapshot with its `rev`, then writes in one batch whose first statement bumps `rev`
+// only if it still equals the snapshot (the fence). `last_tx` is the unique token of the
+// batch that last passed a fence: the statements that follow in the batch apply only when
+// it is theirs, so a refused batch writes nothing. The row is created on demand.
+export const projectTree = sqliteTable('project_tree', {
+  projectId: integer('project_id')
+    .primaryKey()
+    .references(() => project.id, { onDelete: 'cascade' }),
+  rev: integer('rev').notNull().default(0),
+  lastTx: text('last_tx'),
+});
+
+// Immutable snapshots of every persisted document version. A database trigger
+// fills this table so project copies and bulk tree operations receive the same
+// history guarantees as writes made through the Documents API.
 export const projectDocumentRevision = sqliteTable(
   'project_document_revision',
   {

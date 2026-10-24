@@ -69,34 +69,34 @@ export const attachmentRoutes = new Elysia({
   // `issueAttachment` for /issues/:issueId/attachments, `attachment` for
   // /attachments/:publicId. Both assert a work_items action on the owning project.
   .macro({
-    issueAttachment: entityGuard('work_items', 'Issue not found', (p) =>
-      getIssueProjectId(Number(p.issueId)),
+    issueAttachment: entityGuard('work_items', 'Issue not found', (p, db) =>
+      getIssueProjectId(db, Number(p.issueId)),
     ),
-    attachment: entityGuard('work_items', 'Attachment not found', async (p) => {
-      const existing = await getAttachmentByPublicId(p.publicId);
+    attachment: entityGuard('work_items', 'Attachment not found', async (p, db) => {
+      const existing = await getAttachmentByPublicId(db, p.publicId);
       if (!existing) return null;
-      return getIssueProjectId(existing.issueId);
+      return getIssueProjectId(db, existing.issueId);
     }),
     // For /attachments/view, which takes the attachment of an issue or an initiative:
     // the checks entityGuard makes, for whichever of the two it is.
     viewableAttachment: {
-      async resolve({ query, user, request }) {
+      async resolve({ db, query, user, request }) {
         const id = String(query.attachment ?? '').match(UUID)?.[0];
         if (!id) throw new HttpError(404, 'Attachment not found');
-        const issueRow = await getAttachmentByPublicId(id);
+        const issueRow = await getAttachmentByPublicId(db, id);
         if (issueRow) {
-          const projectId = await getIssueProjectId(issueRow.issueId);
+          const projectId = await getIssueProjectId(db, issueRow.issueId);
           if (projectId == null) throw new HttpError(404, 'Attachment not found');
-          await assertPermission(projectId, user, 'work_items', 'read');
-          await assertMcpAllowed(projectId, request.headers);
+          await assertPermission(db, projectId, user, 'work_items', 'read');
+          await assertMcpAllowed(db, projectId, request.headers);
           return { viewed: { row: issueRow, dto: attachmentDto(issueRow) } };
         }
-        const row = await getInitiativeAttachment(id);
-        const projectId = await getInitiativeAttachmentProjectId(id);
+        const row = await getInitiativeAttachment(db, id);
+        const projectId = await getInitiativeAttachmentProjectId(db, id);
         if (!row || projectId == null) throw new HttpError(404, 'Attachment not found');
-        await assertPermission(projectId, user, 'initiatives', 'read');
-        await assertProjectFeature(projectId, 'initiatives');
-        await assertMcpAllowed(projectId, request.headers);
+        await assertPermission(db, projectId, user, 'initiatives', 'read');
+        await assertProjectFeature(db, projectId, 'initiatives');
+        await assertMcpAllowed(db, projectId, request.headers);
         const dto = { ...attachmentDto(row), url: `/initiative-attachments/${id}/raw` };
         return { viewed: { row, dto } };
       },
@@ -104,8 +104,8 @@ export const attachmentRoutes = new Elysia({
   })
   .get(
     '/issues/:issueId/attachments',
-    async ({ params }) => {
-      const rows = await listAttachments(params.issueId);
+    async ({ db, params }) => {
+      const rows = await listAttachments(db, params.issueId);
       return rows.map(attachmentDto);
     },
     {
@@ -124,7 +124,7 @@ export const attachmentRoutes = new Elysia({
   // object store, and records the metadata. Returns the attachment DTO.
   .post(
     '/issues/:issueId/attachments',
-    async ({ params, body, set, projectId }) => {
+    async ({ db, env, params, body, set, projectId }) => {
       const issueId = params.issueId;
       const file = body.file;
       if (!(file instanceof File)) throw new HttpError(400, 'No file uploaded (form field "file")');
@@ -132,14 +132,15 @@ export const attachmentRoutes = new Elysia({
 
       const filename = safeAttachmentFilename(file.name);
       const contentType = file.type || 'application/octet-stream';
-      await assertAttachmentUploadAllowed(projectId, file.size, contentType);
+      await assertAttachmentUploadAllowed(db, projectId, file.size, contentType);
 
       const key = attachmentObjectKey(projectId, 'attachments', issueId, filename);
-      await storeAttachmentObject(key, Buffer.from(await file.arrayBuffer()), contentType);
+      // The File streams straight to R2: the upload is never buffered in the Worker.
+      await storeAttachmentObject(env.BUCKET, key, file, contentType);
 
       let row;
       try {
-        row = await createAttachment({
+        row = await createAttachment(db, {
           projectId,
           issueId,
           s3Key: key,
@@ -148,7 +149,7 @@ export const attachmentRoutes = new Elysia({
           sizeBytes: file.size,
         });
       } catch (error) {
-        await deleteAttachmentObject(key);
+        await deleteAttachmentObject(env.BUCKET, key);
         throw error;
       }
       set.status = 201;
@@ -169,14 +170,14 @@ export const attachmentRoutes = new Elysia({
   // private/local hosts, no redirects) and size-capped like a direct upload.
   .post(
     '/issues/:issueId/attachments/import',
-    async ({ params, body, set, projectId }) => {
+    async ({ db, env, params, body, set, projectId }) => {
       const issueId = params.issueId;
       const filename = safeAttachmentFilename(body.filename);
       const { url, contentBase64 } = body;
       if ((url == null) === (contentBase64 == null)) {
         throw new HttpError(400, 'Provide exactly one of url or contentBase64');
       }
-      const limits = await getStorageSettings();
+      const limits = await getStorageSettings(db);
 
       let bytes: Buffer;
       let contentType: string;
@@ -209,14 +210,14 @@ export const attachmentRoutes = new Elysia({
       }
 
       if (bytes.length === 0) throw new HttpError(400, 'The file is empty');
-      await assertAttachmentUploadAllowed(projectId, bytes.length, contentType);
+      await assertAttachmentUploadAllowed(db, projectId, bytes.length, contentType);
 
       const key = attachmentObjectKey(projectId, 'attachments', issueId, filename);
-      await storeAttachmentObject(key, bytes, contentType);
+      await storeAttachmentObject(env.BUCKET, key, bytes, contentType);
 
       let row;
       try {
-        row = await createAttachment({
+        row = await createAttachment(db, {
           projectId,
           issueId,
           s3Key: key,
@@ -225,7 +226,7 @@ export const attachmentRoutes = new Elysia({
           sizeBytes: bytes.length,
         });
       } catch (error) {
-        await deleteAttachmentObject(key);
+        await deleteAttachmentObject(env.BUCKET, key);
         throw error;
       }
       set.status = 201;
@@ -250,8 +251,8 @@ export const attachmentRoutes = new Elysia({
   // dropped, and the raw route serves the new bytes because it revalidates.
   .put(
     '/attachments/:publicId',
-    async ({ params, body, projectId }) => {
-      const existing = await getAttachmentByPublicId(params.publicId);
+    async ({ db, env, params, body, projectId }) => {
+      const existing = await getAttachmentByPublicId(db, params.publicId);
       if (!existing) throw new HttpError(404, 'Attachment not found');
 
       const file = body.file;
@@ -260,14 +261,20 @@ export const attachmentRoutes = new Elysia({
 
       const filename = safeAttachmentFilename(file.name, existing.filename);
       const contentType = file.type || 'application/octet-stream';
-      await assertAttachmentUploadAllowed(projectId, file.size, contentType, existing.sizeBytes);
+      await assertAttachmentUploadAllowed(
+        db,
+        projectId,
+        file.size,
+        contentType,
+        existing.sizeBytes,
+      );
 
       const key = attachmentObjectKey(projectId, 'attachments', existing.issueId, filename);
-      await storeAttachmentObject(key, Buffer.from(await file.arrayBuffer()), contentType);
+      await storeAttachmentObject(env.BUCKET, key, file, contentType);
 
       let replacement;
       try {
-        replacement = await replaceAttachmentContent(params.publicId, projectId, {
+        replacement = await replaceAttachmentContent(db, params.publicId, projectId, {
           s3Key: key,
           filename,
           contentType,
@@ -275,13 +282,13 @@ export const attachmentRoutes = new Elysia({
         });
         if (!replacement) throw new HttpError(404, 'Attachment not found');
       } catch (error) {
-        await deleteAttachmentObject(key);
+        await deleteAttachmentObject(env.BUCKET, key);
         throw error;
       }
 
       // The row already points at the new object, so a failed delete only
       // orphans the old bytes.
-      await deleteAttachmentObject(replacement.replacedS3Key);
+      await deleteAttachmentObject(env.BUCKET, replacement.replacedS3Key);
       return attachmentDto(replacement.attachment);
     },
     {
@@ -294,15 +301,15 @@ export const attachmentRoutes = new Elysia({
 
   .delete(
     '/attachments/:publicId',
-    async ({ params }) => {
-      const row = await deleteAttachmentByPublicId(params.publicId);
+    async ({ db, env, params }) => {
+      const row = await deleteAttachmentByPublicId(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
       // Strip any embed of this attachment from the issue description and its
       // markdown field values, so no broken image is left behind.
-      await removeAttachmentEmbeds(row.issueId, row.publicId);
+      await removeAttachmentEmbeds(db, row.issueId, row.publicId);
       // Row is already gone; a failed object delete only orphans bytes, so don't
       // fail the request over it.
-      await deleteAttachmentObject(row.s3Key);
+      await deleteAttachmentObject(env.BUCKET, row.s3Key);
       return noContent();
     },
     {
@@ -316,23 +323,28 @@ export const attachmentRoutes = new Elysia({
     },
   )
 
-  .get('/attachments/view', ({ viewed }) => viewAttachments([viewed.row], () => viewed.dto), {
-    query: viewAttachmentQuery,
-    viewableAttachment: true,
-    response: { 200: ViewAttachmentsResponse, ...commonErrors },
-    detail: {
-      summary: 'View an attachment',
-      description:
-        'Look at one image of an issue or an initiative, given the url a result carries ' +
-        `for it or its id. Returns ${VIEWABLE_IMAGES}; any other file comes back in ` +
-        '`others` with its url.',
-      ...mcpImageTool('view_attachment'),
+  .get(
+    '/attachments/view',
+    ({ env, viewed }) => viewAttachments(env.BUCKET, [viewed.row], () => viewed.dto),
+    {
+      query: viewAttachmentQuery,
+      viewableAttachment: true,
+      response: { 200: ViewAttachmentsResponse, ...commonErrors },
+      detail: {
+        summary: 'View an attachment',
+        description:
+          'Look at one image of an issue or an initiative, given the url a result carries ' +
+          `for it or its id. Returns ${VIEWABLE_IMAGES}; any other file comes back in ` +
+          '`others` with its url.',
+        ...mcpImageTool('view_attachment'),
+      },
     },
-  })
+  )
 
   .get(
     '/issues/:issueId/images',
-    async ({ params }) => viewAttachments(await listAttachments(params.issueId), attachmentDto),
+    async ({ db, env, params }) =>
+      viewAttachments(env.BUCKET, await listAttachments(db, params.issueId), attachmentDto),
     {
       params: issueParams,
       issueAttachment: 'read',
@@ -352,10 +364,11 @@ export const attachmentRoutes = new Elysia({
   // uuid. `?download=1` forces a download instead of inline rendering.
   .get(
     '/attachments/:publicId/raw',
-    async ({ params, query, request }) => {
-      const row = await getAttachmentByPublicId(params.publicId);
+    async ({ db, env, params, query, request }) => {
+      const row = await getAttachmentByPublicId(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
       return attachmentObjectResponse({
+        bucket: env.BUCKET,
         s3Key: row.s3Key,
         contentType: row.contentType,
         filename: row.filename,

@@ -1,13 +1,11 @@
 import {
-  db,
   documentAsset,
-  documentCollaboration,
-  documentComment,
   project,
   projectDocument,
   projectDocumentPreference,
   projectDocumentRevision,
   projectMember,
+  type Db,
 } from '@repo/db';
 import {
   getTableColumns,
@@ -15,53 +13,43 @@ import {
   asc,
   desc,
   eq,
-  ilike,
   inArray,
   isNotNull,
   isNull,
+  like,
   or,
-  sql,
 } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
 import {
-  assertAttachmentStorageCapacity,
   assertAttachmentFileAllowed,
   attachmentObjectKey,
+  attachmentQuotaCondition,
   cloneAttachmentObject,
   deleteAttachmentObject,
-  lockAttachmentStorage,
+  quotaExceeded,
 } from '#modules/attachments/storage';
-
-type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-const DOCUMENT_TREE_LOCK_NAMESPACE = 1_145_390_931;
-
-async function lockDocumentActor(executor: Executor, userId: string): Promise<void> {
-  const rows = await executor.execute(
-    sql`select id from "user" where id = ${userId} for key share`,
-  );
-  if (rows.length === 0) throw new HttpError(404, 'User not found');
-}
-
-async function lockDocumentActors(
-  executor: Executor,
-  userIds: Array<string | null>,
-): Promise<void> {
-  const ordered = [...new Set(userIds.filter((id): id is string => id !== null))].sort();
-  for (const userId of ordered) await lockDocumentActor(executor, userId);
-}
-
-async function lockProjectDocumentActors(
-  executor: Executor,
-  projectId: number,
-  actorUserId: string,
-): Promise<void> {
-  const rows = await executor
-    .selectDistinct({ ownerUserId: projectDocument.ownerUserId })
-    .from(projectDocument)
-    .where(eq(projectDocument.projectId, projectId));
-  await lockDocumentActors(executor, [actorUserId, ...rows.map((row) => row.ownerUserId)]);
-}
+import {
+  assertValidParent,
+  bumpDocumentsMarker,
+  canSee,
+  captureRevisions,
+  coalesceTarget,
+  documentSubtreeIds,
+  EarlyResult,
+  fencedBatch,
+  json,
+  nextPosition,
+  planDocumentMove,
+  readRevisionTail,
+  renumberSiblings,
+  stmt,
+  treeWrite,
+  type Bindable,
+  type Stmt,
+  type TreeDoc,
+  type TreeSnapshot,
+  d1Of,
+} from './tree';
 
 export interface DocumentSummaryRow {
   id: number;
@@ -122,11 +110,13 @@ export interface DocumentAssetRow {
   createdAt: string;
 }
 
+type DocumentModel = typeof projectDocument.$inferSelect;
+
 function documentAccess(userId: string) {
   return or(eq(projectDocument.isPrivate, false), eq(projectDocument.ownerUserId, userId));
 }
 
-function mapDocument(row: typeof projectDocument.$inferSelect, isFavorite = false): DocumentRow {
+function mapDocument(row: DocumentModel, isFavorite = false): DocumentRow {
   const { archivedByAncestorId: _archivedByAncestorId, ...publicRow } = row;
   return {
     ...publicRow,
@@ -137,10 +127,7 @@ function mapDocument(row: typeof projectDocument.$inferSelect, isFavorite = fals
   };
 }
 
-function summaryOf(
-  row: typeof projectDocument.$inferSelect,
-  isFavorite = false,
-): DocumentSummaryRow {
+function summaryOf(row: DocumentModel, isFavorite = false): DocumentSummaryRow {
   const { content: _content, contentJson: _contentJson, ...summary } = mapDocument(row, isFavorite);
   return summary;
 }
@@ -227,25 +214,31 @@ function revisionSummaryOf(
 }
 
 async function favoriteDocumentIds(
-  executor: Executor,
+  db: Db,
   userId: string,
   documentIds: number[],
 ): Promise<Set<number>> {
   if (documentIds.length === 0) return new Set();
-  const rows = await executor
-    .select({ documentId: projectDocumentPreference.documentId })
-    .from(projectDocumentPreference)
-    .where(
-      and(
-        eq(projectDocumentPreference.userId, userId),
-        eq(projectDocumentPreference.isFavorite, true),
-        inArray(projectDocumentPreference.documentId, documentIds),
-      ),
-    );
-  return new Set(rows.map((row) => row.documentId));
+  const favorites = new Set<number>();
+  // D1 binds at most 100 parameters: ids go in chunks.
+  for (let offset = 0; offset < documentIds.length; offset += 90) {
+    const rows = await db
+      .select({ documentId: projectDocumentPreference.documentId })
+      .from(projectDocumentPreference)
+      .where(
+        and(
+          eq(projectDocumentPreference.userId, userId),
+          eq(projectDocumentPreference.isFavorite, true),
+          inArray(projectDocumentPreference.documentId, documentIds.slice(offset, offset + 90)),
+        ),
+      );
+    for (const row of rows) favorites.add(row.documentId);
+  }
+  return favorites;
 }
 
 export async function listDocuments(
+  db: Db,
   projectId: number,
   userId: string,
   options: { q?: string; archived?: boolean } = {},
@@ -257,8 +250,9 @@ export async function listDocuments(
     options.archived ? isNotNull(projectDocument.archivedAt) : isNull(projectDocument.archivedAt),
   ];
   if (term) {
+    // LIKE is case-insensitive for ASCII only on SQLite (ilike on Postgres was for all).
     conditions.push(
-      or(ilike(projectDocument.title, `%${term}%`), ilike(projectDocument.content, `%${term}%`)),
+      or(like(projectDocument.title, `%${term}%`), like(projectDocument.content, `%${term}%`)),
     );
   }
   const {
@@ -283,13 +277,8 @@ export async function listDocuments(
   }));
 }
 
-async function selectDocument(
-  executor: Executor,
-  projectId: number,
-  documentId: number,
-  userId: string,
-) {
-  const [row] = await executor
+async function selectDocument(db: Db, projectId: number, documentId: number, userId: string) {
+  const [row] = await db
     .select()
     .from(projectDocument)
     .where(
@@ -303,6 +292,7 @@ async function selectDocument(
 }
 
 export async function getDocument(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -313,6 +303,7 @@ export async function getDocument(
 }
 
 export async function listDocumentAssets(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -327,6 +318,7 @@ export async function listDocumentAssets(
 }
 
 export async function assertDocumentAssetUploadTarget(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -338,45 +330,55 @@ export async function assertDocumentAssetUploadTarget(
   return true;
 }
 
-export async function createDocumentAsset(input: {
-  projectId: number;
-  documentId: number;
-  userId: string;
-  s3Key: string;
-  filename: string;
-  contentType: string;
-  sizeBytes: number;
-}): Promise<DocumentAssetRow | null> {
-  return db.transaction(async (tx) => {
-    // Global lock order for asset writes is quota -> actor -> document. Holding
-    // KEY SHARE prevents account deletion from taking the user row and then
-    // waiting on this document while the asset FK waits back on the user.
-    await lockAttachmentStorage(tx, input.projectId);
-    await lockDocumentActor(tx, input.userId);
-    await assertAttachmentStorageCapacity(input.projectId, input.sizeBytes, 0, tx);
-    await tx.execute(
-      sql`select 1 from ${projectDocument} where ${projectDocument.id} = ${input.documentId} and ${projectDocument.projectId} = ${input.projectId} for update`,
-    );
-    const current = await selectDocument(tx, input.projectId, input.documentId, input.userId);
-    if (!current) return null;
-    assertActive(current);
-    assertUnlocked(current);
-    const [row] = await tx
-      .insert(documentAsset)
-      .values({
-        documentId: input.documentId,
-        uploadedByUserId: input.userId,
-        s3Key: input.s3Key,
-        filename: input.filename,
-        contentType: input.contentType,
-        sizeBytes: input.sizeBytes,
-      })
-      .returning();
-    return mapAsset(row);
+// The page is still there, visible, active and unlocked: what an asset write relies on.
+function openDocumentGuard(projectId: number, documentId: number, userId: string): Stmt {
+  return stmt`EXISTS (SELECT 1 FROM project_document WHERE id = ${documentId} AND project_id = ${projectId}
+    AND archived_at IS NULL AND is_locked = 0 AND (is_private = 0 OR owner_user_id = ${userId}))`;
+}
+
+export async function createDocumentAsset(
+  db: Db,
+  input: {
+    projectId: number;
+    documentId: number;
+    userId: string;
+    s3Key: string;
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+  },
+): Promise<DocumentAssetRow | null> {
+  const current = await selectDocument(db, input.projectId, input.documentId, input.userId);
+  if (!current) return null;
+  assertActive(current);
+  assertUnlocked(current);
+  // The quota is part of the fence: the insert happens only if the bytes still fit.
+  const quota = await attachmentQuotaCondition(db, input.projectId, input.sizeBytes);
+  const publicId = crypto.randomUUID();
+  const { applied } = await fencedBatch(db, {
+    projectId: input.projectId,
+    rev: null,
+    guard: stmt`${openDocumentGuard(input.projectId, input.documentId, input.userId)} AND ${quota}`,
+    build: (ok) => [
+      stmt`INSERT INTO document_asset (public_id, document_id, uploaded_by_user_id, s3_key, filename, content_type, size_bytes)
+        SELECT ${publicId}, ${input.documentId}, ${input.userId}, ${input.s3Key}, ${input.filename}, ${input.contentType}, ${input.sizeBytes}
+        WHERE ${ok}`,
+      bumpDocumentsMarker(ok, input.projectId),
+    ],
   });
+  if (!applied) {
+    const again = await selectDocument(db, input.projectId, input.documentId, input.userId);
+    if (!again) return null;
+    assertActive(again);
+    assertUnlocked(again);
+    throw await quotaExceeded(db, input.projectId, input.sizeBytes);
+  }
+  const [row] = await db.select().from(documentAsset).where(eq(documentAsset.publicId, publicId));
+  return row ? mapAsset(row) : null;
 }
 
 export async function getDocumentAsset(
+  db: Db,
   projectId: number,
   documentId: number,
   publicId: string,
@@ -391,46 +393,56 @@ export async function getDocumentAsset(
 }
 
 export async function deleteDocumentAsset(
+  db: Db,
   projectId: number,
   documentId: number,
   publicId: string,
   userId: string,
   isProjectOwner: boolean,
 ): Promise<DocumentAssetRow | null> {
-  return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`select 1 from ${projectDocument} where ${projectDocument.id} = ${documentId} and ${projectDocument.projectId} = ${projectId} for update`,
-    );
-    const current = await ownedDocument(tx, projectId, documentId, userId, isProjectOwner);
-    if (!current) return null;
-    assertActive(current);
-    assertUnlocked(current);
-    const [row] = await tx
-      .delete(documentAsset)
-      .where(and(eq(documentAsset.documentId, documentId), eq(documentAsset.publicId, publicId)))
-      .returning();
-    return row ? mapAsset(row) : null;
+  const current = await ownedDocument(db, projectId, documentId, userId, isProjectOwner);
+  if (!current) return null;
+  assertActive(current);
+  assertUnlocked(current);
+  const existing = await getDocumentAsset(db, projectId, documentId, publicId, userId);
+  if (!existing) return null;
+  const { applied } = await fencedBatch(db, {
+    projectId,
+    rev: null,
+    guard: openDocumentGuard(projectId, documentId, userId),
+    build: (ok) => [
+      stmt`DELETE FROM document_asset WHERE document_id = ${documentId} AND public_id = ${publicId} AND ${ok}`,
+      bumpDocumentsMarker(ok, projectId),
+    ],
   });
+  if (!applied) {
+    const again = await selectDocument(db, projectId, documentId, userId);
+    if (!again) return null;
+    assertActive(again);
+    assertUnlocked(again);
+    throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
+  }
+  return existing;
 }
 
 async function mapDocumentForUser(
-  executor: Executor,
-  row: typeof projectDocument.$inferSelect,
+  db: Db,
+  row: DocumentModel,
   userId: string,
 ): Promise<DocumentRow> {
-  const favorites = await favoriteDocumentIds(executor, userId, [row.id]);
-  const parentId = await visibleDocumentParentId(executor, row.projectId, row.parentId, userId);
+  const favorites = await favoriteDocumentIds(db, userId, [row.id]);
+  const parentId = await visibleDocumentParentId(db, row.projectId, row.parentId, userId);
   return mapDocument({ ...row, parentId }, favorites.has(row.id));
 }
 
 async function visibleDocumentParentId(
-  executor: Executor,
+  db: Db,
   projectId: number,
   parentId: number | null,
   userId: string,
 ): Promise<number | null> {
   if (parentId === null) return null;
-  const [parent] = await executor
+  const [parent] = await db
     .select({ id: projectDocument.id })
     .from(projectDocument)
     .where(
@@ -443,183 +455,94 @@ async function visibleDocumentParentId(
   return parent?.id ?? null;
 }
 
-async function assertValidParent(
-  executor: Executor,
-  projectId: number,
-  documentId: number | null,
-  parentId: number | null,
-  userId: string,
-): Promise<void> {
-  let cursor = parentId;
-  const seen = new Set<number>();
-  while (cursor !== null) {
-    if (cursor === documentId || seen.has(cursor)) {
-      throw new HttpError(400, 'A document cannot be nested inside itself');
+// Foreign keys replace the `FOR KEY SHARE` lock on the acting user: a user deleted while
+// a write is in flight makes the batch fail, which reads as the 404 it always was.
+async function writing<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof Error && /FOREIGN KEY/i.test(`${error.message} ${String(error.cause)}`)) {
+      throw new HttpError(404, 'User not found');
     }
-    seen.add(cursor);
-    const [parent] = await executor
-      .select({
-        projectId: projectDocument.projectId,
-        parentId: projectDocument.parentId,
-        archivedAt: projectDocument.archivedAt,
-      })
-      .from(projectDocument)
-      .where(and(eq(projectDocument.id, cursor), documentAccess(userId)));
-    if (!parent || parent.projectId !== projectId) {
-      throw new HttpError(400, 'Parent document must belong to the same project');
-    }
-    if (parent.archivedAt !== null) {
-      throw new HttpError(400, 'An archived document cannot be used as a parent');
-    }
-    cursor = parent.parentId;
+    throw error;
   }
 }
 
-async function nextPosition(
-  executor: Executor,
-  projectId: number,
-  parentId: number | null,
-): Promise<number> {
-  const sameParent =
-    parentId === null ? isNull(projectDocument.parentId) : eq(projectDocument.parentId, parentId);
-  const [row] = await executor
-    .select({ value: sql<number>`coalesce(max(${projectDocument.position}), 0) + 1024` })
-    .from(projectDocument)
-    .where(
-      and(eq(projectDocument.projectId, projectId), isNull(projectDocument.archivedAt), sameParent),
-    );
-  return Number(row?.value ?? 1024);
+// The columns a write sets, as `column = ?` pairs (booleans become 0/1).
+type Assignments = Array<[column: string, value: Bindable | boolean]>;
+
+function assignments(sets: Assignments): Stmt {
+  const params: Bindable[] = [];
+  const text = sets
+    .map(([column, value]) => {
+      params.push(typeof value === 'boolean' ? (value ? 1 : 0) : value);
+      return `${column} = ?`;
+    })
+    .join(', ');
+  return { sql: text, params };
 }
 
-interface DocumentMovePlan {
-  position: number;
-  siblingPositions: Array<{ id: number; position: number }>;
-}
-
-function safeDocumentPosition(
-  previous: { position: number } | undefined,
-  next: { position: number } | undefined,
-  occupied: Array<{ position: number }>,
-): number | null {
-  let candidate: number;
-  if (!previous && !next) candidate = 1024;
-  else if (!previous) candidate = next!.position - 1024;
-  else if (!next) candidate = previous.position + 1024;
-  else {
-    const gap = next.position - previous.position;
-    const scale = Math.max(1, Math.abs(previous.position), Math.abs(next.position));
-    if (!Number.isFinite(gap) || gap <= Number.EPSILON * scale * 4) return null;
-    candidate = previous.position + gap / 2;
-    if (!(candidate > previous.position && candidate < next.position)) return null;
-  }
-  if (!Number.isFinite(candidate)) return null;
-  return occupied.some((sibling) => sibling.position === candidate) ? null : candidate;
-}
-
-async function planDocumentMove(
-  executor: Executor,
+// UPDATE of one page: version + 1, updated_at, and the caller's columns. Applies only when
+// the batch's fence passed (and, redundantly, on the expected version).
+function updateDocumentStatement(
+  ok: Stmt,
   projectId: number,
   documentId: number,
-  parentId: number | null,
-  previousSiblingId: number | null,
-  nextSiblingId: number | null,
-): Promise<DocumentMovePlan> {
-  if (previousSiblingId === documentId || nextSiblingId === documentId) {
-    throw new HttpError(400, 'A document cannot be its own move anchor.');
-  }
-  const sameParent =
-    parentId === null ? isNull(projectDocument.parentId) : eq(projectDocument.parentId, parentId);
-  const siblings = (
-    await executor
-      .select({ id: projectDocument.id, position: projectDocument.position })
-      .from(projectDocument)
-      .where(
-        and(
-          eq(projectDocument.projectId, projectId),
-          sameParent,
-          isNull(projectDocument.archivedAt),
-        ),
-      )
-      .orderBy(asc(projectDocument.position), asc(projectDocument.id))
-  ).filter((sibling) => sibling.id !== documentId);
-
-  const previousIndex =
-    previousSiblingId === null
-      ? -1
-      : siblings.findIndex((sibling) => sibling.id === previousSiblingId);
-  const nextIndex =
-    nextSiblingId === null
-      ? siblings.length
-      : siblings.findIndex((sibling) => sibling.id === nextSiblingId);
-  if (
-    (previousSiblingId !== null && previousIndex < 0) ||
-    (nextSiblingId !== null && nextIndex < 0) ||
-    (previousSiblingId !== null && nextSiblingId !== null && previousIndex >= nextIndex)
-  ) {
-    throw new HttpError(409, 'Document order changed elsewhere. Reload it before moving.');
-  }
-
-  // Private siblings invisible to this caller may sit between two visible
-  // anchors. Preserve their relative order and place the moved page immediately
-  // after the previous anchor (or immediately before the next one at the start).
-  const insertionIndex =
-    previousSiblingId !== null ? previousIndex + 1 : nextSiblingId !== null ? nextIndex : 0;
-  const candidate = safeDocumentPosition(
-    siblings[insertionIndex - 1],
-    siblings[insertionIndex],
-    siblings,
-  );
-  if (candidate !== null) return { position: candidate, siblingPositions: [] };
-
-  const orderedIds = siblings.map((sibling) => sibling.id);
-  orderedIds.splice(insertionIndex, 0, documentId);
-  return {
-    position: (insertionIndex + 1) * 1024,
-    siblingPositions: orderedIds.map((id, index) => ({ id, position: (index + 1) * 1024 })),
-  };
+  version: number,
+  userId: string,
+  now: number,
+  sets: Assignments,
+): Stmt {
+  const columns = assignments([...sets, ['updated_by_user_id', userId], ['updated_at', now]]);
+  return stmt`UPDATE project_document SET ${columns}, version = version + 1
+    WHERE id = ${documentId} AND project_id = ${projectId} AND version = ${version} AND ${ok}`;
 }
 
-export async function createDocument(input: {
-  projectId: number;
-  userId: string;
-  title?: string;
-  content?: string;
-  contentJson?: Record<string, unknown> | null;
-  icon?: string | null;
-  metadata?: Record<string, unknown>;
-  fullWidth?: boolean;
-  isPrivate?: boolean;
-  parentId?: number | null;
-}): Promise<DocumentRow> {
+function versionGuard(documentId: number, version: number): Stmt {
+  return stmt`EXISTS (SELECT 1 FROM project_document WHERE id = ${documentId} AND version = ${version})`;
+}
+
+export async function createDocument(
+  db: Db,
+  input: {
+    projectId: number;
+    userId: string;
+    title?: string;
+    content?: string;
+    contentJson?: Record<string, unknown> | null;
+    icon?: string | null;
+    metadata?: Record<string, unknown>;
+    fullWidth?: boolean;
+    isPrivate?: boolean;
+    parentId?: number | null;
+  },
+): Promise<DocumentRow> {
   assertValidDocumentContentJson(input.contentJson);
   assertValidMetadata(input.metadata);
   const parentId = input.parentId ?? null;
-  return db.transaction(async (tx) => {
-    await lockDocumentActor(tx, input.userId);
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${input.projectId})`,
-    );
-    await assertValidParent(tx, input.projectId, null, parentId, input.userId);
-    const [row] = await tx
-      .insert(projectDocument)
-      .values({
-        projectId: input.projectId,
-        parentId,
-        title: input.title ?? '',
-        content: input.content ?? '',
-        contentJson: input.contentJson ?? null,
-        icon: input.icon,
-        metadata: input.metadata ?? {},
-        fullWidth: input.fullWidth ?? false,
-        isPrivate: input.isPrivate ?? false,
-        position: await nextPosition(tx, input.projectId, parentId),
-        ownerUserId: input.userId,
-        createdByUserId: input.userId,
-        updatedByUserId: input.userId,
-      })
-      .returning();
-    return mapDocumentForUser(tx, row, input.userId);
-  });
+  const id = await writing(() =>
+    treeWrite(db, input.projectId, (snapshot) => {
+      assertValidParent(snapshot, null, parentId, input.userId);
+      const position = nextPosition(snapshot, parentId);
+      const now = Date.now();
+      return {
+        build: (ok) => [
+          stmt`INSERT INTO project_document (project_id, parent_id, title, content, content_json, icon, metadata,
+              full_width, is_private, position, owner_user_id, created_by_user_id, updated_by_user_id, created_at, updated_at)
+            SELECT ${input.projectId}, ${parentId}, ${input.title ?? ''}, ${input.content ?? ''}, ${json(input.contentJson ?? null)},
+              ${input.icon ?? null}, ${json(input.metadata ?? {})}, ${input.fullWidth ?? false}, ${input.isPrivate ?? false},
+              ${position}, ${input.userId}, ${input.userId}, ${input.userId}, ${now}, ${now}
+            WHERE ${ok}`,
+          ...captureRevisions(ok, 'last-insert'),
+          bumpDocumentsMarker(ok, input.projectId),
+        ],
+        result: (results) => results[0]!.meta.last_row_id,
+      };
+    }),
+  );
+  const row = await selectDocument(db, input.projectId, id, input.userId);
+  if (!row) throw new HttpError(404, 'Document not found');
+  return mapDocumentForUser(db, row, input.userId);
 }
 
 function assertExpectedVersion(row: { version: number }, expected: number): void {
@@ -641,6 +564,7 @@ function assertUnlocked(row: { isLocked: boolean }): void {
 }
 
 const MAX_DOCUMENT_JSON_BYTES = 1_000_000;
+
 const MAX_DOCUMENT_JSON_NODES = 10_000;
 const MAX_DOCUMENT_JSON_DEPTH = 100;
 const MAX_DOCUMENT_METADATA_BYTES = 16_384;
@@ -684,7 +608,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function assertJsonByteSize(value: unknown, maximum: number, field: string): void {
   let bytes: number;
   try {
-    bytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
+    bytes = new TextEncoder().encode(JSON.stringify(value)).length;
   } catch {
     throw new HttpError(400, `${field} must contain valid JSON values.`);
   }
@@ -971,182 +895,240 @@ function assertValidMetadata(value: Record<string, unknown> | undefined): void {
   assertJsonByteSize(value, MAX_DOCUMENT_METADATA_BYTES, 'metadata');
 }
 
+type UpdateDocumentInput = {
+  version: number;
+  title?: string;
+  content?: string;
+  contentJson?: Record<string, unknown> | null;
+  icon?: string | null;
+  metadata?: Record<string, unknown>;
+  fullWidth?: boolean;
+  parentId?: number | null;
+  position?: number;
+  previousSiblingId?: number | null;
+  nextSiblingId?: number | null;
+};
+
+// Editing the body invalidates the live editing session and detaches the comment anchors.
+function dropCollaboration(ok: Stmt, documentId: number): Stmt[] {
+  return [
+    stmt`DELETE FROM document_collaboration WHERE document_id = ${documentId} AND ${ok}`,
+    stmt`UPDATE document_comment SET orphaned = 1 WHERE document_id = ${documentId} AND ${ok}`,
+  ];
+}
+
 export async function updateDocument(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
-  input: {
-    version: number;
-    title?: string;
-    content?: string;
-    contentJson?: Record<string, unknown> | null;
-    icon?: string | null;
-    metadata?: Record<string, unknown>;
-    fullWidth?: boolean;
-    parentId?: number | null;
-    position?: number;
-    previousSiblingId?: number | null;
-    nextSiblingId?: number | null;
-  },
+  input: UpdateDocumentInput,
 ): Promise<DocumentRow | null> {
   assertValidDocumentContentJson(input.contentJson);
   assertValidMetadata(input.metadata);
-  return db.transaction(async (tx) => {
-    const anchoredMove = input.previousSiblingId !== undefined || input.nextSiblingId !== undefined;
-    if (anchoredMove && (input.parentId === undefined || input.position === undefined)) {
-      throw new HttpError(400, 'An anchored move requires parentId and position.');
-    }
-    if (input.position !== undefined && !Number.isFinite(input.position)) {
-      throw new HttpError(400, 'Document position must be finite.');
-    }
-    const current = await selectDocument(tx, projectId, documentId, userId);
-    if (!current) return null;
-    await lockDocumentActors(tx, [userId, current.ownerUserId]);
-    if (input.parentId !== undefined || input.position !== undefined) {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${projectId})`,
-      );
-    }
+  const anchoredMove = input.previousSiblingId !== undefined || input.nextSiblingId !== undefined;
+  if (anchoredMove && (input.parentId === undefined || input.position === undefined)) {
+    throw new HttpError(400, 'An anchored move requires parentId and position.');
+  }
+  if (input.position !== undefined && !Number.isFinite(input.position)) {
+    throw new HttpError(400, 'Document position must be finite.');
+  }
+  const touchesTree = input.parentId !== undefined || input.position !== undefined;
+  const contentChanged = input.content !== undefined || input.contentJson !== undefined;
+
+  // Builds the batch from the page as it is now and, for a tree write, the tree snapshot.
+  const prepare = async (snapshot: TreeSnapshot | null) => {
+    const current = await selectDocument(db, projectId, documentId, userId);
+    if (!current) throw new EarlyResult(null);
     assertExpectedVersion(current, input.version);
     assertActive(current);
     assertUnlocked(current);
     if (input.parentId !== undefined) {
-      await assertValidParent(tx, projectId, documentId, input.parentId, userId);
+      assertValidParent(snapshot!, documentId, input.parentId, userId);
     }
     const movePlan = anchoredMove
-      ? await planDocumentMove(
-          tx,
-          projectId,
+      ? planDocumentMove(
+          snapshot!,
           documentId,
           input.parentId!,
           input.previousSiblingId ?? null,
           input.nextSiblingId ?? null,
         )
       : null;
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        ...(input.title !== undefined ? { title: input.title } : {}),
-        ...(input.content !== undefined ? { content: input.content } : {}),
-        ...(input.contentJson !== undefined
-          ? { contentJson: input.contentJson }
-          : input.content !== undefined
-            ? { contentJson: null }
-            : {}),
-        ...(input.icon !== undefined ? { icon: input.icon } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-        ...(input.fullWidth !== undefined ? { fullWidth: input.fullWidth } : {}),
-        ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
-        ...(input.position !== undefined ? { position: movePlan?.position ?? input.position } : {}),
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(
-        and(
-          eq(projectDocument.id, documentId),
-          eq(projectDocument.projectId, projectId),
-          eq(projectDocument.version, input.version),
-        ),
-      )
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
+    const now = Date.now();
+    const sets: Assignments = [];
+    if (input.title !== undefined) sets.push(['title', input.title]);
+    if (input.content !== undefined) sets.push(['content', input.content]);
+    const nextContentJson =
+      input.contentJson !== undefined
+        ? input.contentJson
+        : input.content !== undefined
+          ? null
+          : current.contentJson;
+    if (input.contentJson !== undefined || input.content !== undefined) {
+      sets.push(['content_json', json(nextContentJson)]);
     }
-    if (input.content !== undefined || input.contentJson !== undefined) {
-      await tx
-        .delete(documentCollaboration)
-        .where(eq(documentCollaboration.documentId, documentId));
-      await tx
-        .update(documentComment)
-        .set({ orphaned: true })
-        .where(eq(documentComment.documentId, documentId));
-    }
-    if (movePlan) {
-      // Position normalization is implementation detail, not user-visible page
-      // history. The Docs sync trigger still fires so every client refetches the
-      // normalized sibling order, while sibling versions remain stable.
-      const normalized = movePlan.siblingPositions.filter((sibling) => sibling.id !== documentId);
-      if (normalized.length > 0) {
-        await tx.execute(sql`select set_config('app.document_rebalance', 'true', true)`);
-        const cases = sql.join(
-          normalized.map(
-            (sibling) => sql`when ${sibling.id} then ${sibling.position}::double precision`,
-          ),
-          sql` `,
-        );
-        await tx
-          .update(projectDocument)
-          .set({
-            position: sql`case ${projectDocument.id} ${cases} else ${projectDocument.position} end`,
-          })
-          .where(
-            and(
-              eq(projectDocument.projectId, projectId),
-              inArray(
-                projectDocument.id,
-                normalized.map((sibling) => sibling.id),
-              ),
-            ),
-          );
+    if (input.icon !== undefined) sets.push(['icon', input.icon]);
+    if (input.metadata !== undefined) sets.push(['metadata', json(input.metadata)]);
+    if (input.fullWidth !== undefined) sets.push(['full_width', input.fullWidth]);
+    if (input.parentId !== undefined) sets.push(['parent_id', input.parentId]);
+    const nextPositionValue = movePlan?.position ?? input.position;
+    if (nextPositionValue !== undefined) sets.push(['position', nextPositionValue]);
+
+    const after = {
+      ...current,
+      title: input.title ?? current.title,
+      content: input.content ?? current.content,
+      contentJson: nextContentJson,
+      icon: input.icon !== undefined ? input.icon : current.icon,
+      metadata: input.metadata ?? current.metadata,
+      fullWidth: input.fullWidth ?? current.fullWidth,
+      parentId: input.parentId !== undefined ? input.parentId : current.parentId,
+      position: nextPositionValue ?? current.position,
+    };
+    const tail = await readRevisionTail(db, documentId);
+    const coalesceInto = coalesceTarget(tail, current, after, userId, now);
+    // Position normalization is not page history: siblings are renumbered without a new
+    // version or snapshot, only the sync marker moves.
+    const normalized = (movePlan?.siblingPositions ?? []).filter((s) => s.id !== documentId);
+
+    return {
+      guard: versionGuard(documentId, input.version),
+      build: (ok: Stmt) => [
+        updateDocumentStatement(ok, projectId, documentId, input.version, userId, now, sets),
+        ...(contentChanged ? dropCollaboration(ok, documentId) : []),
+        ...renumberSiblings(ok, projectId, normalized),
+        ...captureRevisions(ok, [documentId], coalesceInto),
+        bumpDocumentsMarker(ok, projectId),
+      ],
+      result: () => 'ok' as const,
+    };
+  };
+
+  let outcome: 'ok' | null;
+  if (touchesTree) {
+    outcome = await treeWrite<'ok' | null>(db, projectId, (snapshot) => prepare(snapshot));
+  } else {
+    try {
+      const write = await prepare(null);
+      const { applied } = await fencedBatch(db, {
+        projectId,
+        rev: null,
+        guard: write.guard,
+        build: write.build,
+      });
+      if (!applied) {
+        // The page moved on between the read and the write: report what is there now.
+        const again = await selectDocument(db, projectId, documentId, userId);
+        if (!again) return null;
+        assertExpectedVersion(again, input.version);
+        throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
       }
+      outcome = 'ok';
+    } catch (error) {
+      if (error instanceof EarlyResult) return null;
+      throw error;
     }
-    return mapDocumentForUser(tx, row, userId);
-  });
+  }
+  if (outcome === null) return null;
+  const row = await selectDocument(db, projectId, documentId, userId);
+  return row ? mapDocumentForUser(db, row, userId) : null;
 }
 
 async function ownedDocument(
-  executor: Executor,
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
   isProjectOwner: boolean,
 ) {
-  const current = await selectDocument(executor, projectId, documentId, userId);
+  const current = await selectDocument(db, projectId, documentId, userId);
   if (!current) return null;
-  if (current.ownerUserId !== userId && !(isProjectOwner && !current.isPrivate)) {
-    throw new HttpError(403, 'Only the document owner can change this setting.');
-  }
+  assertOwned(current, userId, isProjectOwner);
   return current;
 }
 
+function assertOwned(
+  doc: { ownerUserId: string | null; isPrivate: boolean },
+  userId: string,
+  isProjectOwner: boolean,
+): void {
+  if (doc.ownerUserId !== userId && !(isProjectOwner && !doc.isPrivate)) {
+    throw new HttpError(403, 'Only the document owner can change this setting.');
+  }
+}
+
+// One-page change of access, ownership or lock: a tree write (it moves the tree revision),
+// followed by a checkpoint snapshot.
+async function mutateDocument(
+  db: Db,
+  o: {
+    projectId: number;
+    documentId: number;
+    userId: string;
+    version: number;
+    isProjectOwner: boolean;
+    check: (doc: TreeDoc) => Promise<{ sets: Assignments; guard?: Stmt } | 'unchanged'>;
+  },
+): Promise<DocumentRow | null> {
+  const outcome = await writing(() =>
+    treeWrite<'changed' | 'unchanged' | null>(db, o.projectId, async (snapshot) => {
+      const doc = snapshot.docs.get(o.documentId);
+      if (!doc || !canSee(doc, o.userId)) throw new EarlyResult(null);
+      assertOwned(doc, o.userId, o.isProjectOwner);
+      assertExpectedVersion(doc, o.version);
+      const change = await o.check(doc);
+      if (change === 'unchanged') throw new EarlyResult('unchanged' as const);
+      const now = Date.now();
+      return {
+        guard: change.guard
+          ? stmt`${versionGuard(o.documentId, o.version)} AND ${change.guard}`
+          : versionGuard(o.documentId, o.version),
+        build: (ok) => [
+          updateDocumentStatement(
+            ok,
+            o.projectId,
+            o.documentId,
+            o.version,
+            o.userId,
+            now,
+            change.sets,
+          ),
+          ...captureRevisions(ok, [o.documentId]),
+          bumpDocumentsMarker(ok, o.projectId),
+        ],
+        result: () => 'changed' as const,
+      };
+    }),
+  );
+  if (outcome === null) return null;
+  const row = await selectDocument(db, o.projectId, o.documentId, o.userId);
+  return row ? mapDocumentForUser(db, row, o.userId) : null;
+}
+
 export async function setDocumentAccess(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
   version: number,
   isPrivate: boolean,
 ): Promise<DocumentRow | null> {
-  return db.transaction(async (tx) => {
-    // Lock the owner before the page can become private. Account deletion then
-    // either sees and removes the committed private row, or finishes first and
-    // this request stops without creating an ownerless private page.
-    const visible = await selectDocument(tx, projectId, documentId, userId);
-    if (!visible) return null;
-    await lockDocumentActors(tx, [userId, visible.ownerUserId]);
-    const current = await ownedDocument(tx, projectId, documentId, userId, false);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    assertActive(current);
-    if (current.isPrivate === isPrivate) return mapDocumentForUser(tx, current, userId);
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        isPrivate,
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(and(eq(projectDocument.id, documentId), eq(projectDocument.version, version)))
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
-    }
-    return mapDocumentForUser(tx, row, userId);
+  return mutateDocument(db, {
+    projectId,
+    documentId,
+    userId,
+    version,
+    isProjectOwner: false,
+    check: async (doc) => {
+      assertActive(doc);
+      return doc.isPrivate === isPrivate ? 'unchanged' : { sets: [['is_private', isPrivate]] };
+    },
   });
 }
 
 export async function transferDocumentOwnership(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -1154,37 +1136,30 @@ export async function transferDocumentOwnership(
   ownerUserId: string,
   isProjectOwner: boolean,
 ): Promise<DocumentRow | null> {
-  return db.transaction(async (tx) => {
-    const visible = await selectDocument(tx, projectId, documentId, userId);
-    if (!visible) return null;
-    await lockDocumentActors(tx, [userId, visible.ownerUserId, ownerUserId]);
-    const current = await ownedDocument(tx, projectId, documentId, userId, isProjectOwner);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    const [target] = await tx
-      .select({ userId: projectMember.userId })
-      .from(projectMember)
-      .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, ownerUserId)));
-    if (!target) throw new HttpError(400, 'The new document owner must belong to this project.');
-    if (current.ownerUserId === ownerUserId) return mapDocumentForUser(tx, current, userId);
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        ownerUserId,
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(and(eq(projectDocument.id, documentId), eq(projectDocument.version, version)))
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
-    }
-    return mapDocumentForUser(tx, row, userId);
+  return mutateDocument(db, {
+    projectId,
+    documentId,
+    userId,
+    version,
+    isProjectOwner,
+    check: async (doc) => {
+      const [target] = await db
+        .select({ userId: projectMember.userId })
+        .from(projectMember)
+        .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, ownerUserId)));
+      if (!target) throw new HttpError(400, 'The new document owner must belong to this project.');
+      if (doc.ownerUserId === ownerUserId) return 'unchanged';
+      return {
+        sets: [['owner_user_id', ownerUserId]],
+        // The new owner must still be a member when the write lands.
+        guard: stmt`EXISTS (SELECT 1 FROM project_member WHERE project_id = ${projectId} AND user_id = ${ownerUserId})`,
+      };
+    },
   });
 }
 
 export async function setDocumentLocked(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -1192,315 +1167,261 @@ export async function setDocumentLocked(
   isLocked: boolean,
   isProjectOwner: boolean,
 ): Promise<DocumentRow | null> {
-  return db.transaction(async (tx) => {
-    const visible = await selectDocument(tx, projectId, documentId, userId);
-    if (!visible) return null;
-    await lockDocumentActors(tx, [userId, visible.ownerUserId]);
-    const current = await ownedDocument(tx, projectId, documentId, userId, isProjectOwner);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    assertActive(current);
-    if (current.isLocked === isLocked) return mapDocumentForUser(tx, current, userId);
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        isLocked,
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(and(eq(projectDocument.id, documentId), eq(projectDocument.version, version)))
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
-    }
-    return mapDocumentForUser(tx, row, userId);
+  return mutateDocument(db, {
+    projectId,
+    documentId,
+    userId,
+    version,
+    isProjectOwner,
+    check: async (doc) => {
+      assertActive(doc);
+      return doc.isLocked === isLocked ? 'unchanged' : { sets: [['is_locked', isLocked]] };
+    },
   });
-}
-
-async function documentSubtreeIds(
-  executor: Executor,
-  projectId: number,
-  documentId: number,
-  userId: string,
-): Promise<number[]> {
-  const rows = await executor
-    .select({ id: projectDocument.id, parentId: projectDocument.parentId })
-    .from(projectDocument)
-    .where(and(eq(projectDocument.projectId, projectId), documentAccess(userId)));
-  const ids = new Set<number>([documentId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const row of rows) {
-      if (row.parentId !== null && ids.has(row.parentId) && !ids.has(row.id)) {
-        ids.add(row.id);
-        changed = true;
-      }
-    }
-  }
-  return [...ids];
 }
 
 export async function archiveDocument(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
   version: number,
   isProjectOwner: boolean,
 ): Promise<DocumentRow | null> {
-  return db.transaction(async (tx) => {
-    await lockProjectDocumentActors(tx, projectId, userId);
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${projectId})`,
+  const outcome = await treeWrite<'ok' | null>(db, projectId, (snapshot) => {
+    const doc = snapshot.docs.get(documentId);
+    if (!doc || !canSee(doc, userId)) throw new EarlyResult(null);
+    assertOwned(doc, userId, isProjectOwner);
+    assertExpectedVersion(doc, version);
+    assertActive(doc);
+    assertUnlocked(doc);
+    const descendants = documentSubtreeIds(snapshot, documentId, userId).filter(
+      (id) => id !== documentId && snapshot.docs.get(id)!.archivedAt === null,
     );
-    await tx.execute(
-      sql`select 1 from ${projectDocument} where ${projectDocument.id} = ${documentId} and ${projectDocument.projectId} = ${projectId} for update`,
-    );
-    const current = await ownedDocument(tx, projectId, documentId, userId, isProjectOwner);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    assertActive(current);
-    assertUnlocked(current);
-    const ids = await documentSubtreeIds(tx, projectId, documentId, userId);
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        archivedAt: sql`now()`,
-        archivedByAncestorId: null,
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(
-        and(
-          eq(projectDocument.id, documentId),
-          eq(projectDocument.version, version),
-          isNull(projectDocument.archivedAt),
-        ),
-      )
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
-    }
-    const descendantIds = ids.filter((id) => id !== documentId);
-    if (descendantIds.length > 0) {
-      await tx
-        .update(projectDocument)
-        .set({
-          archivedAt: sql`now()`,
-          archivedByAncestorId: documentId,
-          updatedByUserId: userId,
-          updatedAt: sql`now()`,
-          version: sql`${projectDocument.version} + 1`,
-        })
-        .where(and(inArray(projectDocument.id, descendantIds), isNull(projectDocument.archivedAt)));
-    }
-    return mapDocumentForUser(tx, row, userId);
+    const now = Date.now();
+    return {
+      guard: versionGuard(documentId, version),
+      build: (ok) => [
+        stmt`UPDATE project_document SET archived_at = ${now}, archived_by_ancestor_id = NULL,
+          updated_by_user_id = ${userId}, updated_at = ${now}, version = version + 1
+          WHERE id = ${documentId} AND project_id = ${projectId} AND version = ${version}
+            AND archived_at IS NULL AND ${ok}`,
+        ...(descendants.length > 0
+          ? [
+              stmt`UPDATE project_document SET archived_at = ${now}, archived_by_ancestor_id = ${documentId},
+                updated_by_user_id = ${userId}, updated_at = ${now}, version = version + 1
+                WHERE id IN (SELECT value FROM json_each(${JSON.stringify(descendants)}))
+                  AND archived_at IS NULL AND ${ok}`,
+            ]
+          : []),
+        ...captureRevisions(ok, [documentId, ...descendants]),
+        bumpDocumentsMarker(ok, projectId),
+      ],
+      result: () => 'ok' as const,
+    };
   });
+  if (outcome === null) return null;
+  const row = await selectDocument(db, projectId, documentId, userId);
+  return row ? mapDocumentForUser(db, row, userId) : null;
 }
 
 export async function restoreDocument(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
   version: number,
   isProjectOwner: boolean,
 ): Promise<DocumentRow | null> {
-  return db.transaction(async (tx) => {
-    await lockProjectDocumentActors(tx, projectId, userId);
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${projectId})`,
-    );
-    await tx.execute(
-      sql`select 1 from ${projectDocument} where ${projectDocument.id} = ${documentId} and ${projectDocument.projectId} = ${projectId} for update`,
-    );
-    const current = await ownedDocument(tx, projectId, documentId, userId, isProjectOwner);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    if (current.archivedAt === null) {
-      throw new HttpError(409, 'This document is not archived.');
-    }
-    const archiveBatchId = current.archivedByAncestorId ?? documentId;
-    const ids = await documentSubtreeIds(tx, projectId, documentId, userId);
+  const outcome = await treeWrite<'ok' | null>(db, projectId, (snapshot) => {
+    const doc = snapshot.docs.get(documentId);
+    if (!doc || !canSee(doc, userId)) throw new EarlyResult(null);
+    assertOwned(doc, userId, isProjectOwner);
+    assertExpectedVersion(doc, version);
+    if (doc.archivedAt === null) throw new HttpError(409, 'This document is not archived.');
+    const archiveBatchId = doc.archivedByAncestorId ?? documentId;
+    const descendants = documentSubtreeIds(snapshot, documentId, userId).filter((id) => {
+      const d = snapshot.docs.get(id)!;
+      return (
+        id !== documentId && d.archivedAt !== null && d.archivedByAncestorId === archiveBatchId
+      );
+    });
     let detachFromParent = false;
-    if (current.parentId !== null) {
-      const [parent] = await tx
-        .select({ archivedAt: projectDocument.archivedAt })
-        .from(projectDocument)
-        .where(and(eq(projectDocument.id, current.parentId), documentAccess(userId)));
-      detachFromParent = !parent || parent.archivedAt !== null;
+    if (doc.parentId !== null) {
+      const parent = snapshot.docs.get(doc.parentId);
+      detachFromParent = !parent || !canSee(parent, userId) || parent.archivedAt !== null;
     }
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        archivedAt: null,
-        archivedByAncestorId: null,
-        ...(detachFromParent ? { parentId: null } : {}),
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(
-        and(
-          eq(projectDocument.id, documentId),
-          eq(projectDocument.version, version),
-          isNotNull(projectDocument.archivedAt),
-        ),
-      )
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
-    }
-    const descendantIds = ids.filter((id) => id !== documentId);
-    if (descendantIds.length > 0) {
-      await tx
-        .update(projectDocument)
-        .set({
-          archivedAt: null,
-          archivedByAncestorId: null,
-          updatedByUserId: userId,
-          updatedAt: sql`now()`,
-          version: sql`${projectDocument.version} + 1`,
-        })
-        .where(
-          and(
-            inArray(projectDocument.id, descendantIds),
-            eq(projectDocument.archivedByAncestorId, archiveBatchId),
-            isNotNull(projectDocument.archivedAt),
-          ),
-        );
-    }
-    return mapDocumentForUser(tx, row, userId);
+    const now = Date.now();
+    return {
+      guard: versionGuard(documentId, version),
+      build: (ok) => [
+        stmt`UPDATE project_document SET archived_at = NULL, archived_by_ancestor_id = NULL,
+          parent_id = ${detachFromParent ? null : doc.parentId},
+          updated_by_user_id = ${userId}, updated_at = ${now}, version = version + 1
+          WHERE id = ${documentId} AND project_id = ${projectId} AND version = ${version}
+            AND archived_at IS NOT NULL AND ${ok}`,
+        ...(descendants.length > 0
+          ? [
+              stmt`UPDATE project_document SET archived_at = NULL, archived_by_ancestor_id = NULL,
+                updated_by_user_id = ${userId}, updated_at = ${now}, version = version + 1
+                WHERE id IN (SELECT value FROM json_each(${JSON.stringify(descendants)}))
+                  AND archived_by_ancestor_id = ${archiveBatchId} AND archived_at IS NOT NULL AND ${ok}`,
+            ]
+          : []),
+        ...captureRevisions(ok, [documentId, ...descendants]),
+        bumpDocumentsMarker(ok, projectId),
+      ],
+      result: () => 'ok' as const,
+    };
   });
+  if (outcome === null) return null;
+  const row = await selectDocument(db, projectId, documentId, userId);
+  return row ? mapDocumentForUser(db, row, userId) : null;
 }
 
-export async function duplicateDocument(input: {
-  projectId: number;
-  documentId: number;
-  userId: string;
-  version: number;
-  title?: string;
-  parentId?: number | null;
-}): Promise<DocumentRow | null> {
+async function currentSequence(db: Db): Promise<number> {
+  const row = await d1Of(db)
+    .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'project_document'")
+    .first<{ seq: number }>();
+  return row?.seq ?? 0;
+}
+
+// Copies a page and its assets. The bucket objects are copied first (and removed again if the
+// copy fails); the page, its assets and its history then land in one fenced batch. The new
+// page id is predicted from the AUTOINCREMENT sequence and checked by the fence, so the body
+// can be rewritten to point at the copied assets before the insert.
+export async function duplicateDocument(
+  db: Db,
+  bucket: R2Bucket,
+  input: {
+    projectId: number;
+    documentId: number;
+    userId: string;
+    version: number;
+    title?: string;
+    parentId?: number | null;
+  },
+): Promise<DocumentRow | null> {
   const copiedObjectKeys: string[] = [];
   try {
-    return await db.transaction(async (tx) => {
-      await lockAttachmentStorage(tx, input.projectId);
-      await lockDocumentActor(tx, input.userId);
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${input.projectId})`,
-      );
-      await tx.execute(
-        sql`select 1 from ${projectDocument} where ${projectDocument.id} = ${input.documentId} and ${projectDocument.projectId} = ${input.projectId} for share`,
-      );
-      const source = await selectDocument(tx, input.projectId, input.documentId, input.userId);
-      if (!source) return null;
-      assertExpectedVersion(source, input.version);
-      assertValidDocumentContentJson(source.contentJson);
-      const parentId =
-        input.parentId === undefined
-          ? await usableRevisionParent(tx, input.projectId, null, source.parentId, input.userId)
-          : input.parentId;
-      if (input.parentId !== undefined) {
-        await assertValidParent(tx, input.projectId, null, parentId, input.userId);
-      }
-      const [row] = await tx
-        .insert(projectDocument)
-        .values({
-          projectId: input.projectId,
-          parentId,
-          title: input.title ?? `${source.title || 'Untitled'} (Copy)`,
-          content: source.content,
-          contentJson: source.contentJson,
-          icon: source.icon,
-          metadata: source.metadata,
-          fullWidth: source.fullWidth,
-          isPrivate: source.isPrivate,
-          position: await nextPosition(tx, input.projectId, parentId),
-          ownerUserId: input.userId,
-          createdByUserId: input.userId,
-          updatedByUserId: input.userId,
-        })
-        .returning();
-      const assets = await tx
-        .select()
-        .from(documentAsset)
-        .where(eq(documentAsset.documentId, source.id));
-      await assertAttachmentStorageCapacity(
-        input.projectId,
-        assets.reduce((total, asset) => total + asset.sizeBytes, 0),
-        0,
-        tx,
-      );
-      for (const asset of assets) {
-        await assertAttachmentFileAllowed(asset.sizeBytes, asset.contentType);
-      }
-      const [projectRow] = await tx
-        .select({ teamId: project.teamId, key: project.key })
-        .from(project)
-        .where(eq(project.id, input.projectId));
-      const publicIds = new Map<string, string>();
-      for (const asset of assets) {
-        const key = attachmentObjectKey(input.projectId, 'documents', row.id, asset.filename);
-        await cloneAttachmentObject(asset.s3Key, key, asset.contentType);
-        copiedObjectKeys.push(key);
-        const [copy] = await tx
-          .insert(documentAsset)
-          .values({
-            documentId: row.id,
-            uploadedByUserId: input.userId,
-            s3Key: key,
-            filename: asset.filename,
-            contentType: asset.contentType,
-            sizeBytes: asset.sizeBytes,
-          })
-          .returning({ publicId: documentAsset.publicId });
-        publicIds.set(asset.publicId.toLowerCase(), copy.publicId);
-      }
-      if (publicIds.size > 0 && projectRow) {
-        const [rewritten] = await tx
-          .update(projectDocument)
-          .set({
-            content: replaceAssetReferences(row.content, source.id, projectRow, row.id, publicIds),
-            contentJson: replaceAssetReferences(
-              row.contentJson,
-              source.id,
-              projectRow,
-              row.id,
-              publicIds,
+    const source = await selectDocument(db, input.projectId, input.documentId, input.userId);
+    if (!source) return null;
+    assertExpectedVersion(source, input.version);
+    assertValidDocumentContentJson(source.contentJson);
+    const assets = await db
+      .select()
+      .from(documentAsset)
+      .where(eq(documentAsset.documentId, source.id));
+    for (const asset of assets) {
+      await assertAttachmentFileAllowed(db, asset.sizeBytes, asset.contentType);
+    }
+    const totalBytes = assets.reduce((total, asset) => total + asset.sizeBytes, 0);
+    const [projectRow] = await db
+      .select({ teamId: project.teamId, key: project.key })
+      .from(project)
+      .where(eq(project.id, input.projectId));
+
+    const copies: Array<{ publicId: string; key: string; asset: (typeof assets)[number] }> = [];
+    const folderId = (await currentSequence(db)) + 1;
+    for (const asset of assets) {
+      const key = attachmentObjectKey(input.projectId, 'documents', folderId, asset.filename);
+      await cloneAttachmentObject(bucket, asset.s3Key, key, asset.contentType);
+      copiedObjectKeys.push(key);
+      copies.push({ publicId: crypto.randomUUID(), key, asset });
+    }
+    const publicIds = new Map(
+      copies.map((copy) => [copy.asset.publicId.toLowerCase(), copy.publicId]),
+    );
+
+    const newId = await writing(() =>
+      treeWrite<number>(db, input.projectId, async (snapshot) => {
+        const fresh = await selectDocument(db, input.projectId, input.documentId, input.userId);
+        if (!fresh) throw new EarlyResult(-1);
+        assertExpectedVersion(fresh, input.version);
+        let parentId: number | null;
+        if (input.parentId === undefined) {
+          parentId = source.parentId;
+          try {
+            assertValidParent(snapshot, null, parentId, input.userId);
+          } catch (error) {
+            if (error instanceof HttpError && error.status === 400) parentId = null;
+            else throw error;
+          }
+        } else {
+          parentId = input.parentId;
+          assertValidParent(snapshot, null, parentId, input.userId);
+        }
+        const position = nextPosition(snapshot, parentId);
+        const sequence = await currentSequence(db);
+        const id = sequence + 1;
+        const quota = await attachmentQuotaCondition(db, input.projectId, totalBytes);
+        const rewrite = <V>(value: V): V =>
+          copies.length > 0 && projectRow
+            ? replaceAssetReferences(value, source.id, projectRow, id, publicIds)
+            : value;
+        const now = Date.now();
+        return {
+          guard: stmt`${versionGuard(source.id, source.version)}
+            AND COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'project_document'), 0) = ${sequence}
+            AND (SELECT COUNT(*) FROM document_asset WHERE document_id = ${source.id}) = ${assets.length}
+            AND COALESCE((SELECT SUM(size_bytes) FROM document_asset WHERE document_id = ${source.id}), 0) = ${totalBytes}
+            AND ${quota}`,
+          build: (ok) => [
+            stmt`INSERT INTO project_document (id, project_id, parent_id, title, content, content_json, icon, metadata,
+                full_width, is_private, position, owner_user_id, created_by_user_id, updated_by_user_id, created_at, updated_at)
+              SELECT ${id}, ${input.projectId}, ${parentId}, ${input.title ?? `${source.title || 'Untitled'} (Copy)`},
+                ${rewrite(source.content)}, ${json(rewrite(source.contentJson))}, ${source.icon}, ${json(source.metadata)},
+                ${source.fullWidth}, ${source.isPrivate}, ${position}, ${input.userId}, ${input.userId}, ${input.userId}, ${now}, ${now}
+              WHERE ${ok}`,
+            ...copies.map(
+              ({ publicId, key, asset }) =>
+                stmt`INSERT INTO document_asset (public_id, document_id, uploaded_by_user_id, s3_key, filename, content_type, size_bytes)
+                SELECT ${publicId}, ${id}, ${input.userId}, ${key}, ${asset.filename}, ${asset.contentType}, ${asset.sizeBytes}
+                WHERE ${ok}`,
             ),
-          })
-          .where(eq(projectDocument.id, row.id))
-          .returning();
-        return mapDocumentForUser(tx, rewritten, input.userId);
-      }
-      return mapDocumentForUser(tx, row, input.userId);
-    });
+            ...captureRevisions(ok, [id]),
+            bumpDocumentsMarker(ok, input.projectId),
+          ],
+          result: () => id,
+        };
+      }),
+    );
+    if (newId < 0) {
+      await Promise.all(copiedObjectKeys.map((key) => deleteAttachmentObject(bucket, key)));
+      return null;
+    }
+    const row = await selectDocument(db, input.projectId, newId, input.userId);
+    return row ? mapDocumentForUser(db, row, input.userId) : null;
   } catch (error) {
-    await Promise.all(copiedObjectKeys.map(deleteAttachmentObject));
+    await Promise.all(copiedObjectKeys.map((key) => deleteAttachmentObject(bucket, key)));
     throw error;
   }
 }
 
 export async function setDocumentPreference(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
   isFavorite: boolean,
 ): Promise<{ isFavorite: boolean } | null> {
   if (!(await selectDocument(db, projectId, documentId, userId))) return null;
-  await db
-    .insert(projectDocumentPreference)
-    .values({ documentId, userId, isFavorite, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: [projectDocumentPreference.documentId, projectDocumentPreference.userId],
-      set: { isFavorite, updatedAt: new Date() },
-    });
+  const now = Date.now();
+  await fencedBatch(db, {
+    projectId,
+    rev: null,
+    build: (ok) => [
+      stmt`INSERT INTO project_document_preference (document_id, user_id, is_favorite, updated_at)
+        SELECT ${documentId}, ${userId}, ${isFavorite}, ${now} WHERE ${ok}
+        ON CONFLICT (document_id, user_id) DO UPDATE SET is_favorite = excluded.is_favorite, updated_at = excluded.updated_at`,
+      bumpDocumentsMarker(ok, projectId),
+    ],
+  });
   return { isFavorite };
 }
 
 export async function listDocumentRevisions(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -1524,6 +1445,7 @@ export async function listDocumentRevisions(
 }
 
 export async function getDocumentRevision(
+  db: Db,
   projectId: number,
   documentId: number,
   revisionId: number,
@@ -1549,102 +1471,86 @@ export async function getDocumentRevision(
   return mapRevision({ ...row, parentId });
 }
 
-async function usableRevisionParent(
-  executor: Executor,
-  projectId: number,
-  documentId: number | null,
-  parentId: number | null,
-  userId: string,
-): Promise<number | null> {
-  if (parentId === null) return null;
-  try {
-    await assertValidParent(executor, projectId, documentId, parentId, userId);
-    return parentId;
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 400) return null;
-    throw error;
-  }
-}
-
 export async function restoreDocumentRevision(
+  db: Db,
   projectId: number,
   documentId: number,
   revisionId: number,
   userId: string,
   version: number,
 ): Promise<DocumentRow | null> {
-  return db.transaction(async (tx) => {
-    const visible = await selectDocument(tx, projectId, documentId, userId);
-    if (!visible) return null;
-    await lockDocumentActors(tx, [userId, visible.ownerUserId]);
-    await tx.execute(sql`select set_config('app.document_checkpoint', 'true', true)`);
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${projectId})`,
-    );
-    const current = await selectDocument(tx, projectId, documentId, userId);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    assertActive(current);
-    assertUnlocked(current);
-    const [revision] = await tx
-      .select()
-      .from(projectDocumentRevision)
-      .where(
-        and(
-          eq(projectDocumentRevision.id, revisionId),
-          eq(projectDocumentRevision.documentId, documentId),
-          or(
-            eq(projectDocumentRevision.isPrivate, false),
-            eq(projectDocumentRevision.ownerUserId, userId),
+  const outcome = await writing(() =>
+    treeWrite<'ok' | null>(db, projectId, async (snapshot) => {
+      const current = await selectDocument(db, projectId, documentId, userId);
+      if (!current) throw new EarlyResult(null);
+      assertExpectedVersion(current, version);
+      assertActive(current);
+      assertUnlocked(current);
+      const [revision] = await db
+        .select()
+        .from(projectDocumentRevision)
+        .where(
+          and(
+            eq(projectDocumentRevision.id, revisionId),
+            eq(projectDocumentRevision.documentId, documentId),
+            or(
+              eq(projectDocumentRevision.isPrivate, false),
+              eq(projectDocumentRevision.ownerUserId, userId),
+            ),
           ),
-        ),
-      );
-    if (!revision) throw new HttpError(404, 'Document revision not found');
-    if (revision.isPrivate && (revision.ownerUserId !== userId || current.ownerUserId !== userId)) {
-      throw new HttpError(403, 'Only the current document owner can restore a private revision.');
-    }
-    assertValidDocumentContentJson(revision.contentJson);
-    const parentId = await usableRevisionParent(
-      tx,
-      projectId,
-      documentId,
-      revision.parentId,
-      userId,
-    );
-    const [row] = await tx
-      .update(projectDocument)
-      .set({
-        parentId,
-        title: revision.title,
-        content: revision.content,
-        contentJson: revision.contentJson,
-        icon: revision.icon,
-        metadata: revision.metadata,
-        fullWidth: revision.fullWidth,
-        position: revision.position,
+        );
+      if (!revision) throw new HttpError(404, 'Document revision not found');
+      if (
+        revision.isPrivate &&
+        (revision.ownerUserId !== userId || current.ownerUserId !== userId)
+      ) {
+        throw new HttpError(403, 'Only the current document owner can restore a private revision.');
+      }
+      assertValidDocumentContentJson(revision.contentJson);
+      let parentId = revision.parentId;
+      if (parentId !== null) {
+        try {
+          assertValidParent(snapshot, documentId, parentId, userId);
+        } catch (error) {
+          if (error instanceof HttpError && error.status === 400) parentId = null;
+          else throw error;
+        }
+      }
+      const sets: Assignments = [
+        ['parent_id', parentId],
+        ['title', revision.title],
+        ['content', revision.content],
+        ['content_json', json(revision.contentJson)],
+        ['icon', revision.icon],
+        ['metadata', json(revision.metadata)],
+        ['full_width', revision.fullWidth],
+        ['position', revision.position],
         // A historical secret may never be restored into a public current row.
         // Restoring a public snapshot into a private page keeps the safer current
         // access level instead of unexpectedly publishing it.
-        ...(revision.isPrivate ? { isPrivate: true } : {}),
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(and(eq(projectDocument.id, documentId), eq(projectDocument.version, version)))
-      .returning();
-    if (!row) {
-      throw new HttpError(409, 'This document changed elsewhere. Reload it before continuing.');
-    }
-    await tx.delete(documentCollaboration).where(eq(documentCollaboration.documentId, documentId));
-    await tx
-      .update(documentComment)
-      .set({ orphaned: true })
-      .where(eq(documentComment.documentId, documentId));
-    return mapDocumentForUser(tx, row, userId);
-  });
+        ...(revision.isPrivate ? ([['is_private', true]] as Assignments) : []),
+      ];
+      const now = Date.now();
+      return {
+        guard: versionGuard(documentId, version),
+        build: (ok) => [
+          updateDocumentStatement(ok, projectId, documentId, version, userId, now, sets),
+          ...dropCollaboration(ok, documentId),
+          // A restore is always an explicit checkpoint: never merged into the last snapshot.
+          ...captureRevisions(ok, [documentId]),
+          bumpDocumentsMarker(ok, projectId),
+        ],
+        result: () => 'ok' as const,
+      };
+    }),
+  );
+  if (outcome === null) return null;
+  const row = await selectDocument(db, projectId, documentId, userId);
+  return row ? mapDocumentForUser(db, row, userId) : null;
 }
 
 export async function exportDocument(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
@@ -1655,7 +1561,7 @@ export async function exportDocument(
   version: number;
   exportedAt: string;
 } | null> {
-  const document = await getDocument(projectId, documentId, userId);
+  const document = await getDocument(db, projectId, documentId, userId);
   if (!document) return null;
   const printableTitle = [...document.title.trim()]
     .map((character) => {
@@ -1673,52 +1579,51 @@ export async function exportDocument(
   };
 }
 
+// Deletes an archived page and returns the bucket keys of its assets, which the caller
+// removes from R2 once the rows are gone. The fence checks the asset set it read, so an
+// asset uploaded in between is never orphaned in the bucket.
 export async function deleteDocument(
+  db: Db,
   projectId: number,
   documentId: number,
   userId: string,
   version: number,
   isProjectOwner: boolean,
 ): Promise<string[] | null> {
-  return db.transaction(async (tx) => {
-    await lockAttachmentStorage(tx, projectId);
-    await lockProjectDocumentActors(tx, projectId, userId);
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${projectId})`,
-    );
-    const current = await ownedDocument(tx, projectId, documentId, userId, isProjectOwner);
-    if (!current) return null;
-    assertExpectedVersion(current, version);
-    assertUnlocked(current);
-    if (current.archivedAt === null) {
+  return treeWrite<string[] | null>(db, projectId, async (snapshot) => {
+    const doc = snapshot.docs.get(documentId);
+    if (!doc || !canSee(doc, userId)) throw new EarlyResult(null);
+    assertOwned(doc, userId, isProjectOwner);
+    assertExpectedVersion(doc, version);
+    assertUnlocked(doc);
+    if (doc.archivedAt === null) {
       throw new HttpError(409, 'Archive this document before deleting it.');
     }
-    await tx
-      .update(projectDocument)
-      .set({
-        parentId: null,
-        updatedByUserId: userId,
-        updatedAt: sql`now()`,
-        version: sql`${projectDocument.version} + 1`,
-      })
-      .where(
-        and(eq(projectDocument.projectId, projectId), eq(projectDocument.parentId, documentId)),
-      );
-    const assets = await tx
-      .select({ s3Key: documentAsset.s3Key })
+    const children = [...snapshot.docs.values()]
+      .filter((d) => d.parentId === documentId)
+      .map((d) => d.id);
+    const assets = await db
+      .select({ s3Key: documentAsset.s3Key, sizeBytes: documentAsset.sizeBytes })
       .from(documentAsset)
       .where(eq(documentAsset.documentId, documentId));
-    const rows = await tx
-      .delete(projectDocument)
-      .where(
-        and(
-          eq(projectDocument.id, documentId),
-          eq(projectDocument.projectId, projectId),
-          eq(projectDocument.version, version),
-        ),
-      )
-      .returning({ id: projectDocument.id });
-    if (rows.length > 0) return assets.map((asset) => asset.s3Key);
-    throw new HttpError(409, 'This document changed elsewhere. Reload it before deleting.');
+    const now = Date.now();
+    return {
+      guard: stmt`${versionGuard(documentId, version)}
+        AND (SELECT COUNT(*) FROM document_asset WHERE document_id = ${documentId}) = ${assets.length}`,
+      build: (ok) => [
+        ...(children.length > 0
+          ? [
+              stmt`UPDATE project_document SET parent_id = NULL, updated_by_user_id = ${userId},
+                updated_at = ${now}, version = version + 1
+                WHERE id IN (SELECT value FROM json_each(${JSON.stringify(children)})) AND ${ok}`,
+              ...captureRevisions(ok, children),
+            ]
+          : []),
+        stmt`DELETE FROM project_document WHERE id = ${documentId} AND project_id = ${projectId}
+          AND version = ${version} AND ${ok}`,
+        bumpDocumentsMarker(ok, projectId),
+      ],
+      result: () => assets.map((asset) => asset.s3Key),
+    };
   });
 }
