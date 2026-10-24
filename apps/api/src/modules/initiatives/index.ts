@@ -100,7 +100,7 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/initiatives',
-    ({ project, query }) => {
+    ({ db, project, query }) => {
       const statuses = query.status
         ? query.status
             .split(',')
