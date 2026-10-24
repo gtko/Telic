@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { guards, entityGuard } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { HttpError } from '#shared/lib';
 import { mcpTool } from '#mcp/generate';
 import { accessErrors, commonErrors } from '#shared/responses';
@@ -24,6 +25,7 @@ import {
 
 export const dashboardRoutes = new Elysia({ name: 'dashboards', detail: { tags: ['Dashboards'] } })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
   // Guard for routes that address a dashboard by its own id (no :projectKey in
   // the path). Set `dashboard: "<action>"` in the route options.
@@ -31,14 +33,14 @@ export const dashboardRoutes = new Elysia({ name: 'dashboards', detail: { tags: 
     dashboard: entityGuard(
       'dashboards',
       'Dashboard not found',
-      async (p) => (await getDashboard(Number(p.dashboardId)))?.projectId ?? null,
+      async (p, { db }) => (await getDashboard(db, Number(p.dashboardId)))?.projectId ?? null,
       'dashboards',
     ),
   })
   .get(
     '/projects/:projectKey/dashboards',
-    async ({ project }) => {
-      return listDashboards(project.id);
+    async ({ db, project }) => {
+      return listDashboards(db, project.id);
     },
     {
       permission: ['dashboards', 'read'],
@@ -50,9 +52,9 @@ export const dashboardRoutes = new Elysia({ name: 'dashboards', detail: { tags: 
 
   .post(
     '/projects/:projectKey/dashboards',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       set.status = 201;
-      return createDashboard({ projectId: project.id, ...body });
+      return createDashboard(db, { projectId: project.id, ...body });
     },
     {
       body: createDashboardBody,
@@ -65,8 +67,8 @@ export const dashboardRoutes = new Elysia({ name: 'dashboards', detail: { tags: 
 
   .put(
     '/projects/:projectKey/dashboards/reorder',
-    async ({ project, body }) => {
-      return reorderDashboards(project.id, body.orderedIds);
+    async ({ db, project, body }) => {
+      return reorderDashboards(db, project.id, body.orderedIds);
     },
     {
       body: reorderDashboardsBody,
@@ -79,8 +81,8 @@ export const dashboardRoutes = new Elysia({ name: 'dashboards', detail: { tags: 
 
   .patch(
     '/dashboards/:dashboardId',
-    async ({ params, body }) => {
-      const dashboard = await updateDashboard(params.dashboardId, body);
+    async ({ db, params, body }) => {
+      const dashboard = await updateDashboard(db, params.dashboardId, body);
       if (!dashboard) throw new HttpError(404, 'Dashboard not found');
       return dashboard;
     },
@@ -95,8 +97,8 @@ export const dashboardRoutes = new Elysia({ name: 'dashboards', detail: { tags: 
 
   .delete(
     '/dashboards/:dashboardId',
-    async ({ params }) => {
-      await deleteDashboard(params.dashboardId);
+    async ({ db, params }) => {
+      await deleteDashboard(db, params.dashboardId);
       return noContent();
     },
     {

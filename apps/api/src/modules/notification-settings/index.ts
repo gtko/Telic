@@ -1,8 +1,9 @@
 import { Elysia } from 'elysia';
 import { guards } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { errors } from '#shared/responses';
-import { getProjectEmailConfig } from '@repo/db';
+import { getProjectEmailConfig, type Db } from '@repo/db';
 import { teamParams } from '#modules/teams/model';
 import { NotificationSettingsBody, NotificationSettingsResponse } from './model';
 import {
@@ -14,8 +15,8 @@ import {
 // Adds whether the instance provider is available to teams right now. It is an
 // instance setting, so it is reported alongside the team's own settings rather
 // than stored with them.
-async function withSystemAvailability(settings: NotificationSettingsDto) {
-  return { ...settings, systemAvailable: (await getProjectEmailConfig()) !== null };
+async function withSystemAvailability(db: Db, settings: NotificationSettingsDto) {
+  return { ...settings, systemAvailable: (await getProjectEmailConfig(db)) !== null };
 }
 
 // Notification provider credentials carry secrets (SMTP password, Resend key,
@@ -28,12 +29,13 @@ export const notificationSettingsRoutes = new Elysia({
   detail: { tags: ['Settings'] },
 })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
 
   .get(
     '/teams/:teamId/notification-settings',
-    async ({ membership }) =>
-      withSystemAvailability(await getNotificationSettings(membership.teamId)),
+    async ({ db, membership }) =>
+      withSystemAvailability(db, await getNotificationSettings(db, membership.teamId)),
     {
       teamOwner: true,
       params: teamParams,
@@ -47,8 +49,8 @@ export const notificationSettingsRoutes = new Elysia({
 
   .put(
     '/teams/:teamId/notification-settings',
-    async ({ membership, body }) =>
-      withSystemAvailability(await setNotificationSettings(membership.teamId, body)),
+    async ({ db, membership, body }) =>
+      withSystemAvailability(db, await setNotificationSettings(db, membership.teamId, body)),
     {
       teamOwner: true,
       params: teamParams,

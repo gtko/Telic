@@ -1,11 +1,11 @@
 import {
-  db,
+  type Db,
   teamNotificationSetting,
   defaultNotificationConfig,
   readNotificationConfig,
   type NotificationConfig,
 } from '@repo/db';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { encryptSecret } from '@repo/crypto';
 import { HttpError } from '#shared/lib';
 
@@ -143,17 +143,21 @@ function assertSendable(config: NotificationConfig): void {
 
 // The redacted settings for a team. Defaults (no secrets, no provider of its own,
 // delivery through the instance provider) when nothing has been saved.
-export async function getNotificationSettings(teamId: number): Promise<NotificationSettingsDto> {
-  const config = (await readNotificationConfig(teamId)) ?? defaultNotificationConfig();
+export async function getNotificationSettings(
+  db: Db,
+  teamId: number,
+): Promise<NotificationSettingsDto> {
+  const config = (await readNotificationConfig(db, teamId)) ?? defaultNotificationConfig();
   return toDto(config);
 }
 
 // Applies a patch and returns the redacted result. Upserts the single row.
 export async function setNotificationSettings(
+  db: Db,
   teamId: number,
   patch: NotificationSettingsPatch,
 ): Promise<NotificationSettingsDto> {
-  const current = (await readNotificationConfig(teamId)) ?? defaultNotificationConfig();
+  const current = (await readNotificationConfig(db, teamId)) ?? defaultNotificationConfig();
   const next = applyPatch(current, patch);
   assertSendable(next);
   const redacted = toDto(next);
@@ -174,7 +178,7 @@ export async function setNotificationSettings(
         iv: enc.iv,
         authTag: enc.authTag,
         redacted,
-        updatedAt: sql`now()`,
+        updatedAt: new Date(),
       },
     });
   return redacted;
@@ -184,7 +188,10 @@ export async function setNotificationSettings(
 // decrypting. Used by the outbound enqueue path to decide which channels are enabled.
 // Cheaper than getNotificationSettings, which decrypts the secret blob. A team that
 // saved nothing gets the defaults, so it delivers through the instance provider.
-export async function readRedactedSettings(teamId: number): Promise<NotificationSettingsDto> {
+export async function readRedactedSettings(
+  db: Db,
+  teamId: number,
+): Promise<NotificationSettingsDto> {
   const rows = await db
     .select({ redacted: teamNotificationSetting.redacted })
     .from(teamNotificationSetting)

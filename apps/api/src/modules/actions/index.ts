@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { guards, entityGuard } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { HttpError } from '#shared/lib';
 import { mcpTool } from '#mcp/generate';
 import { accessErrors, commonErrors } from '#shared/responses';
@@ -24,6 +25,7 @@ import {
 
 export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Actions'] } })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
   // Guard for routes that address an action by its own id (no :projectKey in the
   // path). Set `savedAction: "<action>"` in the route options.
@@ -31,13 +33,13 @@ export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Acti
     savedAction: entityGuard(
       'actions',
       'Action not found',
-      async (p) => (await getAction(Number(p.actionId)))?.projectId ?? null,
+      async (p, { db }) => (await getAction(db, Number(p.actionId)))?.projectId ?? null,
     ),
   })
   .get(
     '/projects/:projectKey/actions',
-    async ({ project }) => {
-      return listActions(project.id);
+    async ({ db, project }) => {
+      return listActions(db, project.id);
     },
     {
       permission: ['actions', 'read'],
@@ -55,8 +57,8 @@ export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Acti
   // still sees the ones that apply to an issue.
   .get(
     '/projects/:projectKey/actions/quick',
-    async ({ project }) => {
-      return listActions(project.id);
+    async ({ db, project }) => {
+      return listActions(db, project.id);
     },
     {
       projectMember: true,
@@ -70,9 +72,9 @@ export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Acti
 
   .post(
     '/projects/:projectKey/actions',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       set.status = 201;
-      return createAction({ projectId: project.id, ...body });
+      return createAction(db, { projectId: project.id, ...body });
     },
     {
       body: createActionBody,
@@ -89,8 +91,8 @@ export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Acti
   // Sets the action order to orderedIds.
   .put(
     '/projects/:projectKey/actions/reorder',
-    async ({ project, body }) => {
-      return reorderActions(project.id, body.orderedIds);
+    async ({ db, project, body }) => {
+      return reorderActions(db, project.id, body.orderedIds);
     },
     {
       body: reorderActionsBody,
@@ -106,8 +108,8 @@ export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Acti
 
   .patch(
     '/actions/:actionId',
-    async ({ params, body }) => {
-      const action = await updateAction(params.actionId, body);
+    async ({ db, params, body }) => {
+      const action = await updateAction(db, params.actionId, body);
       if (!action) throw new HttpError(404, 'Action not found');
       return action;
     },
@@ -126,8 +128,8 @@ export const actionRoutes = new Elysia({ name: 'actions', detail: { tags: ['Acti
 
   .delete(
     '/actions/:actionId',
-    async ({ params }) => {
-      await deleteAction(params.actionId);
+    async ({ db, params }) => {
+      await deleteAction(db, params.actionId);
       return noContent();
     },
     {

@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { aiAgent, db, user, webhook, webhookDelivery } from '@repo/db';
+import { aiAgent, batchAll, chunk, user, webhook, webhookDelivery, type Db } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 import type { ActivityActor } from '#modules/issues/activity';
 import type { WebhookEventType } from './service';
@@ -31,7 +30,7 @@ interface WebhookActor {
   name: string | null;
 }
 
-async function resolveActor(actor: ActivityActor): Promise<WebhookActor> {
+async function resolveActor(db: Db, actor: ActivityActor): Promise<WebhookActor> {
   if (!actor) return { type: 'system', id: null, name: null };
   if (typeof actor === 'object') return { type: 'system', id: null, name: actor.system };
   const [row] = await db
@@ -70,14 +69,15 @@ export function onProjectEvent(listener: ProjectEventListener): () => void {
 // Whether a listener of onProjectEvent or a subscribed webhook takes eventType, for a
 // caller that has to build the payloads before its write removes what they name.
 export async function projectEventWanted(
+  db: Db,
   projectId: number,
   eventType: WebhookEventType,
 ): Promise<boolean> {
-  return listeners.length > 0 || (await subscribedWebhooks(projectId, eventType)).length > 0;
+  return listeners.length > 0 || (await subscribedWebhooks(db, projectId, eventType)).length > 0;
 }
 
 // The active webhooks of the project that subscribe to eventType.
-function subscribedWebhooks(projectId: number, eventType: WebhookEventType) {
+function subscribedWebhooks(db: Db, projectId: number, eventType: WebhookEventType) {
   return db
     .select({ id: webhook.id })
     .from(webhook)
@@ -85,8 +85,8 @@ function subscribedWebhooks(projectId: number, eventType: WebhookEventType) {
       and(
         eq(webhook.projectId, projectId),
         eq(webhook.isActive, true),
-        // events is a jsonb array of event-type strings. @> tests membership.
-        sql`${webhook.events} @> ${JSON.stringify([eventType])}::jsonb`,
+        // events is a JSON array of event-type strings: membership is a json_each lookup.
+        sql`EXISTS (SELECT 1 FROM json_each(${webhook.events}) WHERE json_each.value = ${eventType})`,
       ),
     );
 }
@@ -105,6 +105,7 @@ function subscribedWebhooks(projectId: number, eventType: WebhookEventType) {
 // organization concept. The shared dedup id goes in the X-Itsaplan-Event-Id header,
 // not in the body.
 export async function emitWebhookEvents(
+  db: Db,
   projectId: number,
   eventType: WebhookEventType,
   load: () => Promise<unknown[]>,
@@ -120,36 +121,39 @@ export async function emitWebhookEvents(
     }
   }
 
-  const matching = await subscribedWebhooks(projectId, eventType);
+  const matching = await subscribedWebhooks(db, projectId, eventType);
   if (matching.length === 0) return;
 
   const payloads = await loadOnce();
   if (payloads.length === 0) return;
 
   const { action, type } = EVENT_SHAPE[eventType];
-  const resolvedActor = await resolveActor(actor);
+  const resolvedActor = await resolveActor(db, actor);
   const now = new Date();
   const createdAt = now.toISOString();
   const webhookTimestamp = now.getTime();
 
-  await db.insert(webhookDelivery).values(
-    payloads.flatMap((data) => {
-      const eventId = randomUUID();
-      return matching.map((h) => ({
+  const rows = payloads.flatMap((data) => {
+    const eventId = crypto.randomUUID();
+    return matching.map((h) => ({
+      webhookId: h.id,
+      eventId,
+      eventType,
+      payload: {
+        action,
+        type,
+        event: eventType,
+        actor: resolvedActor,
+        createdAt,
+        data,
+        webhookTimestamp,
         webhookId: h.id,
-        eventId,
-        eventType,
-        payload: {
-          action,
-          type,
-          event: eventType,
-          actor: resolvedActor,
-          createdAt,
-          data,
-          webhookTimestamp,
-          webhookId: h.id,
-        },
-      }));
-    }),
+      },
+    }));
+  });
+  // One atomic batch of small inserts: D1 binds at most 100 parameters per statement.
+  await batchAll(
+    db,
+    chunk(rows, 12).map((part) => db.insert(webhookDelivery).values(part)),
   );
 }

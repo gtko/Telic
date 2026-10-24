@@ -1,6 +1,8 @@
 import { Elysia } from 'elysia';
+import type { Db } from '@repo/db';
 import { HttpError } from '#shared/lib';
 import { errors } from '#shared/responses';
+import { dbContext } from '#shared/db-context';
 import { getProjectById } from '#modules/projects/service';
 import { handleGitEvent } from './handler';
 import { detectProvider } from './providers';
@@ -13,15 +15,17 @@ import { claimGitDelivery, findProjectByGitWebhookId, recordGitEvent } from './s
 // authentication. The body is parsed as text so a signature is computed over the
 // exact bytes the provider signed.
 async function receive({
+  db,
   params,
   body,
   headers,
 }: {
+  db: Db;
   params: { webhookId: string };
   body: string;
   headers: Record<string, string | undefined>;
 }) {
-  const found = await findProjectByGitWebhookId(params.webhookId);
+  const found = await findProjectByGitWebhookId(db, params.webhookId);
   if (!found) throw new HttpError(404, 'Unknown webhook');
   const provider = detectProvider(headers);
   if (!provider) throw new HttpError(400, 'Unknown provider');
@@ -37,7 +41,7 @@ async function receive({
   const providerLabel = provider.label(headers);
   const providerKey = provider.key(headers);
   const repo = provider.repo(payload);
-  if (repo) await recordGitEvent(found.projectId, repo, providerLabel);
+  if (repo) await recordGitEvent(db, found.projectId, repo, providerLabel);
 
   const event = provider.parse(payload, headers);
   if (!event) return { ok: true, handled: 'ignored' };
@@ -45,11 +49,18 @@ async function receive({
   // A provider sends a unique id per delivery and reuses it on redelivery; an id
   // seen before means a replay, which must not repeat its side effects.
   const deliveryId = provider.deliveryId(headers);
-  if (deliveryId && !(await claimGitDelivery(found.projectId, deliveryId)))
+  if (deliveryId && !(await claimGitDelivery(db, found.projectId, deliveryId)))
     return { ok: true, handled: 'duplicate' };
   const project = await getProjectById(found.projectId);
   if (!project) throw new HttpError(404, 'Unknown webhook');
-  const handled = await handleGitEvent(project, found.settings, providerKey, providerLabel, event);
+  const handled = await handleGitEvent(
+    db,
+    project,
+    found.settings,
+    providerKey,
+    providerLabel,
+    event,
+  );
   return { ok: true, handled };
 }
 
@@ -70,6 +81,7 @@ export const gitWebhookRoutes = new Elysia({
   name: 'git-webhook',
   detail: { tags: ['Git'] },
 })
+  .use(dbContext)
   .post('/webhooks/git/:webhookId', receive, options)
   // The path GitHub repositories were connected to before the receiver took
   // other providers. Kept so those webhooks keep working.

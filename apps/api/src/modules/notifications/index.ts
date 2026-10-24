@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { requireUser } from '#shared/access';
 import { HttpError } from '#shared/lib';
 import { errors } from '#shared/responses';
@@ -39,10 +40,11 @@ export const notificationRoutes = new Elysia({
   detail: { tags: ['Notifications'] },
 })
   .use(authContext)
+  .use(dbContext)
 
   .get(
     '/notifications',
-    async ({ user, query }) => {
+    async ({ db, user, query }) => {
       const userId = requireUser(user).id;
       const limit = query.limit != null ? Number(query.limit) : 30;
       let before = null;
@@ -66,7 +68,7 @@ export const notificationRoutes = new Elysia({
       if (query.projectId) filters.projectId = Number(query.projectId);
       filters.includeRead = query.includeRead !== 'false';
       filters.includeSnoozed = query.includeSnoozed === 'true';
-      return listNotifications(userId, { before, limit, filters });
+      return listNotifications(db, userId, { before, limit, filters });
     },
     {
       query: listNotificationsQuery,
@@ -78,10 +80,10 @@ export const notificationRoutes = new Elysia({
   // The badge count. Refetched when the inbox scope of GET /sync/rev moves.
   .get(
     '/notifications/unread',
-    async ({ user, query }) => {
+    async ({ db, user, query }) => {
       const userId = requireUser(user).id;
       const projectId = query.projectId ? Number(query.projectId) : undefined;
-      return { unread: await unreadCount(userId, projectId) };
+      return { unread: await unreadCount(db, userId, projectId) };
     },
     {
       query: unreadCountQuery,
@@ -92,9 +94,9 @@ export const notificationRoutes = new Elysia({
 
   .post(
     '/notifications/read-all',
-    async ({ user, body }) => {
+    async ({ db, user, body }) => {
       const userId = requireUser(user).id;
-      const count = await markAllRead(userId, body?.projectId, {
+      const count = await markAllRead(db, userId, body?.projectId, {
         types: body?.types,
         fromUserId: body?.from,
         includeRead: body?.includeRead,
@@ -111,7 +113,7 @@ export const notificationRoutes = new Elysia({
 
   .delete(
     '/notifications',
-    async ({ user, query }) => {
+    async ({ db, user, query }) => {
       const userId = requireUser(user).id;
       const scope = (query.scope ?? 'read') as DeleteScope;
       const projectId = query.projectId ? Number(query.projectId) : undefined;
@@ -122,7 +124,7 @@ export const notificationRoutes = new Elysia({
           throw new HttpError(400, 'Invalid notification type');
         types = supplied as NotificationType[];
       }
-      const count = await deleteNotifications(userId, scope, projectId, {
+      const count = await deleteNotifications(db, userId, scope, projectId, {
         types,
         fromUserId: query.from,
         includeRead: query.includeRead !== 'false',
@@ -145,10 +147,10 @@ export const notificationRoutes = new Elysia({
 
   .post(
     '/notifications/:id/read',
-    async ({ user, params, body }) => {
+    async ({ db, user, params, body }) => {
       const userId = requireUser(user).id;
       const read = body?.read ?? true;
-      const ok = await setNotificationRead(userId, params.id, read);
+      const ok = await setNotificationRead(db, userId, params.id, read);
       if (!ok) throw new HttpError(404, 'Notification not found');
       return noContent();
     },
@@ -162,11 +164,11 @@ export const notificationRoutes = new Elysia({
 
   .post(
     '/notifications/:id/snooze',
-    async ({ user, params, body }) => {
+    async ({ db, user, params, body }) => {
       const userId = requireUser(user).id;
       const until = body.until ? new Date(body.until) : null;
       if (until && Number.isNaN(until.getTime())) throw new HttpError(400, 'Invalid snooze time');
-      const ok = await snoozeNotification(userId, params.id, until);
+      const ok = await snoozeNotification(db, userId, params.id, until);
       if (!ok) throw new HttpError(404, 'Notification not found');
       return noContent();
     },
@@ -183,9 +185,9 @@ export const notificationRoutes = new Elysia({
 
   .delete(
     '/notifications/:id',
-    async ({ user, params }) => {
+    async ({ db, user, params }) => {
       const userId = requireUser(user).id;
-      const ok = await deleteNotification(userId, params.id);
+      const ok = await deleteNotification(db, userId, params.id);
       if (!ok) throw new HttpError(404, 'Notification not found');
       return noContent();
     },

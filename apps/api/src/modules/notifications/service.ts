@@ -1,5 +1,6 @@
 import {
-  db,
+  batchAll,
+  chunk,
   notification,
   projectMember,
   user,
@@ -8,6 +9,7 @@ import {
   project,
   projectColumn,
   type ActivityPayload,
+  type Db,
 } from '@repo/db';
 import { and, desc, eq, inArray, lt, or, sql, isNull } from 'drizzle-orm';
 import { addedMentionHandles, resolveMentionHandles, type MentionedUsers } from '#shared/mentions';
@@ -38,29 +40,40 @@ export interface NewNotificationRow {
 // Keeps only the ids that are members of the project. Filters out non-members (an
 // agent's bot user is assigned via delegate but is not a member) and users who have
 // lost access.
-async function keepProjectMembers(projectId: number, ids: string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const rows = await db
-    .select({ userId: projectMember.userId })
-    .from(projectMember)
-    .where(and(eq(projectMember.projectId, projectId), inArray(projectMember.userId, ids)));
-  return new Set(rows.map((r) => r.userId));
+async function keepProjectMembers(db: Db, projectId: number, ids: string[]): Promise<Set<string>> {
+  const kept = new Set<string>();
+  // D1 binds at most 100 parameters per statement.
+  for (const part of chunk(ids, 80)) {
+    const rows = await db
+      .select({ userId: projectMember.userId })
+      .from(projectMember)
+      .where(and(eq(projectMember.projectId, projectId), inArray(projectMember.userId, part)));
+    for (const row of rows) kept.add(row.userId);
+  }
+  return kept;
 }
 
-async function actorName(id: string | null): Promise<string | null> {
+async function actorName(db: Db, id: string | null): Promise<string | null> {
   if (id == null) return null;
   const rows = await db.select({ name: user.name }).from(user).where(eq(user.id, id));
   return rows[0]?.name ?? null;
 }
 
-async function insertNotifications(rows: NewNotificationRow[]): Promise<void> {
+async function insertNotifications(db: Db, rows: NewNotificationRow[]): Promise<void> {
   if (rows.length === 0) return;
-  const name = await actorName(rows[0].actorUserId);
-  await db.insert(notification).values(rows.map((r) => ({ ...r, actorName: name })));
+  const name = await actorName(db, rows[0].actorUserId);
+  // One atomic batch of small inserts: D1 binds at most 100 parameters per statement.
+  await batchAll(
+    db,
+    chunk(
+      rows.map((r) => ({ ...r, actorName: name })),
+      12,
+    ).map((part) => db.insert(notification).values(part)),
+  );
   // Fan out to the project's enabled delivery channels (email, Telegram). Best-effort:
   // a delivery failure must not break the inbox insert or the domain mutation.
   try {
-    await enqueueOutbound(rows, name);
+    await enqueueOutbound(db, rows, name);
   } catch (err) {
     console.error('[notifications] outbound enqueue failed:', err);
   }
@@ -71,14 +84,15 @@ async function insertNotifications(rows: NewNotificationRow[]): Promise<void> {
 // comment author is never notified. Commenting and being mentioned both subscribe
 // to the issue, so the watchers are resolved after that.
 export async function notifyComment(
+  db: Db,
   projectId: number,
   comment: { issueId: number; id: number; actorUserId: string | null; body: string | null },
   mentionedUsers: MentionedUsers,
 ): Promise<void> {
   const actor = comment.actorUserId;
   const mentioned = new Set([...mentionedUsers.memberIds, ...mentionedUsers.agentUserIds]);
-  await autoWatchIssue(projectId, comment.issueId, [actor, ...mentioned]);
-  const watchers = await watcherUserIds(projectId, comment.issueId);
+  await autoWatchIssue(db, projectId, comment.issueId, [actor, ...mentioned]);
+  const watchers = await watcherUserIds(db, projectId, comment.issueId);
 
   const rows: NewNotificationRow[] = [];
   for (const userId of mentioned) {
@@ -103,7 +117,7 @@ export async function notifyComment(
       actorUserId: actor,
     });
   }
-  await insertNotifications(rows);
+  await insertNotifications(db, rows);
 }
 
 // Fan out the mentions an edit newly added to a comment. The handles the comment
@@ -111,6 +125,7 @@ export async function notifyComment(
 // the watchers hear nothing (unlike a new comment, which would send 'commented').
 // Being mentioned subscribes to the issue, the same as in a new comment.
 export async function notifyEditedCommentMentions(
+  db: Db,
   projectId: number,
   comment: { issueId: number; id: number; actorUserId: string | null },
   mentionedUsers: MentionedUsers,
@@ -119,8 +134,9 @@ export async function notifyEditedCommentMentions(
     (userId) => userId !== comment.actorUserId,
   );
   if (mentioned.length === 0) return;
-  await autoWatchIssue(projectId, comment.issueId, mentioned);
+  await autoWatchIssue(db, projectId, comment.issueId, mentioned);
   await insertNotifications(
+    db,
     mentioned.map((userId) => ({
       userId,
       projectId,
@@ -138,22 +154,26 @@ export async function notifyEditedCommentMentions(
 // does in a comment. Only the members named are reached: the text describes the work
 // rather than addressing anyone, so an agent named in it is neither notified nor
 // given a run — an agent is addressed in a comment, or given an issue by delegation.
-export async function notifyTextMentions(input: {
-  projectId: number;
-  issueId: number;
-  actorUserId: string | null;
-  // The change-log entry the write recorded, so the inbox item links to it.
-  sourceActivityId: number | null;
-  before: string;
-  after: string;
-}): Promise<void> {
+export async function notifyTextMentions(
+  db: Db,
+  input: {
+    projectId: number;
+    issueId: number;
+    actorUserId: string | null;
+    // The change-log entry the write recorded, so the inbox item links to it.
+    sourceActivityId: number | null;
+    before: string;
+    after: string;
+  },
+): Promise<void> {
   const { projectId, issueId, actorUserId: actor } = input;
   const handles = addedMentionHandles(input.before, input.after);
   if (handles.length === 0) return;
-  const { memberIds } = await resolveMentionHandles(projectId, handles);
+  const { memberIds } = await resolveMentionHandles(db, projectId, handles);
   if (memberIds.length === 0) return;
-  await autoWatchIssue(projectId, issueId, memberIds);
+  await autoWatchIssue(db, projectId, issueId, memberIds);
   await insertNotifications(
+    db,
     memberIds
       .filter((userId) => userId !== actor)
       .map((userId) => ({
@@ -171,22 +191,25 @@ export async function notifyTextMentions(input: {
 // not the actor) gets 'assigned'; a status change notifies the issue's watchers with
 // 'state_changed'. The actor is never notified. Being assigned subscribes to the
 // issue, and stays that way when the issue is later handed to someone else.
-export async function notifyIssueChange(input: {
-  projectId: number;
-  issueId: number;
-  actorUserId: string | null;
-  assignedUserId?: string | null;
-  assignedActivityId?: number | null;
-  statusChanged?: boolean;
-  statusActivityId?: number | null;
-}): Promise<void> {
+export async function notifyIssueChange(
+  db: Db,
+  input: {
+    projectId: number;
+    issueId: number;
+    actorUserId: string | null;
+    assignedUserId?: string | null;
+    assignedActivityId?: number | null;
+    statusChanged?: boolean;
+    statusActivityId?: number | null;
+  },
+): Promise<void> {
   const { projectId, issueId, actorUserId: actor } = input;
   const rows: NewNotificationRow[] = [];
 
   if (input.assignedUserId) {
-    await autoWatchIssue(projectId, issueId, [input.assignedUserId]);
+    await autoWatchIssue(db, projectId, issueId, [input.assignedUserId]);
     if (input.assignedUserId !== actor) {
-      const members = await keepProjectMembers(projectId, [input.assignedUserId]);
+      const members = await keepProjectMembers(db, projectId, [input.assignedUserId]);
       if (members.has(input.assignedUserId)) {
         rows.push({
           userId: input.assignedUserId,
@@ -202,7 +225,7 @@ export async function notifyIssueChange(input: {
 
   if (input.statusChanged) {
     const assigned = input.assignedUserId ?? null;
-    const watchers = await watcherUserIds(projectId, issueId);
+    const watchers = await watcherUserIds(db, projectId, issueId);
     for (const userId of watchers) {
       // Skip the actor and anyone already told they were just assigned.
       if (userId === actor || userId === assigned) continue;
@@ -217,7 +240,7 @@ export async function notifyIssueChange(input: {
     }
   }
 
-  await insertNotifications(rows);
+  await insertNotifications(db, rows);
 }
 
 // --- Inbox read + mutations ------------------------------------------------------
@@ -269,7 +292,7 @@ function notificationConditions(userId: string, f: NotificationFilters) {
   if (f.projectId != null) conds.push(eq(notification.projectId, f.projectId));
   if (f.includeRead === false) conds.push(isNull(notification.readAt));
   if (!f.includeSnoozed)
-    conds.push(or(isNull(notification.snoozedUntil), lt(notification.snoozedUntil, sql`now()`))!);
+    conds.push(or(isNull(notification.snoozedUntil), lt(notification.snoozedUntil, new Date()))!);
   return conds;
 }
 
@@ -318,6 +341,7 @@ function mapRow(r: {
 // too); a snoozed notification (snoozed_until still in the future) is hidden unless
 // includeSnoozed. limit is clamped to 1..100.
 export async function listNotifications(
+  db: Db,
   userId: string,
   opts: { before?: NotificationCursor | null; limit?: number; filters?: NotificationFilters } = {},
 ): Promise<NotificationPage> {
@@ -325,10 +349,16 @@ export async function listNotifications(
   const before = opts.before ?? null;
   const f = opts.filters ?? {};
   const conds = notificationConditions(userId, f);
-  if (before)
+  // The cursor's ts is an ISO instant (ms precision, which is what created_at stores).
+  const cursorAt = before ? new Date(before.ts) : null;
+  if (before && cursorAt && !Number.isNaN(cursorAt.getTime())) {
     conds.push(
-      sql`(${notification.createdAt}, ${notification.id}) < (${before.ts}::timestamptz, ${before.id}::integer)`,
+      or(
+        lt(notification.createdAt, cursorAt),
+        and(eq(notification.createdAt, cursorAt), lt(notification.id, before.id)),
+      )!,
     );
+  }
 
   const rows = await db
     .select({
@@ -339,7 +369,6 @@ export async function listNotifications(
       readAt: notification.readAt,
       snoozedUntil: notification.snoozedUntil,
       createdAt: notification.createdAt,
-      cursorTs: sql<string>`${notification.createdAt}::text`,
       issueId: issue.id,
       issueSeq: issue.sequenceNumber,
       issueTitle: issue.title,
@@ -367,21 +396,21 @@ export async function listNotifications(
   const last = page[page.length - 1];
   return {
     items: page.map(mapRow),
-    nextCursor: hasMore && last ? { ts: last.cursorTs, id: last.id } : null,
+    nextCursor: hasMore && last ? { ts: iso(last.createdAt), id: last.id } : null,
   };
 }
 
 // The number of unread, non-snoozed notifications for the inbox badge, optionally
 // scoped to one project. Counts only what listNotifications shows.
-export async function unreadCount(userId: string, projectId?: number): Promise<number> {
+export async function unreadCount(db: Db, userId: string, projectId?: number): Promise<number> {
   const conds = [
     eq(notification.userId, userId),
     isNull(notification.readAt),
-    or(isNull(notification.snoozedUntil), lt(notification.snoozedUntil, sql`now()`)),
+    or(isNull(notification.snoozedUntil), lt(notification.snoozedUntil, new Date())),
   ];
   if (projectId != null) conds.push(eq(notification.projectId, projectId));
   const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
+    .select({ n: sql<number>`count(*)` })
     .from(notification)
     .innerJoin(
       projectMember,
@@ -394,13 +423,14 @@ export async function unreadCount(userId: string, projectId?: number): Promise<n
 // Marks one of the user's notifications read or unread. Returns false if no such
 // notification belongs to the user.
 export async function setNotificationRead(
+  db: Db,
   userId: string,
   id: number,
   read: boolean,
 ): Promise<boolean> {
   const rows = await db
     .update(notification)
-    .set({ readAt: read ? sql`now()` : null })
+    .set({ readAt: read ? new Date() : null })
     .where(and(eq(notification.id, id), eq(notification.userId, userId)))
     .returning({ id: notification.id });
   return rows.length > 0;
@@ -409,6 +439,7 @@ export async function setNotificationRead(
 // Marks the user's matching unread notifications read.
 // Returns how many were updated.
 export async function markAllRead(
+  db: Db,
   userId: string,
   projectId?: number,
   filters: NotificationFilters = { includeSnoozed: true },
@@ -417,7 +448,7 @@ export async function markAllRead(
   conds.push(isNull(notification.readAt));
   const rows = await db
     .update(notification)
-    .set({ readAt: sql`now()` })
+    .set({ readAt: new Date() })
     .where(and(...conds))
     .returning({ id: notification.id });
   return rows.length;
@@ -426,6 +457,7 @@ export async function markAllRead(
 // Snoozes one of the user's notifications until the given time (null clears it).
 // Returns false if no such notification belongs to the user.
 export async function snoozeNotification(
+  db: Db,
   userId: string,
   id: number,
   until: Date | null,
@@ -440,7 +472,7 @@ export async function snoozeNotification(
 
 // Deletes one of the user's notifications. Returns false if it did not belong to
 // the user.
-export async function deleteNotification(userId: string, id: number): Promise<boolean> {
+export async function deleteNotification(db: Db, userId: string, id: number): Promise<boolean> {
   const rows = await db
     .delete(notification)
     .where(and(eq(notification.id, id), eq(notification.userId, userId)))
@@ -453,6 +485,7 @@ export type DeleteScope = 'all' | 'read' | 'read-completed' | 'completed';
 // Bulk-deletes matching notifications: all, read, read on completed/canceled issues,
 // or all on completed/canceled issues. Returns how many were deleted.
 export async function deleteNotifications(
+  db: Db,
   userId: string,
   scope: DeleteScope,
   projectId?: number,

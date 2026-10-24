@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { guards } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { requireUser } from '#shared/access';
 import { accessErrors, commonErrors } from '#shared/responses';
 import { NotificationPreferenceBody } from './model';
@@ -17,11 +18,12 @@ export const notificationPreferenceRoutes = new Elysia({
   detail: { tags: ['Settings'] },
 })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
 
   .get(
     '/projects/:projectKey/notification-preferences',
-    ({ project, user }) => getPreferences(requireUser(user).id, project.id),
+    ({ db, project, user }) => getPreferences(db, requireUser(user).id, project.id),
     {
       projectMember: true,
       response: { 200: NotificationPreferenceBody, ...accessErrors },
@@ -34,7 +36,7 @@ export const notificationPreferenceRoutes = new Elysia({
 
   .put(
     '/projects/:projectKey/notification-preferences',
-    ({ project, user, body }) => setPreferences(requireUser(user).id, project.id, body),
+    ({ db, project, user, body }) => setPreferences(db, requireUser(user).id, project.id, body),
     {
       body: NotificationPreferenceBody,
       projectMember: true,

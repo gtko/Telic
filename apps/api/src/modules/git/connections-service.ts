@@ -1,4 +1,4 @@
-import { db, gitManagedRepository, gitProviderConnection, project } from '@repo/db';
+import { gitManagedRepository, gitProviderConnection, project, type Db } from '@repo/db';
 import { decryptSecret, encryptSecret } from '@repo/crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
@@ -82,6 +82,7 @@ interface ManagedDevelopmentRepository {
 }
 
 async function managedDevelopmentRepository(
+  db: Db,
   projectId: number,
   repositoryId: number,
 ): Promise<ManagedDevelopmentRepository> {
@@ -124,6 +125,7 @@ async function managedDevelopmentRepository(
 }
 
 export async function listDevelopmentRepositories(
+  db: Db,
   projectId: number,
 ): Promise<DevelopmentRepositoryDto[]> {
   const rows = await db
@@ -150,12 +152,13 @@ export async function listDevelopmentRepositories(
 }
 
 export async function listManagedPullRequests(
+  db: Db,
   projectId: number,
   repositoryId: number,
   state: 'open' | 'all',
   page: number,
 ): Promise<{ provider: 'github' | 'gitlab'; repository: string; page: ProviderPullRequestPage }> {
-  const managed = await managedDevelopmentRepository(projectId, repositoryId);
+  const managed = await managedDevelopmentRepository(db, projectId, repositoryId);
   return {
     provider: managed.input.provider,
     repository: managed.repository.fullName,
@@ -164,11 +167,12 @@ export async function listManagedPullRequests(
 }
 
 export async function getManagedPullRequest(
+  db: Db,
   projectId: number,
   repositoryId: number,
   number: number,
 ): Promise<{ provider: 'github' | 'gitlab'; details: ProviderPullRequestDetails }> {
-  const managed = await managedDevelopmentRepository(projectId, repositoryId);
+  const managed = await managedDevelopmentRepository(db, projectId, repositoryId);
   return {
     provider: managed.input.provider,
     details: await getProviderPullRequest(managed.input, managed.repository, number),
@@ -176,20 +180,22 @@ export async function getManagedPullRequest(
 }
 
 export async function listManagedBranches(
+  db: Db,
   projectId: number,
   repositoryId: number,
   page: number,
 ): Promise<ProviderBranchPage> {
-  const managed = await managedDevelopmentRepository(projectId, repositoryId);
+  const managed = await managedDevelopmentRepository(db, projectId, repositoryId);
   return listProviderBranches(managed.input, managed.repository, page);
 }
 
 export async function createManagedPullRequest(
+  db: Db,
   projectId: number,
   repositoryId: number,
   input: CreateProviderPullRequestInput,
 ): Promise<{ provider: 'github' | 'gitlab'; details: ProviderPullRequestDetails }> {
-  const managed = await managedDevelopmentRepository(projectId, repositoryId);
+  const managed = await managedDevelopmentRepository(db, projectId, repositoryId);
   return {
     provider: managed.input.provider,
     details: await createProviderPullRequest(managed.input, managed.repository, input),
@@ -197,6 +203,7 @@ export async function createManagedPullRequest(
 }
 
 async function repositoriesByConnection(
+  db: Db,
   projectId: number | undefined,
   connectionIds: number[],
 ): Promise<Map<number, GitManagedRepositoryDto[]>> {
@@ -223,13 +230,14 @@ async function repositoriesByConnection(
 }
 
 export async function listGitProviderConnections(
+  db: Db,
   projectId: number,
 ): Promise<GitProviderConnectionDto[]> {
-  const teamId = await projectTeamId(projectId);
-  return listTeamGitProviderConnections(teamId, projectId);
+  const teamId = await projectTeamId(db, projectId);
+  return listTeamGitProviderConnections(db, teamId, projectId);
 }
 
-async function projectTeamId(projectId: number): Promise<number> {
+async function projectTeamId(db: Db, projectId: number): Promise<number> {
   const [row] = await db
     .select({ teamId: project.teamId })
     .from(project)
@@ -240,6 +248,7 @@ async function projectTeamId(projectId: number): Promise<number> {
 }
 
 export async function listTeamGitProviderConnections(
+  db: Db,
   teamId: number,
   projectId?: number,
 ): Promise<GitProviderConnectionDto[]> {
@@ -256,6 +265,7 @@ export async function listTeamGitProviderConnections(
     .where(eq(gitProviderConnection.teamId, teamId))
     .orderBy(asc(gitProviderConnection.provider), asc(gitProviderConnection.baseUrl));
   const repositories = await repositoriesByConnection(
+    db,
     projectId,
     rows.map((row) => row.id),
   );
@@ -270,11 +280,11 @@ export async function listTeamGitProviderConnections(
   }));
 }
 
-async function connectionSecret(id: number, projectId: number): Promise<ConnectionSecret> {
-  return teamConnectionSecret(id, await projectTeamId(projectId));
+async function connectionSecret(db: Db, id: number, projectId: number): Promise<ConnectionSecret> {
+  return teamConnectionSecret(db, id, await projectTeamId(db, projectId));
 }
 
-async function teamConnectionSecret(id: number, teamId: number): Promise<ConnectionSecret> {
+async function teamConnectionSecret(db: Db, id: number, teamId: number): Promise<ConnectionSecret> {
   const rows = await db
     .select()
     .from(gitProviderConnection)
@@ -301,6 +311,7 @@ function providerInput(connection: ConnectionSecret): ProviderConnectionInput {
 }
 
 export async function connectGitProvider(
+  db: Db,
   teamId: number,
   input: { provider: GitProvider; baseUrl?: string; token: string },
 ): Promise<GitProviderConnectionDto> {
@@ -333,15 +344,16 @@ export async function connectGitProvider(
   const connectionId = rows[0]?.id;
   if (!connectionId) throw new HttpError(500, 'Provider connection was not stored');
   for (const row of rows) {
-    await reconcileConnectionWebhooks(row.id, { provider: input.provider, baseUrl, token });
+    await reconcileConnectionWebhooks(db, row.id, { provider: input.provider, baseUrl, token });
   }
-  const connections = await listTeamGitProviderConnections(teamId);
+  const connections = await listTeamGitProviderConnections(db, teamId);
   const connection = connections.find((item) => item.id === connectionId);
   if (!connection) throw new HttpError(500, 'Provider connection was not stored');
   return connection;
 }
 
 async function reconcileConnectionWebhooks(
+  db: Db,
   connectionId: number,
   input: ProviderConnectionInput,
 ): Promise<void> {
@@ -353,14 +365,15 @@ async function reconcileConnectionWebhooks(
   for (const repository of repositories) {
     let settings = settingsByProject.get(repository.projectId);
     if (!settings) {
-      settings = await getOrCreateGitSettings(repository.projectId);
+      settings = await getOrCreateGitSettings(db, repository.projectId);
       settingsByProject.set(repository.projectId, settings);
     }
-    await reconcileRepositoryWebhook(input, repository, settings);
+    await reconcileRepositoryWebhook(db, input, repository, settings);
   }
 }
 
 async function reconcileRepositoryWebhook(
+  db: Db,
   input: ProviderConnectionInput,
   repository: typeof gitManagedRepository.$inferSelect,
   settings: GitSettings,
@@ -395,12 +408,13 @@ async function reconcileRepositoryWebhook(
 }
 
 export async function listAvailableRepositories(
+  db: Db,
   projectId: number,
   connectionId: number,
   page: number,
   search: string,
 ) {
-  const connection = await connectionSecret(connectionId, projectId);
+  const connection = await connectionSecret(db, connectionId, projectId);
   const result = await listProviderRepositories(providerInput(connection), page, search.trim());
   const managed = await db
     .select({ id: gitManagedRepository.id, externalId: gitManagedRepository.externalId })
@@ -422,6 +436,7 @@ export async function listAvailableRepositories(
 }
 
 export async function connectRepositories(
+  db: Db,
   projectId: number,
   connectionId: number,
   externalIds: string[],
@@ -429,7 +444,7 @@ export async function connectRepositories(
   const ids = [...new Set(externalIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) throw new HttpError(400, 'Select at least one repository');
   if (ids.length > 50) throw new HttpError(400, 'Select at most 50 repositories');
-  const connection = await connectionSecret(connectionId, projectId);
+  const connection = await connectionSecret(db, connectionId, projectId);
   const existing = await db
     .select({ externalId: gitManagedRepository.externalId })
     .from(gitManagedRepository)
@@ -441,7 +456,7 @@ export async function connectRepositories(
       ),
     );
   const existingIds = new Set(existing.map((repo) => repo.externalId));
-  const settings = await getOrCreateGitSettings(projectId);
+  const settings = await getOrCreateGitSettings(db, projectId);
   for (const externalId of ids) {
     if (existingIds.has(externalId)) continue;
     const repository = await getProviderRepository(providerInput(connection), externalId);
@@ -461,22 +476,23 @@ export async function connectRepositories(
       webhookExternalId,
     });
   }
-  return connectionDto(projectId, connectionId);
+  return connectionDto(db, projectId, connectionId);
 }
 
-async function connectionDto(projectId: number, connectionId: number) {
-  const connections = await listGitProviderConnections(projectId);
+async function connectionDto(db: Db, projectId: number, connectionId: number) {
+  const connections = await listGitProviderConnections(db, projectId);
   const connection = connections.find((item) => item.id === connectionId);
   if (!connection) throw new HttpError(404, 'Provider connection not found');
   return connection;
 }
 
 export async function disconnectRepository(
+  db: Db,
   projectId: number,
   connectionId: number,
   repositoryId: number,
 ): Promise<void> {
-  const connection = await connectionSecret(connectionId, projectId);
+  const connection = await connectionSecret(db, connectionId, projectId);
   const rows = await db
     .select()
     .from(gitManagedRepository)
@@ -498,8 +514,12 @@ export async function disconnectRepository(
   await db.delete(gitManagedRepository).where(eq(gitManagedRepository.id, repositoryId));
 }
 
-export async function disconnectGitProvider(teamId: number, connectionId: number): Promise<void> {
-  const connection = await teamConnectionSecret(connectionId, teamId);
+export async function disconnectGitProvider(
+  db: Db,
+  teamId: number,
+  connectionId: number,
+): Promise<void> {
+  const connection = await teamConnectionSecret(db, connectionId, teamId);
   const repositories = await db
     .select()
     .from(gitManagedRepository)
@@ -524,12 +544,13 @@ export async function disconnectGitProvider(teamId: number, connectionId: number
 }
 
 export async function reconcileManagedWebhooks(
+  db: Db,
   projectId: number,
   settings: GitSettings,
 ): Promise<void> {
-  const connections = await listGitProviderConnections(projectId);
+  const connections = await listGitProviderConnections(db, projectId);
   for (const item of connections) {
-    const input = providerInput(await connectionSecret(item.id, projectId));
+    const input = providerInput(await connectionSecret(db, item.id, projectId));
     const repositories = await db
       .select()
       .from(gitManagedRepository)
@@ -540,12 +561,13 @@ export async function reconcileManagedWebhooks(
         ),
       );
     for (const repository of repositories) {
-      await reconcileRepositoryWebhook(input, repository, settings);
+      await reconcileRepositoryWebhook(db, input, repository, settings);
     }
   }
 }
 
 export async function postPullRequestLinkback(
+  db: Db,
   projectId: number,
   provider: GitProvider,
   repository: string,

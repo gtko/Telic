@@ -1,5 +1,5 @@
-import { db, userNotificationPreference } from '@repo/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { type Db, userNotificationPreference } from '@repo/db';
+import { and, eq, inArray } from 'drizzle-orm';
 
 // A member's own notification preferences for one project: for each issue event
 // type, whether they want it by email and/or Telegram. One row per (user, project);
@@ -43,6 +43,7 @@ function toDto(row: { emailEvents: unknown; telegramEvents: unknown }): Notifica
 // A member's preferences for a project, or opt-in defaults (nothing enabled) when
 // they have no row yet.
 export async function getPreferences(
+  db: Db,
   userId: string,
   projectId: number,
 ): Promise<NotificationPreferenceDto> {
@@ -63,6 +64,7 @@ export async function getPreferences(
 
 // Upserts a member's preferences for a project and returns the normalized result.
 export async function setPreferences(
+  db: Db,
   userId: string,
   projectId: number,
   input: NotificationPreferenceDto,
@@ -73,7 +75,7 @@ export async function setPreferences(
     .values({ userId, projectId, ...values })
     .onConflictDoUpdate({
       target: [userNotificationPreference.userId, userNotificationPreference.projectId],
-      set: { ...values, updatedAt: sql`now()` },
+      set: { ...values, updatedAt: new Date() },
     });
   return toDto(values);
 }
@@ -82,6 +84,7 @@ export async function setPreferences(
 // (no row) are omitted; the caller treats them as opted out. Used by the outbound
 // enqueue path to decide, per inbox row, which channels that member wants.
 export async function getPreferencesForUsers(
+  db: Db,
   projectId: number,
   userIds: string[],
 ): Promise<Map<string, NotificationPreferenceDto>> {

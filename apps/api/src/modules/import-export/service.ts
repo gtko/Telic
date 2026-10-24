@@ -1,5 +1,5 @@
-import { db, importJob, importRecord, type ImportSource } from '@repo/db';
-import { desc, eq, sql } from 'drizzle-orm';
+import { importJob, importRecord, type Db, type ImportSource } from '@repo/db';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { encryptSecret } from '@repo/crypto';
 import { HttpError, iso } from '#shared/lib';
 import { pinnedFetch } from '#shared/net';
@@ -48,12 +48,12 @@ export interface ImportJobDto {
 
 type ImportJobRow = typeof importJob.$inferSelect;
 
-async function entityCounts(jobId: number): Promise<Record<ImportEntityType, EntityCount>> {
+async function entityCounts(db: Db, jobId: number): Promise<Record<ImportEntityType, EntityCount>> {
   const rows = await db
     .select({
       entityType: importRecord.sourceEntityType,
-      discovered: sql<number>`count(*)::int`,
-      created: sql<number>`count(${importRecord.localId})::int`,
+      discovered: sql<number>`count(*)`,
+      created: sql<number>`count(${importRecord.localId})`,
     })
     .from(importRecord)
     .where(eq(importRecord.importJobId, jobId))
@@ -85,12 +85,12 @@ function toDto(row: ImportJobRow, counts: Record<ImportEntityType, EntityCount>)
   };
 }
 
-async function getRow(id: number): Promise<ImportJobRow | null> {
+async function getRow(db: Db, id: number): Promise<ImportJobRow | null> {
   const rows = await db.select().from(importJob).where(eq(importJob.id, id));
   return rows[0] ?? null;
 }
 
-export async function getImportJobProjectId(id: number): Promise<number | null> {
+export async function getImportJobProjectId(db: Db, id: number): Promise<number | null> {
   const rows = await db
     .select({ projectId: importJob.projectId })
     .from(importJob)
@@ -98,20 +98,20 @@ export async function getImportJobProjectId(id: number): Promise<number | null> 
   return rows[0]?.projectId ?? null;
 }
 
-export async function getImportJobDto(id: number): Promise<ImportJobDto | null> {
-  const row = await getRow(id);
-  return row ? toDto(row, await entityCounts(id)) : null;
+export async function getImportJobDto(db: Db, id: number): Promise<ImportJobDto | null> {
+  const row = await getRow(db, id);
+  return row ? toDto(row, await entityCounts(db, id)) : null;
 }
 
 // Not paged: a project accumulates at most a handful of import jobs, never a list
 // long enough to need it (see apps/api/AGENTS.md's paged-vs-whole-list rule).
-export async function listImportJobs(projectId: number): Promise<ImportJobDto[]> {
+export async function listImportJobs(db: Db, projectId: number): Promise<ImportJobDto[]> {
   const rows = await db
     .select()
     .from(importJob)
     .where(eq(importJob.projectId, projectId))
     .orderBy(desc(importJob.createdAt));
-  return Promise.all(rows.map(async (row) => toDto(row, await entityCounts(row.id))));
+  return Promise.all(rows.map(async (row) => toDto(row, await entityCounts(db, row.id))));
 }
 
 // Normalizes and validates a base URL without resolving it — the worker's own
@@ -169,6 +169,7 @@ function planeJobFields(input: CreatePlaneImportJobInput) {
 // worker picks it up on its next poll. The plaintext token exists only in this
 // function's local variables; it is never persisted or logged.
 export async function createImportJob(
+  db: Db,
   projectId: number,
   actorUserId: string,
   input: CreateImportJobInput,
@@ -194,13 +195,15 @@ export async function createImportJob(
       credentialAuthTag: encrypted.authTag,
     })
     .returning();
-  return toDto(row!, await entityCounts(row!.id));
+  return toDto(row!, await entityCounts(db, row!.id));
 }
 
 // Only import_job.status values the worker's claim query (status = 'pending') will
 // ever pick up are eligible to pause; a job the worker has already finished cannot.
-export async function pauseImportJob(id: number): Promise<ImportJobDto> {
-  const row = await getRow(id);
+// The status test is part of the UPDATE, so a job the worker finished between the read and
+// the write is not paused after all; the refusal is then worked out from a fresh read.
+export async function pauseImportJob(db: Db, id: number): Promise<ImportJobDto> {
+  const row = await getRow(db, id);
   if (!row) throw new HttpError(404, 'Import job not found');
   if (row.status !== 'pending' && row.status !== 'running') {
     throw new HttpError(409, `Cannot pause a job that is ${row.status}`);
@@ -208,9 +211,22 @@ export async function pauseImportJob(id: number): Promise<ImportJobDto> {
   const [updated] = await db
     .update(importJob)
     .set({ status: 'paused', updatedAt: new Date() })
-    .where(eq(importJob.id, id))
+    .where(and(eq(importJob.id, id), inArray(importJob.status, ['pending', 'running'])))
     .returning();
-  return toDto(updated!, await entityCounts(id));
+  if (!updated) return refuseTransition(db, id, 'pause');
+  return toDto(updated, await entityCounts(db, id));
+}
+
+// The write of a transition matched no row: the job vanished or its status moved on
+// between the read and the write.
+async function refuseTransition(
+  db: Db,
+  id: number,
+  verb: 'pause' | 'resume' | 'cancel',
+): Promise<never> {
+  const current = await getRow(db, id);
+  if (!current) throw new HttpError(404, 'Import job not found');
+  throw new HttpError(409, `Cannot ${verb} a job that is ${current.status}`);
 }
 
 // Resets attempts so the job gets a fresh run of retries. next_attempt_at is only
@@ -221,8 +237,8 @@ export async function pauseImportJob(id: number): Promise<ImportJobDto> {
 // entirely: the external rate limit it was waiting out has not actually cleared
 // just because the job was paused, so the immediate retry only gets rate-limited
 // again right away, with a fresh countdown that reads as if resume broke something.
-export async function resumeImportJob(id: number): Promise<ImportJobDto> {
-  const row = await getRow(id);
+export async function resumeImportJob(db: Db, id: number): Promise<ImportJobDto> {
+  const row = await getRow(db, id);
   if (!row) throw new HttpError(404, 'Import job not found');
   if (row.status !== 'paused')
     throw new HttpError(409, `Cannot resume a job that is ${row.status}`);
@@ -231,16 +247,17 @@ export async function resumeImportJob(id: number): Promise<ImportJobDto> {
   const [updated] = await db
     .update(importJob)
     .set({ status: 'pending', attempts: 0, nextAttemptAt, updatedAt: now })
-    .where(eq(importJob.id, id))
+    .where(and(eq(importJob.id, id), eq(importJob.status, 'paused')))
     .returning();
-  return toDto(updated!, await entityCounts(id));
+  if (!updated) return refuseTransition(db, id, 'resume');
+  return toDto(updated, await entityCounts(db, id));
 }
 
 // import_job_status_check has no 'canceled' value, so a cancel lands on 'failed' —
 // the terminal status the worker already treats as done, clearing the credential
 // the same way completeImportJob/failImportJob do.
-export async function cancelImportJob(id: number): Promise<ImportJobDto> {
-  const row = await getRow(id);
+export async function cancelImportJob(db: Db, id: number): Promise<ImportJobDto> {
+  const row = await getRow(db, id);
   if (!row) throw new HttpError(404, 'Import job not found');
   if (row.status === 'completed' || row.status === 'failed') {
     throw new HttpError(409, `Cannot cancel a job that is already ${row.status}`);
@@ -255,9 +272,10 @@ export async function cancelImportJob(id: number): Promise<ImportJobDto> {
       credentialAuthTag: null,
       updatedAt: new Date(),
     })
-    .where(eq(importJob.id, id))
+    .where(and(eq(importJob.id, id), inArray(importJob.status, ['pending', 'running', 'paused'])))
     .returning();
-  return toDto(updated!, await entityCounts(id));
+  if (!updated) return refuseTransition(db, id, 'cancel');
+  return toDto(updated, await entityCounts(db, id));
 }
 
 export interface PlaneProjectOption {

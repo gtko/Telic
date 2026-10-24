@@ -1,20 +1,28 @@
 import { Elysia } from 'elysia';
 import type { Db } from '@repo/db';
 
-// D1 is reached through a binding that exists only inside a request, so there is no
-// global `db`: the entry point (the Worker's fetch handler, or a test harness) installs a
-// provider, and this plugin puts the resulting client on every route context as `db`.
-// Services take it as their first argument.
-let provider: ((request: Request) => Db) | null = null;
+// The database of the request, for the routes that read or write it. The app's global
+// derive (app.ts) puts `db` on every request's context, built from the D1 binding of
+// that request; this plugin gives the handlers its type and fails loudly when the derive
+// is missing, instead of reaching for a module-level connection (D1 has none).
+export const dbContext = new Elysia({ name: 'db-context' }).resolve(
+  { as: 'scoped' },
+  (context): { db: Db } => {
+    const db = (context as unknown as { db?: Db }).db;
+    if (!db) throw new Error('db-context: no database on the request (the app derive is missing)');
+    return { db };
+  },
+);
 
-export function setDbProvider(fn: ((request: Request) => Db) | null): void {
-  provider = fn;
-}
-
-export const dbContext = new Elysia({ name: 'db-context' }).derive(
-  { as: 'global' },
-  ({ request }): { db: Db } => {
-    if (!provider) throw new Error('No database provider installed (setDbProvider)');
-    return { db: provider(request) };
+// The R2 bucket of the request (binding `BUCKET`), put on the context by the same app
+// derive as `db`. Only the routes that store or read file bytes use it.
+export const bucketContext = new Elysia({ name: 'bucket-context' }).resolve(
+  { as: 'scoped' },
+  (context): { bucket: R2Bucket } => {
+    const bucket = (context as unknown as { bucket?: R2Bucket }).bucket;
+    if (!bucket) {
+      throw new Error('bucket-context: no bucket on the request (the app derive is missing)');
+    }
+    return { bucket };
   },
 );

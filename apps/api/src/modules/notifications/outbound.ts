@@ -1,5 +1,6 @@
 import {
-  db,
+  batchAll,
+  chunk,
   notificationDelivery,
   issue,
   issueActivity,
@@ -9,6 +10,7 @@ import {
   emailSource,
   getProjectEmailConfig,
   type DeliveryPayload,
+  type Db,
 } from '@repo/db';
 import { eq, inArray } from 'drizzle-orm';
 import { isAccountDeactivated } from '@repo/auth';
@@ -49,7 +51,7 @@ interface StateChange {
   to: string;
 }
 
-async function readStateChange(activityId: number): Promise<StateChange | null> {
+async function readStateChange(db: Db, activityId: number): Promise<StateChange | null> {
   const [row] = await db
     .select({ payload: issueActivity.payload })
     .from(issueActivity)
@@ -129,6 +131,7 @@ function telegramPayload(
 // sites operate on a single issue). No-op when the team has no enabled provider or
 // no member wants any of the event types present.
 export async function enqueueOutbound(
+  db: Db,
   notifications: NewNotificationRow[],
   actorName: string | null,
 ): Promise<void> {
@@ -142,7 +145,7 @@ export async function enqueueOutbound(
     .where(eq(project.id, projectId));
   if (!projectRow) return;
 
-  const settings = await readRedactedSettings(projectRow.teamId);
+  const settings = await readRedactedSettings(db, projectRow.teamId);
 
   // The team's own provider when it configured one, otherwise the instance
   // provider when the team asked for it and the instance shares it.
@@ -153,12 +156,13 @@ export async function enqueueOutbound(
       : source === 'resend'
         ? settings.resend.hasApiKey
         : source === 'system'
-          ? (await getProjectEmailConfig()) !== null
+          ? (await getProjectEmailConfig(db)) !== null
           : false;
   // The team turns Telegram on; the bot that sends is either its own or, when it
   // set no token, the instance bot.
   const telegramEnabled =
-    settings.telegram.enabled && (settings.telegram.hasBotToken || (await hasUsableInstanceBot()));
+    settings.telegram.enabled &&
+    (settings.telegram.hasBotToken || (await hasUsableInstanceBot(db)));
   if (!emailEnabled && !telegramEnabled) return;
 
   const issueId = notifications[0].issueId;
@@ -178,7 +182,7 @@ export async function enqueueOutbound(
   // One issue event, so every 'state_changed' row points at the same activity row.
   const statusActivityId =
     notifications.find((n) => n.type === 'state_changed')?.sourceActivityId ?? null;
-  const stateChange = statusActivityId != null ? await readStateChange(statusActivityId) : null;
+  const stateChange = statusActivityId != null ? await readStateChange(db, statusActivityId) : null;
 
   const userIds = [...new Set(notifications.map((n) => n.userId))];
   const [users, prefsByUser, chatIdByUser] = await Promise.all([
@@ -186,8 +190,8 @@ export async function enqueueOutbound(
       .select({ id: user.id, email: user.email, active: user.active })
       .from(user)
       .where(inArray(user.id, userIds)),
-    getPreferencesForUsers(projectId, userIds),
-    telegramEnabled ? getTelegramChatIds(userIds) : Promise.resolve(new Map<string, string>()),
+    getPreferencesForUsers(db, projectId, userIds),
+    telegramEnabled ? getTelegramChatIds(db, userIds) : Promise.resolve(new Map<string, string>()),
   ]);
   // A deactivated account keeps its projects, but nothing from them reaches it.
   const emailById = new Map(
@@ -224,5 +228,9 @@ export async function enqueueOutbound(
   }
 
   if (out.length === 0) return;
-  await db.insert(notificationDelivery).values(out);
+  // One atomic batch of small inserts: D1 binds at most 100 parameters per statement.
+  await batchAll(
+    db,
+    chunk(out, 10).map((part) => db.insert(notificationDelivery).values(part)),
+  );
 }
