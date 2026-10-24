@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { authedApi, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
 import { createRole } from '../../helpers/roles';
-import { createAgent } from '../../helpers/agents';
 
 type Client = ReturnType<typeof authedApi>;
 
@@ -248,16 +247,11 @@ describe('note boards', () => {
   });
 
   describe('access candidates', () => {
-    it('lists members and agents, flagging who may read notes', async () => {
+    it('lists members, flagging who may read notes', async () => {
       const owner = await setupOwnerProject();
       const member = await addMember(owner.api);
       const role = await createRole(owner.api, 'MKT', { name: 'No notes', permissions: {} });
       const noNotes = await addMember(owner.api, { roleId: role.data!.id });
-      const agent = await createAgent(owner.api, 'MKT', {
-        name: 'Bot',
-        username: 'bot',
-        kind: 'external',
-      });
 
       const res = await boards(owner.api)['access-candidates'].get();
       expect(res.status).toBe(200);
@@ -265,7 +259,6 @@ describe('note boards', () => {
       expect(byId.get(owner.userId)).toMatchObject({ kind: 'member', canAccess: true });
       expect(byId.get(member.userId)).toMatchObject({ kind: 'member', canAccess: true });
       expect(byId.get(noNotes.userId)).toMatchObject({ kind: 'member', canAccess: false });
-      expect(byId.get(agent.data!.agent.userId)).toMatchObject({ kind: 'agent' });
     });
 
     it('holds a read-only role out of the candidate list', async () => {

@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { issueWatcher } from '@repo/db';
-import { db } from '../../helpers/db';
-import { and, eq } from 'drizzle-orm';
 import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
 import { createRole } from '../../helpers/roles';
-import { createAgent } from '../../helpers/agents';
 
 // Who follows an issue. A watcher receives the notifications the issue produces;
 // the list comes back with the issue (GET /issues/:issueId → `watchers`) and is
@@ -102,27 +98,6 @@ describe('issue watchers', () => {
         .comments.post({ body: `@${member.username} take a look` });
 
       expect(await watcherIds(owner.api, issue.data!.id)).toContain(member.userId);
-    });
-
-    it('does not create a hidden watcher row for a mentioned AI agent', async () => {
-      const { owner, columnId } = await setup();
-      const agent = await createAgent(owner.api, 'MKT', {
-        name: 'Watcher Bot',
-        username: 'watcher-bot',
-        kind: 'external',
-      });
-      const issue = await createIssue(owner.api, columnId);
-      const agentUserId = agent.data!.agent.userId;
-
-      await owner.api
-        .issues({ issueId: issue.data!.id })
-        .comments.post({ body: '@watcher-bot take a look' });
-
-      const rows = await db
-        .select({ userId: issueWatcher.userId })
-        .from(issueWatcher)
-        .where(and(eq(issueWatcher.issueId, issue.data!.id), eq(issueWatcher.userId, agentUserId)));
-      expect(rows).toEqual([]);
     });
 
     it('leaves out a member who turned auto-subscribe off', async () => {
@@ -235,25 +210,6 @@ describe('issue watchers', () => {
 
       expect(res.status).toBe(400);
       expect(await watcherIds(owner.api, issue.data!.id)).not.toContain(outsider.userId);
-    });
-
-    it('rejects an AI agent even though its bot user is a project member', async () => {
-      const { owner, columnId } = await setup();
-      const agent = await createAgent(owner.api, 'MKT', {
-        name: 'Watcher Bot',
-        username: 'watcher-bot',
-        kind: 'external',
-      });
-      const issue = await createIssue(owner.api, columnId);
-      const agentUserId = agent.data!.agent.userId;
-
-      const res = await owner.api
-        .issues({ issueId: issue.data!.id })
-        .watchers({ userId: agentUserId })
-        .put();
-
-      expect(res.status).toBe(400);
-      expect(await watcherIds(owner.api, issue.data!.id)).not.toContain(agentUserId);
     });
 
     it('rejects a member who cannot read work items', async () => {

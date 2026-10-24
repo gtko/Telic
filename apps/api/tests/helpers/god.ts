@@ -1,6 +1,5 @@
 import { authedApi, type Api } from './app';
 import { signUpTestUser } from './auth';
-import { createAgent } from './agents';
 
 // Actors and the flows both god directory tests need. The first user in a reset
 // database gets the "god" role, so `setup` registers the instance owner first and
@@ -33,14 +32,4 @@ export async function joinProject(
     .projects({ projectKey })
     .invites.post({ email: invitee.email, role });
   await invitee.api.invites({ token: invite.data!.token }).accept.post();
-}
-
-// Creates an external AI agent on the given project and returns its bot user id.
-export async function createAgentUser(owner: Actor, projectKey: string): Promise<string> {
-  const created = await createAgent(owner.api, projectKey, {
-    name: 'Webhook Bot',
-    username: 'webhook',
-    kind: 'external',
-  });
-  return created.data!.agent.userId;
 }

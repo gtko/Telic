@@ -3,7 +3,6 @@ import { authedApi, type Api, ownWorkspaceId, createProject } from '../../helper
 import { signUpTestUser } from '../../helpers/auth';
 import { addProjectMember } from '../../helpers/members';
 import { createRole, listProjectRoles } from '../../helpers/roles';
-import { createAgent, projectIdOf, teamOf } from '../../helpers/agents';
 import { clearLimits, setLimits } from '../../helpers/limits';
 
 // Full integration flow: a real session against the real (test) database.
@@ -522,41 +521,6 @@ describe('projects', () => {
       expect(filters.conditions[0].values).toEqual([dstReview.id]);
     });
 
-    it("points a copied status schedule at the copy's own column", async () => {
-      const { api } = await signUpClient();
-      await createProject(api, { key: 'SRC', name: 'Source' });
-      const agent = (
-        await createAgent(api, 'SRC', { name: 'Bot', username: 'bot', kind: 'internal' })
-      ).data!.agent;
-      const started = (await viewOf(api, 'SRC')).data!.columns.find(
-        (c) => c.stateType === 'started',
-      )!;
-      await api.projects({ projectKey: 'SRC' })['agent-schedules'].post({
-        agentId: agent.id,
-        name: 'Analysis',
-        type: 'status',
-        columnId: started.id,
-        delaySec: 60,
-      });
-
-      await api.projects({ projectKey: 'SRC' }).copy.post({
-        key: 'DST',
-        name: 'Destination',
-        include: { schedules: true },
-      });
-
-      const dstStarted = (await viewOf(api, 'DST')).data!.columns.find(
-        (c) => c.name === started.name,
-      )!;
-      const copied = await api.projects({ projectKey: 'DST' })['agent-schedules'].get();
-      expect(copied.data!.items).toHaveLength(1);
-      expect(copied.data!.items[0]).toMatchObject({
-        type: 'status',
-        columnId: dstStarted.id,
-        delaySec: 60,
-      });
-    });
-
     it("draws on the target team's roles, which the source team's do not reach", async () => {
       const { api } = await signUpClient();
       await createProject(api, { key: 'SRC', name: 'Source' });
@@ -571,57 +535,6 @@ describe('projects', () => {
 
       const roles = await listProjectRoles(api, 'DST');
       expect(roles.data?.map((r) => r.name).sort()).toEqual(['Editor', 'Member']);
-    });
-
-    // The team owns its agents, so a copy inside it puts the same agent in the new
-    // project — no second agent, no second bot user, no new key.
-    it("puts the source project's agents in a copy inside the team", async () => {
-      const { api, user } = await signUpClient();
-      await createProject(api, { key: 'SRC', name: 'Source' });
-      await createAgent(api, 'SRC', {
-        name: 'Ext',
-        username: 'ext',
-        kind: 'external',
-        runnerScope: 'owner',
-      });
-
-      await api.projects({ projectKey: 'SRC' }).copy.post({
-        key: 'DST',
-        name: 'Destination',
-        include: { agents: true },
-      });
-
-      const teamId = await teamOf(api, 'DST');
-      const copied = await api
-        .teams({ teamId })
-        ['ai-agents'].get({ query: { projectId: await projectIdOf(api, 'DST') } });
-      expect(copied.data?.[0]).toMatchObject({ runnerScope: 'owner', ownerUserId: user.userId });
-      expect((await api.teams({ teamId })['ai-agents'].get()).data).toHaveLength(1);
-    });
-
-    it('carries no agent into another team', async () => {
-      const { api } = await signUpClient();
-      await createProject(api, { key: 'SRC', name: 'Source' });
-      await createAgent(api, 'SRC', { name: 'Ext', username: 'ext', kind: 'external' });
-      const target = (
-        await api.teams.post({
-          name: 'Other Team',
-          slug: 'other-team',
-          workspaceId: await ownWorkspaceId(api),
-        })
-      ).data!;
-      const sourceId = await projectIdOf(api, 'SRC');
-
-      await api
-        .teams({ teamId: target.id })
-        .projects({ projectId: sourceId })
-        .copy.post({
-          key: 'DST',
-          name: 'Destination',
-          include: { agents: true, schedules: true },
-        });
-
-      expect((await api.teams({ teamId: target.id })['ai-agents'].get()).data).toEqual([]);
     });
 
     it('rejects a duplicate key with 409 and no statement in the body', async () => {

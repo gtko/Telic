@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
 import { addProjectMember } from '../../helpers/members';
-import { createAgent, teamOf } from '../../helpers/agents';
 
 // A column's auto-assignee: the member every issue entering it is assigned to,
 // replacing whoever held it. Applied by the store, so it covers every move — a
@@ -25,7 +24,7 @@ async function columnByName(client: Api, name: string) {
 async function addMember(asOwner: Api, ownerId: string) {
   await addProjectMember(asOwner, 'MKT');
   const view = await asOwner.projects({ projectKey: 'MKT' }).get();
-  return view.data!.assignees.find((a) => a.kind === 'member' && a.userId !== ownerId)!.userId;
+  return view.data!.assignees.find((a) => a.userId !== ownerId)!.userId;
 }
 
 function setAutoAssignee(client: Api, columnId: number, autoAssignUserId: string | null) {
@@ -97,31 +96,6 @@ describe('column auto-assignee', () => {
         .members({ userId: memberId })
         .delete();
       expect(removed.status).toBe(204);
-
-      expect(await columnByName(asOwner, 'In Progress')).toMatchObject({
-        autoAssignUserId: null,
-      });
-    });
-
-    // An agent leaves a project through the agent's project list, not through the
-    // project's member list, so that path has to clear the column too.
-    it('is cleared when an agent is detached from the project', async () => {
-      const { asOwner } = await setupProject();
-      const teamId = await teamOf(asOwner, 'MKT');
-      const created = await createAgent(asOwner, 'MKT', {
-        name: 'Triage Bot',
-        username: 'triage',
-        kind: 'internal',
-      });
-      const agent = created.data!.agent;
-      const column = await columnByName(asOwner, 'In Progress');
-      await setAutoAssignee(asOwner, column.id, agent.userId);
-
-      const detached = await asOwner
-        .teams({ teamId })
-        ['ai-agents']({ agentId: agent.id })
-        .projects.put({ projectIds: [] });
-      expect(detached.status).toBe(200);
 
       expect(await columnByName(asOwner, 'In Progress')).toMatchObject({
         autoAssignUserId: null,
