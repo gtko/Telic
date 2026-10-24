@@ -2,6 +2,7 @@
   // The Telegram bot as a Worker (src/worker.ts). Telegram posts updates to
   // POST /telegram/webhook/:secret. `wrangler dev` runs it against a local D1.
   "name": "telic-bot",
+  "account_id": "4f2452fbc81b70c2549d6f7dd779b190",
   "main": "src/worker.ts",
   "compatibility_date": "2026-01-01",
   // node:crypto (the decryption in @repo/crypto) needs nodejs_compat. The populate flag
@@ -11,9 +12,8 @@
     {
       "binding": "DB",
       "database_name": "telic",
-      // Placeholder until the real D1 database is provisioned. The api owns the schema
-      // and its migrations; the bot reads and writes the tables, so it has no migrations_dir.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // The api owns the schema and its migrations; the bot reads and writes the tables, so it has no migrations_dir.
+      "database_id": "2f751597-4754-4e74-b4a7-3c07ccaeedc3",
     },
   ],
   // Secrets are set with `wrangler secret put`, never written in this file:

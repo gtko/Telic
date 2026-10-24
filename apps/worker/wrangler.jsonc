@@ -1,10 +1,10 @@
 {
   // The worker: Cron Triggers (webhook deliveries, notifications, agent schedules, import
   // wake-ups, telemetry) and the Queue consumer that drains the heavy jobs (source imports,
-  // notification bursts). Placeholders only: no real database id, bucket or queue name is
-  // committed. `wrangler dev --test-scheduled --local` never contacts Cloudflare.
+  // notification bursts). `wrangler dev --test-scheduled --local` never contacts Cloudflare.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "telic-worker",
+  "account_id": "4f2452fbc81b70c2549d6f7dd779b190",
   "main": "src/worker.ts",
   "compatibility_date": "2026-01-01",
   // nodejs_compat: @repo/crypto (node:crypto) and process.env, populated from vars and secrets.
@@ -15,7 +15,7 @@
     {
       "binding": "DB",
       "database_name": "telic",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "2f751597-4754-4e74-b4a7-3c07ccaeedc3",
       "migrations_dir": "../../packages/db/drizzle-d1",
     },
   ],
