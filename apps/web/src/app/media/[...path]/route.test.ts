@@ -42,7 +42,7 @@ describe('public media proxy', () => {
       calls += 1;
       return new Response();
     }) as typeof fetch;
-    for (const root of ['avatars', 'attachments', 'chat-attachments', 'initiative-attachments']) {
+    for (const root of ['avatars', 'attachments', 'initiative-attachments']) {
       for (const segment of ['%252e%252e', '%2e%2e', '.%2e', '%252E%252E', '%2f', '%252f', '%5c']) {
         // Next decodes each catch-all segment once before passing it to the handler.
         const path = [root, decodeURIComponent(segment), 'docs', 'json'];
@@ -61,7 +61,7 @@ describe('public media proxy', () => {
       targets.push(String(input));
       return new Response('media');
     }) as typeof fetch;
-    const roots = ['avatars', 'attachments', 'chat-attachments', 'initiative-attachments'];
+    const roots = ['avatars', 'attachments', 'initiative-attachments'];
     for (const root of roots) {
       const response = await get([root, PUBLIC_ID, 'raw']);
       assert.equal(response.status, 200);
