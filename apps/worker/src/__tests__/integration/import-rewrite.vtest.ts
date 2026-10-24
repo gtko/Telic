@@ -1,8 +1,11 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { db, workspace, team, project, projectColumn, issue, importJob, user } from '@repo/db';
+import { workspace, team, project, projectColumn, issue, importJob, user } from '@repo/db';
 import { eq } from 'drizzle-orm';
 import { createLocalIssueAndRecord, type ClaimedImportJob } from '../../import-store';
+import { useTestEnv } from '../helpers/d1';
+
+const ctx = useTestEnv();
 import { runRewrite } from '../../import-worker';
 
 // Each test makes its own team, project and job, like import-store.test.ts. The job
@@ -16,27 +19,29 @@ interface LinearJob {
 }
 
 async function makeLinearJob(teamKey: string): Promise<LinearJob> {
-  const [ws] = await db
+  const [ws] = await ctx.db
     .insert(workspace)
     .values({ name: 'Importers' })
     .returning({ id: workspace.id });
-  const [teamRow] = await db
+  const [teamRow] = await ctx.db
     .insert(team)
     .values({ workspaceId: ws!.id, name: 'Importers' })
     .returning({ id: team.id });
   const projectKey = randomUUID().slice(0, 8);
-  const [projectRow] = await db
+  const [projectRow] = await ctx.db
     .insert(project)
     .values({ teamId: teamRow!.id, key: projectKey, name: 'Imported' })
     .returning({ id: project.id });
-  const [columnRow] = await db
+  const [columnRow] = await ctx.db
     .insert(projectColumn)
     .values({ projectId: projectRow!.id, name: 'Backlog', position: 1 })
     .returning({ id: projectColumn.id });
   const userId = randomUUID();
-  await db.insert(user).values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
+  await ctx.db
+    .insert(user)
+    .values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
   const config = { teamId: 'team-ato', teamKey, projectFilter: 'none', projectId: null };
-  const [jobRow] = await db
+  const [jobRow] = await ctx.db
     .insert(importJob)
     .values({
       projectId: projectRow!.id,
@@ -72,7 +77,7 @@ async function importIssue(
   number: number,
   description: string,
 ): Promise<number> {
-  return createLocalIssueAndRecord(job.id, sourceId, String(number), {
+  return createLocalIssueAndRecord(ctx.db, job.id, sourceId, String(number), {
     projectId: job.projectId,
     columnId,
     cycleId: null,
@@ -87,7 +92,7 @@ async function importIssue(
 }
 
 async function issueRow(id: number) {
-  const [row] = await db.select().from(issue).where(eq(issue.id, id));
+  const [row] = await ctx.db.select().from(issue).where(eq(issue.id, id));
   return row!;
 }
 
@@ -102,7 +107,7 @@ describe('runRewrite', () => {
     );
     const second = await importIssue(linear, 'issue-506', 506, 'Imported from Linear: ATO-506');
 
-    await runRewrite(linear.job);
+    await runRewrite(ctx.db, linear.job);
 
     const target = await issueRow(second);
     expect((await issueRow(first)).description).toBe(
@@ -122,7 +127,7 @@ describe('runRewrite', () => {
       'Parent in Linear: ATO-12\n\nImported from Linear: ATO-505',
     );
 
-    await runRewrite(linear.job);
+    await runRewrite(ctx.db, linear.job);
 
     expect((await issueRow(child)).description).toBe(
       'Parent in Linear: ATO-12\n\nImported from Linear: ATO-505',
@@ -143,7 +148,7 @@ describe('runRewrite', () => {
     const first = await importIssue(linear, 'issue-505', 505, description);
     await importIssue(linear, 'issue-506', 506, 'Imported from Linear: ATO-506');
 
-    await runRewrite(linear.job);
+    await runRewrite(ctx.db, linear.job);
 
     expect((await issueRow(first)).description).toBe(description);
   });

@@ -53,7 +53,7 @@ import {
 // ~60 requests/minute budget, so this stays well under the discover page size.
 // Kept small for D1's 1000 queries per invocation: an issue costs a few dozen statements,
 // and a comment-heavy one is itself split across ticks (see COMMENTS_PER_TICK).
-const ISSUES_PER_TICK = 5;
+export const ISSUES_PER_TICK = 5;
 
 // States, labels and cycles materialized per entity type per tick (several statements each).
 const MATERIALIZE_PER_TICK = 20;

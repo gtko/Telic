@@ -1,7 +1,6 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
-  db,
   workspace,
   team,
   project,
@@ -22,8 +21,11 @@ import {
   findImportRecord,
   type ClaimedImportJob,
 } from '../../import-store';
-import { runCreate } from '../../import-worker';
+import { ISSUES_PER_TICK, runCreate } from '../../import-worker';
 import type { SourceReader } from '../../reader';
+import { useTestEnv } from '../helpers/d1';
+
+const ctx = useTestEnv();
 import type { CanonicalComment, CanonicalIssue } from '../../canonical';
 
 // Like import-rewrite's tests: the job row is 'paused' so no other test's
@@ -31,24 +33,26 @@ import type { CanonicalComment, CanonicalIssue } from '../../canonical';
 // as the worker would have claimed it.
 
 async function makeCreateJob(): Promise<ClaimedImportJob> {
-  const [ws] = await db
+  const [ws] = await ctx.db
     .insert(workspace)
     .values({ name: 'Importers' })
     .returning({ id: workspace.id });
-  const [teamRow] = await db
+  const [teamRow] = await ctx.db
     .insert(team)
     .values({ workspaceId: ws!.id, name: 'Importers' })
     .returning({ id: team.id });
-  const [projectRow] = await db
+  const [projectRow] = await ctx.db
     .insert(project)
     .values({ teamId: teamRow!.id, key: randomUUID().slice(0, 8), name: 'Imported' })
     .returning({ id: project.id });
-  await db
+  await ctx.db
     .insert(projectColumn)
     .values({ projectId: projectRow!.id, name: 'Backlog', position: 1 });
   const userId = randomUUID();
-  await db.insert(user).values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
-  const [jobRow] = await db
+  await ctx.db
+    .insert(user)
+    .values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
+  const [jobRow] = await ctx.db
     .insert(importJob)
     .values({
       projectId: projectRow!.id,
@@ -159,11 +163,11 @@ function readerForIssues(issues: CanonicalIssue[]): SourceReader {
 }
 
 async function seedMappedIssue(job: ClaimedImportJob): Promise<number> {
-  const [column] = await db
+  const [column] = await ctx.db
     .select({ id: projectColumn.id })
     .from(projectColumn)
     .where(eq(projectColumn.projectId, job.projectId));
-  return createLocalIssueAndRecord(job.id, ISSUE.sourceId, String(ISSUE.sequenceId), {
+  return createLocalIssueAndRecord(ctx.db, job.id, ISSUE.sourceId, String(ISSUE.sequenceId), {
     projectId: job.projectId,
     columnId: column!.id,
     cycleId: null,
@@ -180,18 +184,18 @@ async function seedMappedIssue(job: ClaimedImportJob): Promise<number> {
 describe('runCreate', () => {
   it("creates an issue's comments on the retry after its comment read failed", async () => {
     const job = await makeCreateJob();
-    await insertDiscoveredIds(job.id, 'issue', [ISSUE.sourceId]);
+    await insertDiscoveredIds(ctx.db, job.id, 'issue', [ISSUE.sourceId]);
     const reader = readerWithFlakyComments();
 
-    await expect(runCreate(job, reader)).rejects.toThrow('source returned 503');
-    await runCreate(job, reader);
+    await expect(runCreate(ctx.db, job, reader)).rejects.toThrow('source returned 503');
+    await runCreate(ctx.db, job, reader);
 
-    const issues = await db
+    const issues = await ctx.db
       .select({ id: issue.id })
       .from(issue)
       .where(eq(issue.projectId, job.projectId));
     expect(issues).toHaveLength(1);
-    const comments = await db
+    const comments = await ctx.db
       .select({ body: issueActivity.body })
       .from(issueActivity)
       .where(and(eq(issueActivity.issueId, issues[0]!.id), eq(issueActivity.kind, 'comment')));
@@ -200,8 +204,8 @@ describe('runCreate', () => {
 
   it('finishes labels, comments and attachment discovery after an issue mapping committed', async () => {
     const job = await makeCreateJob();
-    await insertDiscoveredIds(job.id, 'issue', [ISSUE.sourceId]);
-    await insertDiscoveredIds(job.id, 'label', ['label-1']);
+    await insertDiscoveredIds(ctx.db, job.id, 'issue', [ISSUE.sourceId]);
+    await insertDiscoveredIds(ctx.db, job.id, 'label', ['label-1']);
     const localId = await seedMappedIssue(job);
     const reader = readerForIssues([{ ...ISSUE, labelSourceIds: ['label-1'] }]);
     reader.listLabels = async () => [{ sourceId: 'label-1', name: 'Imported label' }];
@@ -214,31 +218,38 @@ describe('runCreate', () => {
       },
     ];
 
-    await runCreate(job, reader);
-    const [savedJob] = await db.select().from(importJob).where(eq(importJob.id, job.id));
-    await runCreate({ ...job, cursor: savedJob!.cursor as ClaimedImportJob['cursor'] }, reader);
+    await runCreate(ctx.db, job, reader);
+    const [savedJob] = await ctx.db.select().from(importJob).where(eq(importJob.id, job.id));
+    await runCreate(
+      ctx.db,
+      { ...job, cursor: savedJob!.cursor as ClaimedImportJob['cursor'] },
+      reader,
+    );
 
-    const issues = await db.select().from(issue).where(eq(issue.projectId, job.projectId));
+    const issues = await ctx.db.select().from(issue).where(eq(issue.projectId, job.projectId));
     expect(issues).toHaveLength(1);
     expect(issues[0]!.id).toBe(localId);
     expect(issues[0]!.title).toBe('Locally edited title');
     expect(issues[0]!.description).toBe('Keep local description');
-    const labels = await db.select().from(issueLabel).where(eq(issueLabel.issueId, localId));
+    const labels = await ctx.db.select().from(issueLabel).where(eq(issueLabel.issueId, localId));
     expect(labels).toHaveLength(1);
-    const comments = await db
+    const comments = await ctx.db
       .select()
       .from(issueActivity)
       .where(and(eq(issueActivity.issueId, localId), eq(issueActivity.kind, 'comment')));
     expect(comments.map((comment) => comment.body).sort()).toEqual(['First', 'Second']);
-    expect(await findImportRecord(job.id, 'attachment', 'attachment-1')).toEqual({ localId: null });
+    expect(await findImportRecord(ctx.db, job.id, 'attachment', 'attachment-1')).toEqual({
+      localId: null,
+    });
   });
 
   it('reuses an unmapped comment after a crash and keeps identical source comments distinct', async () => {
     const job = await makeCreateJob();
-    await insertDiscoveredIds(job.id, 'issue', [ISSUE.sourceId]);
+    await insertDiscoveredIds(ctx.db, job.id, 'issue', [ISSUE.sourceId]);
     const localId = await seedMappedIssue(job);
     const first = COMMENTS[0]!;
     const firstId = await createLocalComment(
+      ctx.db,
       job.id,
       localId,
       null,
@@ -247,8 +258,9 @@ describe('runCreate', () => {
       new Date(first.createdAt),
       null,
     );
-    await upsertImportRecord(job.id, 'comment', first.sourceId, 'comment', firstId);
+    await upsertImportRecord(ctx.db, job.id, 'comment', first.sourceId, 'comment', firstId);
     const unmappedId = await createLocalComment(
+      ctx.db,
       job.id,
       localId,
       null,
@@ -264,15 +276,21 @@ describe('runCreate', () => {
       { ...COMMENTS[1]!, replyToSourceId: 'identical-comment' },
     ];
 
-    await runCreate(job, reader);
-    const [savedJob] = await db.select().from(importJob).where(eq(importJob.id, job.id));
-    await runCreate({ ...job, cursor: savedJob!.cursor as ClaimedImportJob['cursor'] }, reader);
+    await runCreate(ctx.db, job, reader);
+    const [savedJob] = await ctx.db.select().from(importJob).where(eq(importJob.id, job.id));
+    await runCreate(
+      ctx.db,
+      { ...job, cursor: savedJob!.cursor as ClaimedImportJob['cursor'] },
+      reader,
+    );
 
-    expect(await findImportRecord(job.id, 'comment', first.sourceId)).toEqual({ localId: firstId });
-    expect(await findImportRecord(job.id, 'comment', 'identical-comment')).toEqual({
+    expect(await findImportRecord(ctx.db, job.id, 'comment', first.sourceId)).toEqual({
+      localId: firstId,
+    });
+    expect(await findImportRecord(ctx.db, job.id, 'comment', 'identical-comment')).toEqual({
       localId: unmappedId,
     });
-    const comments = await db
+    const comments = await ctx.db
       .select()
       .from(issueActivity)
       .where(and(eq(issueActivity.issueId, localId), eq(issueActivity.kind, 'comment')));
@@ -288,6 +306,7 @@ describe('runCreate', () => {
       sequenceId: index + 1,
     }));
     await insertDiscoveredIds(
+      ctx.db,
       job.id,
       'issue',
       issues.map((item) => item.sourceId),
@@ -301,31 +320,38 @@ describe('runCreate', () => {
       if (id === 'batch-1' && fail) throw new Error('interrupted batch');
       return issues.find((item) => item.sourceId === id)!;
     };
-    await expect(runCreate(job, reader)).rejects.toThrow('interrupted batch');
-    const [failedJob] = await db.select().from(importJob).where(eq(importJob.id, job.id));
+    await expect(runCreate(ctx.db, job, reader)).rejects.toThrow('interrupted batch');
+    const [failedJob] = await ctx.db.select().from(importJob).where(eq(importJob.id, job.id));
     expect(failedJob!.cursor).toEqual({});
     fail = false;
     reads.length = 0;
-    await runCreate(job, reader);
-    expect(reads).toHaveLength(15);
+    await runCreate(ctx.db, job, reader);
+    // The failed tick saved nothing (cursor still {}), so the replay starts again at batch-0
+    // and handles exactly one tick's worth of issues.
+    expect(reads).toHaveLength(ISSUES_PER_TICK);
     expect(reads[0]).toBe('batch-0');
-    const [saved] = await db.select().from(importJob).where(eq(importJob.id, job.id));
-    const records = await db
+    const [saved] = await ctx.db.select().from(importJob).where(eq(importJob.id, job.id));
+    const records = await ctx.db
       .select()
       .from(importRecord)
       .where(and(eq(importRecord.importJobId, job.id), eq(importRecord.sourceEntityType, 'issue')))
       .orderBy(importRecord.id);
-    expect(saved!.cursor).toEqual({ lastRecordId: records[14]!.id });
+    expect(saved!.cursor).toEqual({ lastRecordId: records[ISSUES_PER_TICK - 1]!.id });
     job.cursor = saved!.cursor as ClaimedImportJob['cursor'];
-    reads.length = 0;
-    await runCreate(job, reader);
-    expect(reads).toEqual(['batch-15']);
-    const [last] = await db.select().from(importJob).where(eq(importJob.id, job.id));
-    job.cursor = last!.cursor as ClaimedImportJob['cursor'];
-    await runCreate(job, reader);
-    const [finished] = await db.select().from(importJob).where(eq(importJob.id, job.id));
+    // The next ticks only read what is beyond the cursor, until the phase moves on.
+    let expectedNext = ISSUES_PER_TICK;
+    for (let guard = 0; guard < 10; guard++) {
+      reads.length = 0;
+      await runCreate(ctx.db, job, reader);
+      const [now] = await ctx.db.select().from(importJob).where(eq(importJob.id, job.id));
+      if (now!.phase === 'link') break;
+      expect(reads[0]).toBe(`batch-${expectedNext}`);
+      expectedNext += reads.length;
+      job.cursor = now!.cursor as ClaimedImportJob['cursor'];
+    }
+    const [finished] = await ctx.db.select().from(importJob).where(eq(importJob.id, job.id));
     expect(finished!.phase).toBe('link');
-    const imported = await db.select().from(issue).where(eq(issue.projectId, job.projectId));
+    const imported = await ctx.db.select().from(issue).where(eq(issue.projectId, job.projectId));
     expect(imported).toHaveLength(16);
   });
 });
