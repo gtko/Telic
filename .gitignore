@@ -48,3 +48,5 @@ coverage
 # wrangler
 .dev.vars
 .wrangler
+# opennext / wrangler (apps/web)
+.open-next

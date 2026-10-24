@@ -1,42 +1,14 @@
 import { marked } from 'marked';
-import DOMPurify, { type UponSanitizeAttributeHookEvent } from 'isomorphic-dompurify';
+import { sanitizeHtmlString, type HtmlOptions } from '@/lib/sanitize';
 import { parseChartSpec, type ChartSpec } from '@/utils/chartSpec';
 import { mediaUrl } from '@/lib/api/core/media';
-import { allowedImageStyle } from '@/utils/imageStyle';
 
-// Content whose links lead away from the current view (release notes, agent chat)
-// asks for newTabLinks, so following one does not replace what the reader was on.
-export interface HtmlOptions {
-  newTabLinks?: boolean;
-}
-
-function newTab(node: Element): void {
-  if (node.tagName === 'A' && node.hasAttribute('href')) {
-    node.setAttribute('target', '_blank');
-    node.setAttribute('rel', 'noreferrer');
-  }
-}
-
-// DOMPurify keeps `style` as it is, and on an image that is enough to cover the
-// page (see allowedImageStyle).
-function restrictImageStyle(node: Element, data: UponSanitizeAttributeHookEvent): void {
-  if (data.attrName !== 'style' || node.tagName !== 'IMG') return;
-  const style = allowedImageStyle(data.attrValue);
-  if (style) data.attrValue = style;
-  else data.keepAttr = false;
-}
+export type { HtmlOptions };
 
 // HTML that arrives already rendered, made safe for dangerouslySetInnerHTML. Used
 // for release notes, which GitHub renders and the api passes through unchanged.
 export function sanitizeHtml(html: string, options?: HtmlOptions): string {
-  DOMPurify.addHook('uponSanitizeAttribute', restrictImageStyle);
-  if (options?.newTabLinks) DOMPurify.addHook('afterSanitizeAttributes', newTab);
-  try {
-    return DOMPurify.sanitize(html);
-  } finally {
-    DOMPurify.removeHook('afterSanitizeAttributes', newTab);
-    DOMPurify.removeHook('uponSanitizeAttribute', restrictImageStyle);
-  }
+  return sanitizeHtmlString(html, options);
 }
 
 // Markdown to display-ready HTML. `marked` passes raw HTML in the source
