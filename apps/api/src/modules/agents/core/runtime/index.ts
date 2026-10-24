@@ -20,6 +20,7 @@ import type { AgentRuntime } from './bindings';
 import { runRefusal } from '../run-refusal';
 import { toolArgsText, toolText } from '../../chat-parts';
 import { recordContextUsage, type ContextUsage } from '../../chat-usage';
+import { STEP_LIMIT_MESSAGE } from './entry';
 import { isChatThreadId, newChatThreadId } from './thread-ids';
 import { errorMessage } from '../helpers/errors';
 import { projectPreamble } from '../prompt/framing';
@@ -209,8 +210,6 @@ export async function runAgent(
     await flushSpans(rt);
   }
 }
-
-export const STEP_LIMIT_MESSAGE = 'Reached the step limit';
 
 function reachedStepLimit(
   finishReason: string | undefined,

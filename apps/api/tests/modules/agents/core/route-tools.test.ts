@@ -6,10 +6,8 @@ import { authedApi, type Api, createProject } from '../../../helpers/app';
 import { signUpTestUser } from '../../../helpers/auth';
 import { getProjectByRef } from '#modules/projects/service';
 import { getAgentById, getInternalAgentApiKey } from '../../../../src/modules/agents/core/service';
-import {
-  actionCatalog,
-  buildRouteTools,
-} from '../../../../src/modules/agents/core/runtime/tools/route-tools';
+import { buildRouteTools } from '../../../../src/modules/agents/core/runtime/tools/route-tools';
+import { actionCatalog } from '../../../../src/modules/agents/core/runtime/tools/action-catalog';
 import {
   AGENT_ACTIONS,
   ALWAYS_ON_ACTIONS,

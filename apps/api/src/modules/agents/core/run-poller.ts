@@ -22,7 +22,7 @@ import {
   type ClaimedRun,
 } from './run-queue';
 import type { AgentRuntime, RunMessage } from './runtime/bindings';
-import { STEP_LIMIT_MESSAGE, runAgent } from './runtime';
+import { STEP_LIMIT_MESSAGE, runAgent } from './runtime/entry';
 import { runThreadId } from './runtime/thread-ids';
 
 // Runs the agent_run rows a Cloudflare Queue consumer is told about. The message holds a

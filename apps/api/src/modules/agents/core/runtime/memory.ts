@@ -1,4 +1,4 @@
-import { Memory } from '@mastra/memory';
+import type { Memory } from '@mastra/memory';
 import { sql } from 'drizzle-orm';
 import type { AgentRuntime } from './bindings';
 import { appendTextPart, toolArgsText, toolText } from '../../chat-parts';
@@ -44,6 +44,7 @@ const THREAD_PAGE_SIZE = 25;
 const TITLE_LIMIT = 80;
 
 export async function buildMemory(rt: AgentRuntime, lastMessages: number): Promise<Memory> {
+  const { Memory } = await import('@mastra/memory');
   return new Memory({
     storage: await getStore(rt.d1),
     options: { lastMessages, semanticRecall: false },

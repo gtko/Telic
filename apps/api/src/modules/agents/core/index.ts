@@ -55,7 +55,8 @@ import {
   tracesQuery,
   updateAgentBody,
 } from './model';
-import { runAgent, streamAgent, type AgentRunEvent, type RunOpts } from './runtime';
+import { runAgent, streamAgent } from './runtime/entry';
+import type { AgentRunEvent, RunOpts } from './runtime';
 import { peoplePreamble } from './prompt/run-context';
 import { attachmentPreamble, chartPreamble } from './prompt/framing';
 import type { SessionUser } from '#shared/auth-context';

@@ -96,14 +96,31 @@ function lazyPageResponse<A extends unknown[], R>(build: (...args: A) => R): (..
   };
 }
 
+// Routes run through Elysia's dynamic handler: the ahead-of-time composer (one `new Function` per route)
+// costs more CPU than the Worker may spend while its module loads. The adapter's own beforeCompile
+// precompiles every route for that composer, so it is dropped.
+const dynamicAdapter = { ...CloudflareAdapter, beforeCompile: undefined };
+
+// Two things the composed handler does that the dynamic one does not. A JSON request with an empty body
+// (a bodiless POST from a client that sends a JSON content type) is read as an empty object instead of
+// failing. And `parse: 'none'` is not honoured, so the body of /api/auth/* is left unread here for
+// better-auth.
+async function readJsonBody({ request, contentType }: { request: Request; contentType: string }) {
+  if (new URL(request.url).pathname.startsWith('/api/auth/')) return true;
+  if (contentType !== 'application/json') return undefined;
+  const text = await request.text();
+  return text ? (JSON.parse(text) as unknown) : {};
+}
+
 // The assembled Elysia app. `worker.ts` serves it from the Worker's fetch handler; tests import
 // it and pass it to Eden Treaty to drive routes in memory (no network). It is compiled ahead of
 // time (see the end of the file), which is how Elysia runs where `new Function` is not allowed.
 // Keep the chain unbroken so `type App` stays accurate.
-export const app = new Elysia({ adapter: CloudflareAdapter })
+export const app = new Elysia({ adapter: dynamicAdapter, aot: false })
   // First, so every route (the ones mounted after the chain included) reads ctx.env, ctx.db
   // and ctx.auth instead of a module-level global.
   .use(requestContext)
+  .onParse(readJsonBody)
   .use(
     cors({
       // The allowed origins follow the Worker's APP_URL, read per request.

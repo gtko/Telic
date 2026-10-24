@@ -8,7 +8,7 @@ import { mcpTool } from '#mcp/generate';
 import { paginate } from '#shared/pagination';
 import { teamParams } from '#modules/teams/model';
 import { agentInTeam, agentScopeOf, assertFullAgentAccess } from '../core/service';
-import { actionCatalog } from '../core/runtime/tools/route-tools';
+import { actionCatalog } from '../core/runtime/tools/action-catalog';
 import {
   AgentToolListResponse,
   AgentToolPageResponse,
