@@ -51,10 +51,6 @@ vi.mock('#modules/notifications/service', async (importOriginal) => ({
   notifyComment: async () => undefined,
   notifyEditedCommentMentions: async () => undefined,
 }));
-vi.mock('#modules/agents/core/run-queue', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('#modules/agents/core/run-queue')>()),
-  enqueueAgentRun: async () => undefined,
-}));
 vi.mock('#modules/agents/core/service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#modules/agents/core/service')>()),
   isAgentUser: async () => false,
