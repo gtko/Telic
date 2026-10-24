@@ -43,7 +43,7 @@ import {
 
 // The poll loop that drives a source import through its phases: discover ->
 // create -> link -> rewrite -> attachments -> done. Follows the same claim-a-lease,
-// bounded-chunk-per-tick shape as worker.ts and agent-worker.ts. Each tick
+// bounded-chunk-per-tick shape as worker.ts. Each tick
 // claims at most one due import_job and advances it by one bounded unit of
 // work, then reschedules — a large import interleaves across many ticks
 // rather than running to completion in one.

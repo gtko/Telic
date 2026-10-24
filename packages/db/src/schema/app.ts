@@ -108,13 +108,9 @@ export const team = sqliteTable(
     // team id stands in for it until then.
     slug: text('slug').unique(),
     // Whether the team is reachable through the MCP server at all. Off closes both the
-    // team's own resources (agents, skills, tools, roles, integrations) and every
+    // team's own resources (roles) and every
     // project it owns, whatever each project's own flag says.
     mcpEnabled: integer('mcp_enabled', { mode: 'boolean' }).notNull().default(true),
-    defaultAgentIds: text('default_agent_ids', { mode: 'json' })
-      .$type<number[]>()
-      .notNull()
-      .default([]),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .notNull()
       .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
@@ -124,10 +120,8 @@ export const team = sqliteTable(
 
 // Team membership and the role it carries. The roles are fixed, unlike the
 // per-project ones: 'owner' is the account the team was created for, 'manager' and
-// 'member' are the ranks below it, and 'agent' is the bot user of an ai_agent — it
-// belongs to the team and shows up in its member list, but never manages it, so the
-// owner and manager guards stay closed to it. What an agent may do comes from
-// ai_agent.role_id, not from this column.
+// 'member' are the ranks below it. 'agent' is no longer
+// assigned; the check keeps it because SQLite cannot alter a CHECK without rebuilding the table.
 export const teamMember = sqliteTable(
   'team_member',
   {
@@ -201,7 +195,7 @@ export const project = sqliteTable(
       .notNull()
       .default(false),
     // When set, the project is archived: read-only, left out of the members' project
-    // lists, and its agent schedules do not run. Its rows are kept and it can be restored.
+    // lists. Its rows are kept and it can be restored.
     archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .notNull()
@@ -240,8 +234,7 @@ export const projectSetting = sqliteTable(
 // means the user has not changed anything and the defaults below apply.
 // last_project_id is the project the user was in last, so the app root reopens it
 // after signing in on any device; the FK clears it when that project is deleted.
-// show_chat_by_default keeps the floating AI chat button on screen from the start,
-// with the chat window collapsed. hotkeys holds the keyboard shortcuts this user
+// hotkeys holds the keyboard shortcuts this user
 // rebound. issue_stats_open and issue_stats_view are how the status stats section of
 // an issue starts out: expanded or collapsed, and 'compact' (one bar per status) or
 // 'timeline' (a lane per status on a time axis). issue_activity_view is how the
@@ -261,9 +254,6 @@ export const userPreference = sqliteTable(
     theme: text('theme').notNull().default('system'),
     issueOpenMode: text('issue_open_mode').notNull().default('panel'),
     startPage: text('start_page').notNull().default('work-items'),
-    showChatByDefault: integer('show_chat_by_default', { mode: 'boolean' })
-      .notNull()
-      .default(false),
     issueStatsOpen: integer('issue_stats_open', { mode: 'boolean' }).notNull().default(true),
     issueStatsView: text('issue_stats_view').notNull().default('compact'),
     issueActivityView: text('issue_activity_view').notNull().default('flat'),
@@ -536,457 +526,6 @@ export const label = sqliteTable(
   (t) => [unique().on(t.projectId, t.name)],
 );
 
-// AI agents owned by a team. Each agent is backed by a hidden bot user
-// (user_id -> user.id): that user is what a work item is delegated to, what a
-// comment/activity is authored by, and what owns the agent's API key (better-auth
-// apikey.reference_id points at it). An external agent needs only a name (on the
-// bot user) + username and a key; an internal agent additionally carries a model
-// configuration (provider/model/instructions/tools) used to run it. Which projects
-// of the team an agent works in is its project_member rows, written by the routes
-// that attach it; what it may do there is the intersection of the tools it is
-// granted and the role that membership carries, which is per project like a
-// person's.
-export const aiAgent = sqliteTable(
-  'ai_agent',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    teamId: integer('team_id')
-      .notNull()
-      .references(() => team.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-    username: text('username').notNull(),
-    kind: text('kind').notNull(),
-    // Internal-agent model configuration. NULL/empty for an external agent.
-    // model_credential_id references the integration_credential (kind 'llm') the
-    // runtime decrypts to address the model; model names the model id on it.
-    modelCredentialId: integer('model_credential_id').references(() => integrationCredential.id, {
-      onDelete: 'set null',
-    }),
-    model: text('model'),
-    instructions: text('instructions'),
-    // Enabled capability-tool keys (from the code tool registry). System tools
-    // that act on the API with the agent's own token are implicit and not listed.
-    tools: text('tools', { mode: 'json' }).notNull().default([]),
-    temperature: real('temperature'),
-    // NULL leaves the reasoning effort to the provider's default.
-    reasoningEffort: text('reasoning_effort'),
-    maxSteps: integer('max_steps'),
-    // NULL gives the run the instance's maximum run time.
-    runTimeoutSec: integer('run_timeout_sec'),
-    // Internal-agent run triggers. A mention in a comment enqueues a run when
-    // trigger_on_mention is set; being set as an issue's delegate enqueues one when
-    // trigger_on_assign is set.
-    triggerOnMention: integer('trigger_on_mention', { mode: 'boolean' }).notNull().default(true),
-    triggerOnAssign: integer('trigger_on_assign', { mode: 'boolean' }).notNull().default(false),
-    // How long a delegation run waits before it becomes claimable, which leaves time
-    // to keep editing the issue after delegating it. Applies to delegation only: a
-    // mention is a question already asked, and its author waits for the reply.
-    delegationDelaySec: integer('delegation_delay_sec').notNull().default(120),
-    // The agent's own API key, encrypted at rest (AES-256-GCM, see shared/crypto).
-    // An internal agent replays it on every tool call, so unlike better-auth's
-    // hashed apikey row it has to stay recoverable. Set for internal agents only:
-    // an external agent's key is held by whoever drives it and is never stored here.
-    apiKeyCiphertext: text('api_key_ciphertext'),
-    apiKeyIv: text('api_key_iv'),
-    apiKeyAuthTag: text('api_key_auth_tag'),
-    // Conversation memory: when enabled, the agent recalls the last
-    // memory_last_messages messages of a thread (persisted by Mastra's Postgres
-    // store). memory_last_messages is NULL when memory is off.
-    memoryEnabled: integer('memory_enabled', { mode: 'boolean' }).notNull().default(false),
-    memoryLastMessages: integer('memory_last_messages'),
-    // The member who created the agent. An external agent's runner authenticates
-    // with the agent's key, so `owner` scope means the runner only receives runs
-    // this member triggered; `team` scope, the default, means any member's.
-    ownerUserId: text('owner_user_id').references(() => user.id, { onDelete: 'set null' }),
-    runnerScope: text('runner_scope').notNull().default('team'),
-    // Last time a runner claimed work or sent a heartbeat for this agent, which is
-    // what the UI shows as its presence. NULL for an agent no runner ever polled.
-    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }),
-    // Where an external agent receives its work instead of from a runner: each of its
-    // runs and chat answers is POSTed here, and the endpoint reports back through the
-    // routes a runner uses. NULL for an agent a runner drains, and for an internal one.
-    invocationUrl: text('invocation_url'),
-    // The key those requests are signed with, encrypted at rest like the API key above
-    // because every request reads it back. It outlives a cleared URL, so pointing the
-    // agent at a URL again needs no change on the receiving side.
-    invocationSecretCiphertext: text('invocation_secret_ciphertext'),
-    invocationSecretIv: text('invocation_secret_iv'),
-    invocationSecretAuthTag: text('invocation_secret_auth_tag'),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    uniqueIndex('ai_agent_team_username_uq').on(t.teamId, sql`lower(${t.username})`),
-    unique().on(t.userId),
-    check('ai_agent_kind_check', sql`${t.kind} IN ('external', 'internal')`),
-    check('ai_agent_runner_scope_check', sql`${t.runnerScope} IN ('owner', 'team')`),
-    check(
-      'ai_agent_reasoning_effort_check',
-      sql`${t.reasoningEffort} IN ('low', 'medium', 'high')`,
-    ),
-    check(
-      'ai_agent_delegation_delay_check',
-      sql`${t.delegationDelaySec} >= 0 AND ${t.delegationDelaySec} <= 86400`,
-    ),
-    index('ai_agent_team_idx').on(t.teamId),
-  ],
-);
-
-// Recurring autonomous tasks for internal agents. The worker claims rows whose
-// next_run_at is due, advances the cadence, and inserts an agent_run snapshot.
-export const agentSchedule = sqliteTable(
-  'agent_schedule',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    // The project the schedule's runs work in. An agent belongs to a team and works
-    // in several of its projects, so the schedule names which one; the operator picks
-    // it when they create the schedule.
-    projectId: integer('project_id')
-      .notNull()
-      .references(() => project.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    // Empty on a 'status' schedule that sends no task of its own.
-    prompt: text('prompt').notNull(),
-    // 'cron' runs on `cron` and carries `next_run_at`; 'status' runs on an issue each
-    // time one enters `column_id`, `delay_sec` after it does. Any other type is one an
-    // extension of the api adds (modules/agents/schedules/extension.ts), which queues
-    // its runs itself.
-    type: text('type').notNull().default('cron'),
-    cron: text('cron'),
-    timezone: text('timezone').notNull(),
-    status: text('status').notNull().default('active'),
-    nextRunAt: integer('next_run_at', { mode: 'timestamp_ms' }),
-    columnId: integer('column_id').references(() => projectColumn.id, { onDelete: 'cascade' }),
-    delaySec: integer('delay_sec').notNull().default(0),
-    // Settings an extension of the api keeps on the schedule. The core stores and
-    // copies them and reads none.
-    options: text('options', { mode: 'json' })
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
-    lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    check('agent_schedule_status_check', sql`${t.status} IN ('active', 'paused')`),
-    check(
-      'agent_schedule_type_check',
-      sql`(${t.type} = 'cron' AND ${t.cron} IS NOT NULL AND ${t.nextRunAt} IS NOT NULL AND ${t.columnId} IS NULL)
-        OR (${t.type} = 'status' AND ${t.columnId} IS NOT NULL AND ${t.cron} IS NULL AND ${t.nextRunAt} IS NULL)
-        OR (${t.type} NOT IN ('cron', 'status') AND ${t.cron} IS NULL AND ${t.nextRunAt} IS NULL AND ${t.columnId} IS NULL)`,
-    ),
-    check('agent_schedule_delay_check', sql`${t.delaySec} >= 0 AND ${t.delaySec} <= 86400`),
-    // A schedule works in one project, and one agent works in several projects of
-    // its team, so the same name is free again in each of them.
-    unique().on(t.projectId, t.agentId, t.name),
-    index('agent_schedule_due_idx').on(t.status, t.nextRunAt),
-    index('agent_schedule_agent_idx').on(t.agentId),
-    index('agent_schedule_project_idx').on(t.projectId),
-    index('agent_schedule_column_idx').on(t.columnId),
-  ],
-);
-
-// A price a workspace set for one model, in USD per million tokens. The agent dashboard
-// reads it before the built-in price table (apps/api/src/modules/agents/core/runtime/
-// model-pricing.ts), so a model the table lacks, or one bought at another rate, is
-// costed as the workspace pays for it. Provider and model are kept lowercased, as the
-// table compares them. A cache rate left null bills those tokens at the input rate.
-export const modelPrice = sqliteTable(
-  'model_price',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    workspaceId: integer('workspace_id')
-      .notNull()
-      .references(() => workspace.id, { onDelete: 'cascade' }),
-    provider: text('provider').notNull(),
-    model: text('model').notNull(),
-    input: real('input').notNull(),
-    output: real('output').notNull(),
-    cacheRead: real('cache_read'),
-    cacheWrite: real('cache_write'),
-    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    check(
-      'model_price_rates_check',
-      sql`${t.input} >= 0 AND ${t.output} >= 0 AND coalesce(${t.cacheRead}, 0) >= 0 AND coalesce(${t.cacheWrite}, 0) >= 0`,
-    ),
-    unique().on(t.workspaceId, t.provider, t.model),
-  ],
-);
-
-// Queued autonomous runs of an internal agent. A run triggered on an issue carries it;
-// a cron schedule's run and a manual one do not. The worker claims due rows with a lease,
-// runs the agent, and records the result for history and retries.
-export const agentRun = sqliteTable(
-  'agent_run',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    // The project the run works in, taken from what triggered it: the issue for a
-    // mention or a delegation, the schedule for a scheduled run, the call for a manual
-    // one. Stored on the row so the run keeps its project after the agent leaves that
-    // project, and so the worker hands one to the runtime without reading the agent.
-    projectId: integer('project_id')
-      .notNull()
-      .references(() => project.id, { onDelete: 'cascade' }),
-    issueId: integer('issue_id').references(() => issue.id, { onDelete: 'cascade' }),
-    scheduleId: integer('schedule_id').references(() => agentSchedule.id, { onDelete: 'cascade' }),
-    // 'event' is a run an extension queued on an issue for a schedule of its own type.
-    trigger: text('trigger').notNull().default('delegation'),
-    scheduledFor: integer('scheduled_for', { mode: 'timestamp_ms' }),
-    // The comment that mentioned the agent, kept for traceability. The prompt is
-    // snapshotted into `prompt` so a run still works if the comment is later deleted.
-    sourceActivityId: integer('source_activity_id').references(() => issueActivity.id, {
-      onDelete: 'set null',
-    }),
-    // The mention comment body at enqueue time, framed into the agent's prompt.
-    prompt: text('prompt').notNull(),
-    // pending -> success | failed | canceled. Like webhook_delivery, a claim keeps the row
-    // 'pending' and pushes next_attempt_at forward by a lease, so a run whose poller
-    // crashes mid-flight becomes claimable again after the lease expires.
-    status: text('status').notNull().default('pending'),
-    attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-    lastError: text('last_error'),
-    output: text('output'),
-    // What the last model call of the run read and wrote, cache included. Null for a run
-    // that finished before this was recorded, and for one whose agent reports no counts;
-    // the run history shows nothing for either.
-    inputTokens: integer('input_tokens'),
-    outputTokens: integer('output_tokens'),
-    startedAt: integer('started_at', { mode: 'timestamp_ms' }),
-    executionStartedAt: integer('execution_started_at', { mode: 'timestamp_ms' }),
-    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    check(
-      'agent_run_status_check',
-      sql`${t.status} IN ('pending', 'success', 'failed', 'canceled')`,
-    ),
-    check(
-      'agent_run_trigger_check',
-      sql`${t.trigger} IN ('mention', 'delegation', 'field', 'schedule', 'manual', 'status', 'event')`,
-    ),
-    uniqueIndex('agent_run_schedule_fire_uq').on(t.scheduleId, t.scheduledFor),
-    index('agent_run_due_idx').on(t.status, t.nextAttemptAt),
-    index('agent_run_schedule_idx').on(t.scheduleId),
-    index('agent_run_project_idx').on(t.projectId),
-  ],
-);
-
-// A bounded execution transcript for one external runner attempt.
-export const agentRunTrace = sqliteTable(
-  'agent_run_trace',
-  {
-    runId: integer('run_id')
-      .notNull()
-      .references(() => agentRun.id, { onDelete: 'cascade' }),
-    attempt: integer('attempt').notNull(),
-    sessionId: text('session_id'),
-    events: text('events', { mode: 'json' }).notNull().default([]),
-    nextOffset: integer('next_offset').notNull().default(0),
-    truncated: integer('truncated', { mode: 'boolean' }).notNull().default(false),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [primaryKey({ columns: [t.runId, t.attempt] })],
-);
-
-// A conversation between one member and one external agent. The internal agents'
-// threads are held by Mastra's own store; an external agent is driven by a runner on
-// its operator's machine, which has no memory of its own, so the conversation lives
-// here. The id carries the same shape as a Mastra chat thread id (see
-// runtime/thread-ids), which is what lets the chat UI address both kinds the same way.
-export const agentChatThread = sqliteTable(
-  'agent_chat_thread',
-  {
-    id: text('id').primaryKey(),
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-    title: text('title'),
-    // The session the runner's coding agent keeps for this thread on its own machine.
-    // Set once the runner reports the session it started; null means the next message
-    // starts a fresh one and is sent with the conversation framed into its prompt.
-    cliSessionId: text('cli_session_id'),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [index('agent_chat_thread_agent_user_idx').on(t.agentId, t.userId, desc(t.updatedAt))],
-);
-
-// One turn of a chat thread, and for an agent turn also the queue row the runner
-// drains. A member's message is written 'success' with its text; the agent's answer is
-// inserted empty and 'pending', goes 'streaming' when a runner claims it, and is filled
-// in from the events that runner reports. A claim pushes next_attempt_at forward by a
-// lease, so an answer whose runner dies is claimable again once the lease expires —
-// which is why the due index covers both live states. agent_id repeats the thread's
-// agent so a runner finds its due turns with one index.
-export const agentChatMessage = sqliteTable(
-  'agent_chat_message',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    threadId: text('thread_id')
-      .notNull()
-      .references(() => agentChatThread.id, { onDelete: 'cascade' }),
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    role: text('role').notNull(),
-    // The turn's text: what the member wrote, or what the agent has said so far. It is
-    // appended to as text events arrive, so the transcript reads correctly mid-answer.
-    content: text('content').notNull().default(''),
-    status: text('status').notNull().default('pending'),
-    attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-    lastError: text('last_error'),
-    startedAt: integer('started_at', { mode: 'timestamp_ms' }),
-    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    check('agent_chat_message_role_check', sql`${t.role} IN ('user', 'assistant')`),
-    check(
-      'agent_chat_message_status_check',
-      sql`${t.status} IN ('pending', 'streaming', 'success', 'failed', 'canceled')`,
-    ),
-    index('agent_chat_message_thread_idx').on(t.threadId, t.id),
-    index('agent_chat_message_due_idx')
-      .on(t.agentId, t.nextAttemptAt)
-      .where(sql`${t.status} IN ('pending', 'streaming')`),
-  ],
-);
-
-// What the runner reported while producing one agent turn, as AG-UI events (text
-// deltas, tool calls, the run's lifecycle). Append-only: the id is the cursor a reader
-// resumes from, which is what lets the browser reconnect mid-answer without replaying
-// what it already has.
-export const agentChatEvent = sqliteTable(
-  'agent_chat_event',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    messageId: integer('message_id')
-      .notNull()
-      .references(() => agentChatMessage.id, { onDelete: 'cascade' }),
-    payload: text('payload', { mode: 'json' }).notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [index('agent_chat_event_message_idx').on(t.messageId, t.id)],
-);
-
-// The token counts of the last completed answer of one chat thread, which is what the
-// chat panel shows as the size of that conversation's context. One row per thread,
-// overwritten by every answer: only the last number says how close the conversation is
-// to the agent's limit. Null counts mean the agent reports none that can be read as a
-// context size, which the panel shows as a dash. An autonomous run keeps its own counts
-// on agent_run instead, one row per run.
-//
-// A thread of an external agent is stored in agent_chat_thread and one of an internal
-// agent in Mastra's own tables, so the row carries no foreign key to a thread. Every id
-// is minted by runtime/thread-ids, which prefixes each kind of thread with what it is
-// scoped to, so no two kinds collide. The row is deleted where the thread is deleted,
-// and the cascade covers the deletion of the agent.
-export const agentChatUsage = sqliteTable(
-  'agent_chat_usage',
-  {
-    threadId: text('thread_id').primaryKey(),
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    inputTokens: integer('input_tokens'),
-    outputTokens: integer('output_tokens'),
-    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [index('agent_chat_usage_agent_idx').on(t.agentId)],
-);
-
-// The conversations a member has starred, so they stay within reach in the chat
-// history. Like agent_chat_usage the row carries no foreign key to the thread: an
-// internal agent's thread lives in Mastra's own tables. Deleting a thread deletes its
-// row; a row left behind is harmless, since the history is built from the threads.
-export const agentChatFavorite = sqliteTable(
-  'agent_chat_favorite',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    threadId: text('thread_id').notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.userId, t.threadId] })],
-);
-
-// Stored credentials for a team's integrations, shared by every project it owns. One
-// store for every secret: the API keys of LLM providers (kind 'llm', addressed by an
-// internal agent's model) and the credentials of tool integrations (kind 'tool',
-// bound to configured tools). integration_key names the integration in the catalog;
-// the credential's fields (and which are secret) come from that integration's
-// credentialSchema. The full credential object is stored encrypted (AES-256-GCM, see
-// apps/api/src/shared/crypto.ts): ciphertext + iv + auth_tag. `redacted` is the same
-// object with secret fields masked, kept in plaintext for a masked display. The
-// secret is never returned to the client. A team may hold several credentials per
-// integration (e.g. two Jina keys), told apart by `label`.
-export const integrationCredential = sqliteTable(
-  'integration_credential',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    teamId: integer('team_id')
-      .notNull()
-      .references(() => team.id, { onDelete: 'cascade' }),
-    integrationKey: text('integration_key').notNull(),
-    label: text('label'),
-    ciphertext: text('ciphertext').notNull(),
-    iv: text('iv').notNull(),
-    authTag: text('auth_tag').notNull(),
-    // The credential with secret fields masked; non-secret fields verbatim. Owned by
-    // the store, derived from the integration's credential schema.
-    redacted: text('redacted', { mode: 'json' }).notNull().default({}),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [index('integration_credential_team_idx').on(t.teamId)],
-);
-
 export const gitProviderConnection = sqliteTable(
   'git_provider_connection',
   {
@@ -1187,103 +726,6 @@ export const notificationDelivery = sqliteTable(
   ],
 );
 
-// Skill library of a team, shared by every project it owns. A skill is a unit of
-// knowledge given to an internal agent (Anthropic Agent Skill format): a SKILL.md
-// with YAML frontmatter (name/description) plus optional reference files, no
-// executable scripts. The markdown and reference bytes live in the S3 object store
-// under s3_prefix; `files` lists the reference file paths and their object keys.
-// Sourced from an upload, inline text, or a GitHub URL. Enabled on an agent via
-// agent_skill_link.
-export const agentSkill = sqliteTable(
-  'agent_skill',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    teamId: integer('team_id')
-      .notNull()
-      .references(() => team.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    description: text('description').notNull().default(''),
-    source: text('source').notNull(),
-    sourceUrl: text('source_url'),
-    // Object-store prefix holding SKILL.md and reference files for this skill.
-    s3Prefix: text('s3_prefix').notNull(),
-    // Reference files beyond SKILL.md: [{ path, s3Key, size }]. Owned by the store.
-    files: text('files', { mode: 'json' }).notNull().default([]),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    unique().on(t.teamId, t.name),
-    check('agent_skill_source_check', sql`${t.source} IN ('upload', 'inline', 'github')`),
-    index('agent_skill_team_idx').on(t.teamId),
-  ],
-);
-
-// Which skills are enabled on which agents (many-to-many). Deleting an agent or a
-// skill removes the link.
-export const agentSkillLink = sqliteTable(
-  'agent_skill_link',
-  {
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    skillId: integer('skill_id')
-      .notNull()
-      .references(() => agentSkill.id, { onDelete: 'cascade' }),
-  },
-  (t) => [
-    primaryKey({ columns: [t.agentId, t.skillId] }),
-    index('agent_skill_link_skill_idx').on(t.skillId),
-  ],
-);
-
-// A tool configured for a team, shared by every project it owns: a tool from the
-// catalog (tool_key) bound to one integration_credential. The tool's integration owns
-// the secret, so the tool holds no secret of its own — it references the credential
-// the runtime decrypts at call time. Different tools of the same integration may be
-// bound to different credentials (e.g. two Jina keys). Enabled on an agent via
-// agent_tool_link.
-export const agentTool = sqliteTable(
-  'agent_tool',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    teamId: integer('team_id')
-      .notNull()
-      .references(() => team.id, { onDelete: 'cascade' }),
-    toolKey: text('tool_key').notNull(),
-    credentialId: integer('credential_id')
-      .notNull()
-      .references(() => integrationCredential.id, { onDelete: 'cascade' }),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [
-    unique().on(t.teamId, t.toolKey, t.credentialId),
-    index('agent_tool_team_idx').on(t.teamId),
-    index('agent_tool_credential_idx').on(t.credentialId),
-  ],
-);
-
-// Which configured tools are enabled on which agents (many-to-many). Deleting an
-// agent or a configured tool removes the link.
-export const agentToolLink = sqliteTable(
-  'agent_tool_link',
-  {
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    agentToolId: integer('agent_tool_id')
-      .notNull()
-      .references(() => agentTool.id, { onDelete: 'cascade' }),
-  },
-  (t) => [
-    primaryKey({ columns: [t.agentId, t.agentToolId] }),
-    index('agent_tool_link_tool_idx').on(t.agentToolId),
-  ],
-);
-
 // Custom fields. Always scoped to a project. A NULL issue_type_id applies the
 // field to every issue in that project; a non-null issue_type_id scopes it to
 // that one type.
@@ -1334,30 +776,6 @@ export const customFieldOption = sqliteTable(
     position: integer('position').notNull().default(0),
   },
   (t) => [unique().on(t.fieldId, t.value)],
-);
-
-// Which member custom fields an agent reacts to. Setting the agent into one of the
-// listed fields enqueues a run for it, the way being made an issue's delegate does
-// with trigger_on_assign. A field the agent is not linked to holds it without
-// starting anything.
-export const agentFieldTrigger = sqliteTable(
-  'agent_field_trigger',
-  {
-    agentId: integer('agent_id')
-      .notNull()
-      .references(() => aiAgent.id, { onDelete: 'cascade' }),
-    fieldId: integer('field_id')
-      .notNull()
-      .references(() => customField.id, { onDelete: 'cascade' }),
-    // How long this field's run waits before it becomes claimable. Each field carries
-    // its own, the way delegation carries delegation_delay_sec.
-    delaySec: integer('delay_sec').notNull().default(120),
-  },
-  (t) => [
-    primaryKey({ columns: [t.agentId, t.fieldId] }),
-    check('agent_field_trigger_delay_check', sql`${t.delaySec} >= 0 AND ${t.delaySec} <= 86400`),
-    index('agent_field_trigger_field_idx').on(t.fieldId),
-  ],
 );
 
 // A preset a new issue can be created from. It carries the title and description
@@ -1550,10 +968,8 @@ export const issue = sqliteTable(
     assigneeUserId: text('assignee_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    // The AI agent an issue is delegated to. Like assignee this points at a bot
-    // user (ai_agent.user_id); assignee holds a project member, delegate holds an
-    // agent. Setting a delegate on an internal agent with trigger_on_assign enqueues
-    // an agent run.
+    // Unused column kept in place: SQLite cannot drop a column that carries a foreign key
+    // without rebuilding issue.
     delegateUserId: text('delegate_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -1894,68 +1310,6 @@ export const issueDevelopmentCheck = sqliteTable(
     unique().on(t.developmentLinkId, t.appId, t.name),
     index('issue_development_check_link_sha_idx').on(t.developmentLinkId, t.headSha),
   ],
-);
-
-// A file uploaded in an agent chat. Bytes live in the S3-compatible object store;
-// this table holds the metadata and the object key. public_id is the unguessable
-// id used in the public download URL. Kept free of any workflow state so an
-// upload can serve more than one purpose (an issue import, a spec, a log).
-export const chatAttachment = sqliteTable(
-  'chat_attachment',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    publicId: text('public_id')
-      .notNull()
-      .$defaultFn(() => crypto.randomUUID())
-      .unique(),
-    projectId: integer('project_id')
-      .notNull()
-      .references(() => project.id, { onDelete: 'cascade' }),
-    uploadedByUserId: text('uploaded_by_user_id').references(() => user.id, {
-      onDelete: 'set null',
-    }),
-    s3Key: text('s3_key').notNull(),
-    filename: text('filename').notNull(),
-    contentType: text('content_type').notNull(),
-    sizeBytes: integer('size_bytes').notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [index('chat_attachment_project_idx').on(t.projectId)],
-);
-
-// An import of issues from a chat attachment: the column mapping an agent saved
-// and the state of the draft. The file itself is the referenced chat_attachment;
-// creating the issues happens only through the confirm route, never by the model
-// itself.
-export const issueImport = sqliteTable(
-  'issue_import',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    publicId: text('public_id')
-      .notNull()
-      .$defaultFn(() => crypto.randomUUID())
-      .unique(),
-    projectId: integer('project_id')
-      .notNull()
-      .references(() => project.id, { onDelete: 'cascade' }),
-    attachmentId: integer('attachment_id')
-      .notNull()
-      .references(() => chatAttachment.id, { onDelete: 'cascade' }),
-    // mapped: an agent saved a column mapping. confirmed: the issues were
-    // created. canceled and failed are terminal, with errorText on a failure.
-    status: text('status').notNull().default('mapped'),
-    mapping: text('mapping', { mode: 'json' }),
-    errorText: text('error_text'),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
-      .notNull()
-      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
-  },
-  (t) => [index('issue_import_project_idx').on(t.projectId)],
 );
 
 // Checklists on an issue: a lightweight list of steps that does not warrant a

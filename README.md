@@ -74,10 +74,8 @@ token) are stored encrypted in D1 and edited in god mode.
 ## More
 
 - [Local development](docs/development.md) · [D1 notes](docs/dev/d1-notes.md)
-- [Coding agent setup](docs/runner.md) · [Agent endpoint](docs/agent-endpoint.md)
 - [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
 
 ## License
 
-Copyright © 2026 Andrii Poluosmak. [AGPL-3.0](LICENSE), except `packages/runner`, which is
-[Apache-2.0](packages/runner/LICENSE).
+Copyright © 2026 Andrii Poluosmak. [AGPL-3.0](LICENSE).

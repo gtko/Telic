@@ -126,7 +126,7 @@ async function rejectsWith(promise: Promise<unknown>, pattern: RegExp): Promise<
 
 // ---- trigger inventory (the CI guard) ----------------------------------------------------------
 
-// The 30 Postgres triggers of legacy-pg, by their pg name, with the operations each fires on.
+// The 29 Postgres triggers of legacy-pg, by their pg name, with the operations each fires on.
 const EXPECTED: Record<string, string[]> = {
   issue_rev: ['i', 'u', 'd'],
   issue_label_rev: ['i', 'u', 'd'],
@@ -146,7 +146,6 @@ const EXPECTED: Record<string, string[]> = {
   initiative_attachment_rev: ['i', 'u', 'd'],
   cycle_rev: ['i', 'u', 'd'],
   notification_rev: ['i', 'u', 'd'],
-  agent_run_rev: ['i', 'u', 'd'],
   project_rev_cleanup: ['d'],
   project_document_rev: ['i', 'u', 'd'],
   document_asset_rev: ['i', 'u', 'd'],
@@ -159,7 +158,7 @@ const EXPECTED: Record<string, string[]> = {
   project_document_owner_default: ['i'],
   project_document_revision_capture: ['i', 'u'],
 };
-const EXPECTED_PHYSICAL = 81;
+const EXPECTED_PHYSICAL = 78;
 
 describe('trigger inventory', () => {
   // drizzle-kit drops the triggers of a table it rebuilds (DROP TABLE + CREATE + copy). A
@@ -180,7 +179,7 @@ describe('trigger inventory', () => {
       Object.entries(EXPECTED).map(([k, v]) => [k, [...v].sort().reverse()]),
     );
     expect(found).toEqual(expected);
-    expect(Object.keys(EXPECTED)).toHaveLength(30);
+    expect(Object.keys(EXPECTED)).toHaveLength(29);
   });
 
   it('seeds the default storage setting once', async () => {

@@ -1,13 +1,13 @@
 # worker — rules
 
 Cloudflare Worker (`telic-worker`, separate from `apps/api`) that drains a few
-background queues: webhook delivery, notification delivery, agent scheduling, and
-source imports. See root `AGENTS.md`.
+background queues: webhook delivery, notification delivery, and source
+imports. See root `AGENTS.md`.
 
 ## Entry point
 
 `src/worker.ts` exports `scheduled` and `queue`. A Cron Trigger runs every minute: it
-sends the due webhook deliveries inline, queues the due agent schedules, and sends a
+sends the due webhook deliveries inline and sends a
 wake-up message to the `telic-jobs` Queue when notifications or imports are due. The
 Queue consumer (`runJob`) runs the heavy jobs. The message is only a wake-up: the
 consumer claims the work itself, so a duplicate or late message is harmless. Without
@@ -17,7 +17,6 @@ a queue binding (a local run) the cron runs the job inline.
 
 - Reads `webhook_delivery` for due `pending` rows, claims a batch with a lease,
   posts each to its webhook URL, records the outcome.
-- Queues an `agent_run` row for every due `agent_schedule`.
 - Signs every request: `X-Itsaplan-Signature: t=<ts>,v1=<hmac-sha256>` over
   `${ts}.${body}` with the webhook's `secret`. Plus `X-Itsaplan-Event`,
   `X-Itsaplan-Delivery`, `X-Itsaplan-Event-Id` (stable across retries).
@@ -113,9 +112,6 @@ wake-up message.
 - **At-least-once delivery.** Duplicates are possible (a 2xx whose ACK is lost);
   the `event_id` is stable across retries so receivers deduplicate. Never mint a
   new id per attempt.
-- **Agent schedules are queued here, run in the api.** A due schedule gets an
-  `agent_run` row; the api drains that queue, where the agent runtime and the model
-  credentials live.
 - **Claim leases, not a status flag.** Claiming pushes `next_attempt_at` forward
   by `leaseSeconds`; a crashed delivery is reclaimed after the lease. Keep
   the lease comfortably larger than `WEBHOOK_TIMEOUT_MS`.

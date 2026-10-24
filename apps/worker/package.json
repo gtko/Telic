@@ -11,7 +11,6 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@repo/cron": "workspace:*",
     "@repo/crypto": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/mailer": "workspace:*",
