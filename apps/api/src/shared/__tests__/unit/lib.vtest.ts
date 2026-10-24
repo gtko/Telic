@@ -30,6 +30,12 @@ describe('pgErrorCode', () => {
     expect(pgErrorCode(null)).toBeUndefined();
   });
 
+  it('maps a D1 constraint failure message to the SQLSTATE', () => {
+    const unique = new Error('D1_ERROR: UNIQUE constraint failed: labels.name: SQLITE_CONSTRAINT');
+    expect(pgErrorCode({ cause: unique })).toBe('23505');
+    expect(pgErrorCode(new Error('FOREIGN KEY constraint failed'))).toBe('23503');
+  });
+
   it('ignores a non-string code', () => {
     expect(pgErrorCode({ code: 23505 })).toBeUndefined();
   });
