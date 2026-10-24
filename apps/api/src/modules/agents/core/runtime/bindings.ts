@@ -36,24 +36,12 @@ export interface RunQueueLike {
 
 // The bindings of the agent runtime. `RUN_QUEUE` and `BUCKET` are optional: without
 // the queue a run waits for the next cron tick, without the bucket large span payloads
-// are cut instead of stored. The span payloads live in the shared bucket under SPAN_PREFIX.
+// are cut instead of stored. The span payloads live in the shared bucket (BUCKET) under the
+// `spans/` prefix, which the exporter writes into each key.
 export interface AgentBindings {
   DB: D1Like;
   RUN_QUEUE?: RunQueueLike;
   BUCKET?: R2Like;
-}
-
-export const SPAN_PREFIX = 'spans/';
-
-// The bucket seen through the span prefix: the exporter and the retention job keep using
-// bare keys, the objects land under `spans/` next to the other users of the bucket.
-export function prefixedBucket(bucket: R2Like, prefix = SPAN_PREFIX): R2Like {
-  return {
-    put: (key, value) => bucket.put(prefix + key, value),
-    get: (key) => bucket.get(prefix + key),
-    delete: (keys) =>
-      bucket.delete(Array.isArray(keys) ? keys.map((k) => prefix + k) : prefix + keys),
-  };
 }
 
 // The handle every function of the runtime that runs an agent takes first: the Drizzle
@@ -81,7 +69,7 @@ export function agentRuntime(rawEnv: AgentEnv, auth: AgentKeyAuth): AgentRuntime
   return {
     db: createDb(env.DB as unknown as Parameters<typeof createDb>[0]),
     d1: env.DB,
-    payloads: env.BUCKET ? prefixedBucket(env.BUCKET) : null,
+    payloads: env.BUCKET ?? null,
     bucket: (env.BUCKET as unknown as R2Bucket | undefined) ?? null,
     queue: env.RUN_QUEUE ?? null,
     auth,
