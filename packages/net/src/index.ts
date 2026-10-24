@@ -308,7 +308,8 @@ export async function pinnedFetch(raw: string, init: PinnedRequestInit = {}): Pr
   const res = await fetch(url, {
     method: init.method ?? 'GET',
     headers,
-    body: init.body,
+    // Uint8Array is a valid body at runtime; the DOM and workers-types BodyInit differ on its buffer type.
+    body: init.body as BodyInit | undefined,
     redirect: 'manual',
     signal: requestSignal(init.signal, init.timeoutMs),
   });
@@ -327,5 +328,5 @@ export async function pinnedFetch(raw: string, init: PinnedRequestInit = {}): Pr
   const forwarded = new Headers(res.headers);
   forwarded.delete('content-encoding');
   forwarded.delete('content-length');
-  return new Response(body, { status, headers: forwarded });
+  return new Response(body as BodyInit | null, { status, headers: forwarded });
 }

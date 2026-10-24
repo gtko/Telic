@@ -22,7 +22,8 @@ export interface BotOptions {
 
 export function createBot({ token, db, telegramFetch }: BotOptions): Bot {
   const bot = new Bot(token, {
-    client: telegramFetch ? { fetch: telegramFetch } : undefined,
+    // The workers-types fetch lacks the node-fetch statics grammy's type asks for; it only calls it.
+    client: telegramFetch ? { fetch: telegramFetch as never } : undefined,
   });
 
   bot.command('start', async (ctx) => {

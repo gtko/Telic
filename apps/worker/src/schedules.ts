@@ -61,7 +61,7 @@ export async function enqueueDueSchedules(db: Db, nowMs: number = Date.now()): P
       statements.push(
         {
           sql: `INSERT OR IGNORE INTO agent_run
-                  (agent_id, project_id, schedule_id, trigger, scheduled_for, prompt)
+                  (agent_id, project_id, schedule_id, "trigger", scheduled_for, prompt)
                 SELECT ?, ?, ?, 'schedule', ?, ?
                 WHERE EXISTS (SELECT 1 FROM agent_schedule WHERE id = ? AND next_run_at = ?)`,
           params: [
