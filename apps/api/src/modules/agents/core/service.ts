@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   aiAgent,
   user,
   apikey,
@@ -14,14 +14,15 @@ import {
   customField,
   integrationCredential,
 } from '@repo/db';
-import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
-import { auth } from '@repo/auth';
+import { and, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { iso, HttpError, rethrowDuplicate } from '#shared/lib';
 import { getCredentialById } from '../integrations/service';
 import { integrationKind } from '../integrations/catalog';
 import { encryptSecret, decryptSecret } from '@repo/crypto';
 import { normalizeToolKeys, ALWAYS_ON_ACTIONS } from './runtime/tools/catalog';
 import { deleteThreadsWhere } from './runtime/memory';
+import type { AgentRuntime } from './runtime/bindings';
+import { batchAll } from './helpers/batch';
 import { listAgentMemberFieldIds } from '#modules/custom-fields/service';
 import { runsTeam, type TeamStanding } from '#modules/teams/service';
 import type { TeamMembership } from '#shared/access';
@@ -204,6 +205,12 @@ function mapAgent(row: {
   };
 }
 
+// A JSON aggregate comes back from SQLite as text.
+function parseJsonList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  return typeof value === 'string' ? (JSON.parse(value) as T[]) : [];
+}
+
 const agentColumns = {
   id: aiAgent.id,
   teamId: aiAgent.teamId,
@@ -211,7 +218,9 @@ const agentColumns = {
   // of another team cannot happen (the attach route refuses it) and is not listed.
   projects: sql<
     AgentProject[]
-  >`(select coalesce(json_agg(json_build_object('id', ${project.id}, 'key', ${project.key}, 'ref', ${projectRefSql}, 'name', ${project.name}) order by ${project.key}), '[]'::json) from ${projectMember} join ${project} on ${project.id} = ${projectMember.projectId} join ${team} on ${team.id} = ${project.teamId} where ${projectMember.userId} = ${aiAgent.userId} and ${project.teamId} = ${aiAgent.teamId})`,
+  >`(select coalesce(json_group_array(json_object('id', ${project.id}, 'key', ${project.key}, 'ref', ${projectRefSql}, 'name', ${project.name}) order by ${project.key}), '[]') from ${projectMember} join ${project} on ${project.id} = ${projectMember.projectId} join ${team} on ${team.id} = ${project.teamId} where ${projectMember.userId} = ${aiAgent.userId} and ${project.teamId} = ${aiAgent.teamId})`.mapWith(
+    parseJsonList<AgentProject>,
+  ),
   userId: aiAgent.userId,
   name: user.name,
   username: aiAgent.username,
@@ -230,7 +239,9 @@ const agentColumns = {
   triggerOnAssign: aiAgent.triggerOnAssign,
   fieldTriggers: sql<
     FieldTriggerRead[]
-  >`(select coalesce(json_agg(json_build_object('fieldId', ${agentFieldTrigger.fieldId}, 'name', ${customField.name}, 'delaySec', ${agentFieldTrigger.delaySec}) order by ${customField.name}), '[]'::json) from ${agentFieldTrigger} join ${customField} on ${customField.id} = ${agentFieldTrigger.fieldId} where ${agentFieldTrigger.agentId} = ${aiAgent.id})`,
+  >`(select coalesce(json_group_array(json_object('fieldId', ${agentFieldTrigger.fieldId}, 'name', ${customField.name}, 'delaySec', ${agentFieldTrigger.delaySec}) order by ${customField.name}), '[]') from ${agentFieldTrigger} join ${customField} on ${customField.id} = ${agentFieldTrigger.fieldId} where ${agentFieldTrigger.agentId} = ${aiAgent.id})`.mapWith(
+    parseJsonList<FieldTriggerRead>,
+  ),
   delegationDelaySec: aiAgent.delegationDelaySec,
   ownerUserId: aiAgent.ownerUserId,
   runnerScope: aiAgent.runnerScope,
@@ -251,7 +262,7 @@ const agentColumns = {
 
 // The bot user carries the name, the key row the prefix, and the credential the
 // provider, so every read of an agent joins the three.
-function agentQuery() {
+function agentQuery(db: Db) {
   return db
     .select(agentColumns)
     .from(aiAgent)
@@ -279,7 +290,7 @@ export function agentScopeOf(membership: {
 // The projects of the team the user is a member of. Attaching an agent to a project
 // makes its bot user a member of that one, so the set bounds where someone who does
 // not run the team may put an agent.
-export async function memberProjectIds(teamId: number, userId: string): Promise<number[]> {
+export async function memberProjectIds(db: Db, teamId: number, userId: string): Promise<number[]> {
   const rows = await db
     .select({ id: project.id })
     .from(projectMember)
@@ -291,11 +302,14 @@ export async function memberProjectIds(teamId: number, userId: string): Promise<
 // The agents, each with whether the caller may act on it as a whole, by the rule
 // assertFullAgentAccess applies, so a screen can hide what the caller would be refused.
 export async function withCanManage<T extends { projects: { id: number }[] }>(
+  db: Db,
   membership: TeamMembership,
   agents: T[],
 ): Promise<(T & { canManage: boolean })[]> {
   const runs = runsTeam(membership.role);
-  const mine = new Set(runs ? [] : await memberProjectIds(membership.teamId, membership.userId));
+  const mine = new Set(
+    runs ? [] : await memberProjectIds(db, membership.teamId, membership.userId),
+  );
   return agents.map((agent) => ({
     ...agent,
     canManage: runs || agent.projects.every((p) => mine.has(p.id)),
@@ -309,13 +323,14 @@ export async function withCanManage<T extends { projects: { id: number }[] }>(
 // must not reach the others: these require running the team or being a member of every
 // project the agent is in.
 export async function assertFullAgentAccess(
+  db: Db,
   membership: TeamMembership,
   agentId: number,
 ): Promise<void> {
   if (runsTeam(membership.role)) return;
-  const agent = await getAgentById(agentId, membership.teamId);
+  const agent = await getAgentById(db, agentId, membership.teamId);
   if (!agent) throw new HttpError(404, 'Agent not found');
-  const [{ canManage }] = await withCanManage(membership, [agent]);
+  const [{ canManage }] = await withCanManage(db, membership, [agent]);
   if (!canManage) {
     throw new HttpError(
       403,
@@ -335,11 +350,12 @@ function sharesProjectWith(userId: string) {
 // projectId is given. visibleTo narrows the list to the agents working in a project
 // that user belongs to; the callers who run the team pass nothing and see them all.
 export async function listAgents(
+  db: Db,
   teamId: number,
   projectId?: number,
   visibleTo?: string,
 ): Promise<AiAgentRow[]> {
-  const rows = await agentQuery()
+  const rows = await agentQuery(db)
     .where(
       and(
         eq(aiAgent.teamId, teamId),
@@ -354,11 +370,12 @@ export async function listAgents(
 // Scoped to teamId so an id from another team resolves to null, and to visibleTo the
 // same way the list is: an agent of a project that user is not in reads as missing.
 export async function getAgentById(
+  db: Db,
   id: number,
   teamId: number,
   visibleTo?: string,
 ): Promise<AiAgentRow | null> {
-  const rows = await agentQuery().where(
+  const rows = await agentQuery(db).where(
     and(
       eq(aiAgent.id, id),
       eq(aiAgent.teamId, teamId),
@@ -371,8 +388,12 @@ export async function getAgentById(
 // The agent of that id that works in the project, or null. A run addresses an agent
 // together with the project it is to work in, and membership is what allows it: an
 // agent detached from a project stops running there, whatever was queued for it.
-export async function getAgentInProject(id: number, projectId: number): Promise<AiAgentRow | null> {
-  const rows = await agentQuery().where(and(eq(aiAgent.id, id), inProject(projectId)));
+export async function getAgentInProject(
+  db: Db,
+  id: number,
+  projectId: number,
+): Promise<AiAgentRow | null> {
+  const rows = await agentQuery(db).where(and(eq(aiAgent.id, id), inProject(projectId)));
   return rows[0] ? mapAgent(rows[0]) : null;
 }
 
@@ -398,7 +419,11 @@ const triggerScopeColumns = {
 // Whether the member may send the agent a task, for the paths that queue a run
 // outside the mention and delegation triggers (a schedule). An agent that no longer
 // exists reads as triggerable — the caller's own lookup reports it missing.
-export async function canTriggerAgent(agentId: number, actorUserId: string): Promise<boolean> {
+export async function canTriggerAgent(
+  db: Db,
+  agentId: number,
+  actorUserId: string,
+): Promise<boolean> {
   const rows = await db
     .select(triggerScopeColumns)
     .from(aiAgent)
@@ -413,6 +438,7 @@ export async function canTriggerAgent(agentId: number, actorUserId: string): Pro
 // this project is left out: a mention must not pull a key into a project the team
 // never opened it to.
 export async function listMentionTriggerAgents(
+  db: Db,
   projectId: number,
   userIds: string[],
   actorUserId: string | null,
@@ -437,6 +463,7 @@ export async function listMentionTriggerAgents(
 // delegated to, or null. Turns a new delegate into the agent that should run on
 // delegation.
 export async function getAssignTriggerAgent(
+  db: Db,
   projectId: number,
   userId: string,
   actorUserId: string | null,
@@ -459,6 +486,7 @@ export async function getAssignTriggerAgent(
 // set into that member field, or null. The counterpart of getAssignTriggerAgent for a
 // custom field.
 export async function getFieldTriggerAgent(
+  db: Db,
   projectId: number,
   userId: string,
   fieldId: number,
@@ -485,28 +513,31 @@ export async function getFieldTriggerAgent(
 // holding agents in one of the agent's projects is dropped, so a stale id from a
 // client never links.
 async function setFieldTriggers(
+  db: Db,
   agentId: number,
   projectIds: number[],
   triggers: FieldTrigger[],
 ): Promise<void> {
-  const allowed = new Set(await listAgentMemberFieldIds(projectIds));
+  const allowed = new Set(await listAgentMemberFieldIds(db, projectIds));
   const byField = new Map(
     triggers.filter((t) => allowed.has(t.fieldId)).map((t) => [t.fieldId, t.delaySec]),
   );
-  await db.transaction(async (tx) => {
-    await tx.delete(agentFieldTrigger).where(eq(agentFieldTrigger.agentId, agentId));
-    if (byField.size > 0) {
-      await tx
-        .insert(agentFieldTrigger)
-        .values([...byField].map(([fieldId, delaySec]) => ({ agentId, fieldId, delaySec })));
-    }
-  });
+  await batchAll(db, [
+    db.delete(agentFieldTrigger).where(eq(agentFieldTrigger.agentId, agentId)),
+    ...(byField.size > 0
+      ? [
+          db
+            .insert(agentFieldTrigger)
+            .values([...byField].map(([fieldId, delaySec]) => ({ agentId, fieldId, delaySec }))),
+        ]
+      : []),
+  ]);
 }
 
 // True if the user id is the bot user of an agent working in this project. Validates
 // that a delegate is an agent of the project before it is written to an issue, and is
 // what keeps the delegation and field triggers off an agent that is not a member.
-export async function isProjectAgent(projectId: number, userId: string): Promise<boolean> {
+export async function isProjectAgent(db: Db, projectId: number, userId: string): Promise<boolean> {
   const rows = await db
     .select({ id: aiAgent.id })
     .from(aiAgent)
@@ -517,7 +548,7 @@ export async function isProjectAgent(projectId: number, userId: string): Promise
 
 // The team of the agent a bot user belongs to, or null when the user is a person.
 // An agent belongs to exactly one team, so this is the team its API key acts in.
-export async function agentTeam(userId: string): Promise<number | null> {
+export async function agentTeam(db: Db, userId: string): Promise<number | null> {
   const rows = await db
     .select({ teamId: aiAgent.teamId })
     .from(aiAgent)
@@ -527,19 +558,20 @@ export async function agentTeam(userId: string): Promise<number | null> {
 }
 
 // True if the user id is an agent's bot user rather than a person's.
-export async function isAgentUser(userId: string): Promise<boolean> {
-  return (await agentTeam(userId)) !== null;
+export async function isAgentUser(db: Db, userId: string): Promise<boolean> {
+  return (await agentTeam(db, userId)) !== null;
 }
 
 // An unknown, foreign, or non-LLM credential id would otherwise be stored and only
 // surface later, as a run that fails to start. Credentials belong to the team, so an
 // id from another team is what counts as foreign.
 async function assertModelCredential(
+  db: Db,
   teamId: number,
   credentialId: number | null | undefined,
 ): Promise<void> {
   if (credentialId == null) return;
-  const credential = await getCredentialById(credentialId, teamId);
+  const credential = await getCredentialById(db, credentialId, teamId);
   if (!credential) throw new HttpError(400, 'Credential not found');
   if (integrationKind(credential.integrationKey) !== 'llm') {
     throw new HttpError(
@@ -552,7 +584,11 @@ async function assertModelCredential(
 // The projects of the team the agent is to work in. An id that is not a project of the
 // team is refused rather than dropped: attaching an agent to a project its team does
 // not own would put its key somewhere the team never opened.
-async function resolveTeamProjectIds(teamId: number, projectIds: number[]): Promise<number[]> {
+async function resolveTeamProjectIds(
+  db: Db,
+  teamId: number,
+  projectIds: number[],
+): Promise<number[]> {
   const wanted = [...new Set(projectIds)];
   if (wanted.length === 0) return [];
   const rows = await db
@@ -604,6 +640,7 @@ export interface NewAgentInput {
 // into a message that names which side took the handle. The reverse check sits in
 // @repo/auth, where a member's username is set.
 async function assertUsernameFree(
+  db: Db,
   teamId: number,
   username: string,
   exceptAgentId?: number,
@@ -620,6 +657,15 @@ async function assertUsernameFree(
     throw new HttpError(409, 'An agent with this username already exists');
 }
 
+// The part of the better-auth instance that issues a key (`ctx.auth` in a route).
+export interface AgentKeyAuth {
+  api: {
+    createApiKey(args: {
+      body: { userId: string; name: string };
+    }): Promise<{ id: string; key: string }>;
+  };
+}
+
 // Issues a fresh API key owned by the agent's bot user and returns its plaintext
 // value (only available at creation). The server-side call sets the owner via
 // userId — better-auth allows this only for a direct (non-request) server call.
@@ -628,10 +674,15 @@ async function assertUsernameFree(
 // stored secret with nothing that would renew it, and an external agent's key is
 // rotated by its operator through regenerate-key. The plugin puts its default on
 // every key it creates, so the expiry is cleared on the row afterwards.
-async function issueKey(userId: string, name: string): Promise<string> {
+async function issueKey(
+  db: Db,
+  auth: AgentKeyAuth,
+  userId: string,
+  name: string,
+): Promise<{ id: string; key: string }> {
   const created = await auth.api.createApiKey({ body: { userId, name: `agent:${name}` } });
   await db.update(apikey).set({ expiresAt: null }).where(eq(apikey.id, created.id));
-  return created.key;
+  return { id: created.id, key: created.key };
 }
 
 // Creates an agent: a bot user, the ai_agent config row, its team and project
@@ -642,6 +693,8 @@ async function issueKey(userId: string, name: string): Promise<string> {
 // an external agent, whose operator must copy it — an internal agent's key is kept
 // encrypted on the row for its own runtime and is never surfaced to a caller.
 export async function createAgent(
+  db: Db,
+  auth: AgentKeyAuth,
   teamId: number,
   input: NewAgentInput,
 ): Promise<{ agent: AiAgentRow; apiKey: string | null }> {
@@ -649,20 +702,22 @@ export async function createAgent(
   const email = `${userId}@agents.local`;
   const isInternal = input.kind === 'internal';
   const invocationUrl = isInternal ? null : (input.invocationUrl ?? null);
-  await assertUsernameFree(teamId, input.username);
-  if (isInternal) await assertModelCredential(teamId, input.modelCredentialId);
+  await assertUsernameFree(db, teamId, input.username);
+  if (isInternal) await assertModelCredential(db, teamId, input.modelCredentialId);
   if (invocationUrl) await assertPublicHttpUrl(invocationUrl);
-  const projectIds = await resolveTeamProjectIds(teamId, input.projectIds ?? []);
+  const projectIds = await resolveTeamProjectIds(db, teamId, input.projectIds ?? []);
   // An agent joins a project the way a person accepting an invite does: on the team's
   // default role, changed per project from the project's member list afterwards.
-  const roleId = await getDefaultRoleId(teamId);
+  const roleId = await getDefaultRoleId(db, teamId);
 
-  const agentId = await db.transaction(async (tx) => {
-    await tx
-      .insert(user)
-      .values({ id: userId, name: input.name, email, emailVerified: false, role: 'user' });
-    try {
-      const [row] = await tx
+  // Known up front, so one atomic batch: the bot user, the agent row, and its memberships.
+  let agentId: number;
+  try {
+    const results = await batchAll(db, [
+      db
+        .insert(user)
+        .values({ id: userId, name: input.name, email, emailVerified: false, role: 'user' }),
+      db
         .insert(aiAgent)
         .values({
           teamId,
@@ -686,32 +741,34 @@ export async function createAgent(
           runnerScope: input.runnerScope ?? 'team',
           invocationUrl,
         })
-        .returning({ id: aiAgent.id });
+        .returning({ id: aiAgent.id }),
       // The agent belongs to the team's member list like a person does, on a standing
       // of its own that closes the owner and manager guards to it.
-      await tx.insert(teamMember).values({ teamId, userId, role: 'agent' });
-      if (projectIds.length > 0) {
-        await tx
-          .insert(projectMember)
-          .values(projectIds.map((projectId) => ({ projectId, userId, role: 'member', roleId })));
-      }
-      return row.id;
-    } catch (err) {
-      rethrowDuplicate(err, 'An agent with this username');
-      throw err;
-    }
-  });
+      db.insert(teamMember).values({ teamId, userId, role: 'agent' }),
+      ...(projectIds.length > 0
+        ? [
+            db
+              .insert(projectMember)
+              .values(
+                projectIds.map((projectId) => ({ projectId, userId, role: 'member', roleId })),
+              ),
+          ]
+        : []),
+    ]);
+    agentId = (results[1] as { id: number }[])[0]!.id;
+  } catch (err) {
+    rethrowDuplicate(err, 'An agent with this username');
+    throw err;
+  }
 
   if (input.fieldTriggers?.length) {
-    await setFieldTriggers(agentId, projectIds, input.fieldTriggers);
+    await setFieldTriggers(db, agentId, projectIds, input.fieldTriggers);
   }
-  if (invocationUrl) await ensureInvocationSecret(agentId);
+  if (invocationUrl) await ensureInvocationSecret(db, agentId);
 
-  // Issued outside the transaction: better-auth writes the key through its own
-  // connection, so it cannot join this one.
-  const apiKey = await issueKey(userId, input.name);
-  if (isInternal) await storeAgentKey(agentId, apiKey);
-  const agent = (await getAgentById(agentId, teamId))!;
+  const { key: apiKey } = await issueKey(db, auth, userId, input.name);
+  if (isInternal) await storeAgentKey(db, agentId, apiKey);
+  const agent = (await getAgentById(db, agentId, teamId))!;
   return { agent, apiKey: isInternal ? null : apiKey };
 }
 
@@ -719,21 +776,25 @@ export async function createAgent(
 // so this is the whole of attaching and detaching: a project left out is detached, and
 // the runs, threads and issues it produced there are untouched. A project it already
 // works in keeps the role that membership carries.
-async function setAgentProjects(agent: AiAgentRow, projectIds: number[]): Promise<number[]> {
-  const wanted = await resolveTeamProjectIds(agent.teamId, projectIds);
-  const roleId = await getDefaultRoleId(agent.teamId);
-  await db.transaction(async (tx) => {
-    await tx
+async function setAgentProjects(
+  db: Db,
+  agent: AiAgentRow,
+  projectIds: number[],
+): Promise<number[]> {
+  const wanted = await resolveTeamProjectIds(db, agent.teamId, projectIds);
+  const roleId = await getDefaultRoleId(db, agent.teamId);
+  await batchAll(db, [
+    db
       .delete(projectMember)
       .where(
         and(
           eq(projectMember.userId, agent.userId),
           wanted.length > 0 ? notInArray(projectMember.projectId, wanted) : undefined,
         ),
-      );
+      ),
     // A column cannot keep assigning issues to an agent that no longer works in the
     // project, the same rule remove_member follows.
-    await tx
+    db
       .update(projectColumn)
       .set({ autoAssignUserId: null })
       .where(
@@ -741,27 +802,29 @@ async function setAgentProjects(agent: AiAgentRow, projectIds: number[]): Promis
           eq(projectColumn.autoAssignUserId, agent.userId),
           wanted.length > 0 ? notInArray(projectColumn.projectId, wanted) : undefined,
         ),
-      );
-    if (wanted.length > 0) {
-      await tx
-        .insert(projectMember)
-        .values(
-          wanted.map((projectId) => ({
-            projectId,
-            userId: agent.userId,
-            role: 'member',
-            roleId,
-          })),
-        )
-        .onConflictDoNothing();
-    }
-  });
+      ),
+    ...(wanted.length > 0
+      ? [
+          db
+            .insert(projectMember)
+            .values(
+              wanted.map((projectId) => ({
+                projectId,
+                userId: agent.userId,
+                role: 'member',
+                roleId,
+              })),
+            )
+            .onConflictDoNothing(),
+        ]
+      : []),
+  ]);
   return wanted;
 }
 
 // Saves an internal agent's key secret, encrypted at rest, so its runtime can replay
 // it on every tool call.
-async function storeAgentKey(agentId: number, apiKey: string): Promise<void> {
+async function storeAgentKey(db: Db, agentId: number, apiKey: string): Promise<void> {
   const enc = encryptSecret(apiKey);
   await db
     .update(aiAgent)
@@ -769,12 +832,8 @@ async function storeAgentKey(agentId: number, apiKey: string): Promise<void> {
     .where(eq(aiAgent.id, agentId));
 }
 
-// Namespace for the provisioning advisory lock, so its keys cannot collide with an
-// advisory lock taken anywhere else. The second key is the agent id.
-const KEY_PROVISION_LOCK_NS = 8241;
-
 // Reads and decrypts an agent's stored key, or null when it has none yet.
-async function readAgentKey(agentId: number): Promise<string | null> {
+async function readAgentKey(db: Db, agentId: number): Promise<string | null> {
   const rows = await db
     .select({
       ciphertext: aiAgent.apiKeyCiphertext,
@@ -794,34 +853,43 @@ async function readAgentKey(agentId: number): Promise<string | null> {
 // rather than in a data migration — better-auth issues a key through its API, which
 // a SQL migration cannot call.
 //
-// Provisioning is serialized per agent with an advisory lock. Runs are claimed in
-// batches and across replicas (see run-queue), so two runs of the same unprovisioned
-// agent can start together; without the lock each would issue a key, and the second
-// would revoke the first out from under a run already using it. A second surviving
-// key would be just as wrong: the agent reads join apikey on the bot user, so two
-// rows would list the agent twice.
-export async function getInternalAgentApiKey(agent: AiAgentRow): Promise<string> {
-  const existing = await readAgentKey(agent.id);
+// Provisioning cannot take a lock (D1 has none), so it is optimistic: runs are claimed
+// by several consumers at once, and two runs of the same unprovisioned agent can both
+// issue a key. The first to store its key wins (one conditional UPDATE on a row whose
+// ciphertext is still empty); the loser deletes the key it issued and uses the winner's.
+// Without that, the second key would revoke the first out from under a run already using
+// it, and two key rows would list the agent twice (the agent reads join apikey).
+export async function getInternalAgentApiKey(
+  db: Db,
+  auth: AgentKeyAuth,
+  agent: AiAgentRow,
+): Promise<string> {
+  const existing = await readAgentKey(db, agent.id);
   if (existing) return existing;
 
-  return db.transaction(async (tx) => {
-    // Held until this transaction ends. A concurrent run blocks here and then finds
-    // the key the winner stored, instead of issuing a second one.
-    await tx.execute(sql`select pg_advisory_xact_lock(${KEY_PROVISION_LOCK_NS}, ${agent.id})`);
-    const won = await readAgentKey(agent.id);
-    if (won) return won;
-
-    await tx
-      .insert(teamMember)
-      .values({ teamId: agent.teamId, userId: agent.userId, role: 'agent' })
-      .onConflictDoNothing();
-    // Clears any key row left without a stored secret, so the bot user ends with
-    // exactly the one issued here.
-    await db.delete(apikey).where(eq(apikey.referenceId, agent.userId));
-    const apiKey = await issueKey(agent.userId, agent.name);
-    await storeAgentKey(agent.id, apiKey);
-    return apiKey;
-  });
+  await db
+    .insert(teamMember)
+    .values({ teamId: agent.teamId, userId: agent.userId, role: 'agent' })
+    .onConflictDoNothing();
+  const issued = await issueKey(db, auth, agent.userId, agent.name);
+  const enc = encryptSecret(issued.key);
+  const won = await db
+    .update(aiAgent)
+    .set({ apiKeyCiphertext: enc.ciphertext, apiKeyIv: enc.iv, apiKeyAuthTag: enc.authTag })
+    .where(and(eq(aiAgent.id, agent.id), isNull(aiAgent.apiKeyCiphertext)))
+    .returning({ id: aiAgent.id });
+  if (won.length === 0) {
+    await db.delete(apikey).where(eq(apikey.id, issued.id));
+    const winner = await readAgentKey(db, agent.id);
+    if (winner) return winner;
+    throw new HttpError(409, 'The agent key was replaced while it was being provisioned');
+  }
+  // Clears any key row left without a stored secret, so the bot user ends with exactly
+  // the one issued here.
+  await db
+    .delete(apikey)
+    .where(and(eq(apikey.referenceId, agent.userId), ne(apikey.id, issued.id)));
+  return issued.key;
 }
 
 export interface AgentPatch {
@@ -849,15 +917,16 @@ export interface AgentPatch {
 }
 
 export async function updateAgent(
+  db: Db,
   id: number,
   teamId: number,
   patch: AgentPatch,
   // The member making the change: choosing the 'owner' scope means their own runs.
   actorUserId: string,
 ): Promise<AiAgentRow | null> {
-  const agent = await getAgentById(id, teamId);
+  const agent = await getAgentById(db, id, teamId);
   if (!agent) return null;
-  await assertModelCredential(teamId, patch.modelCredentialId);
+  await assertModelCredential(db, teamId, patch.modelCredentialId);
   // Only an external agent is sent its work; an internal one runs here.
   const invocationUrl = agent.kind === 'external' ? patch.invocationUrl : undefined;
   if (invocationUrl) await assertPublicHttpUrl(invocationUrl);
@@ -869,7 +938,7 @@ export async function updateAgent(
 
   const set: Partial<typeof aiAgent.$inferInsert> = {};
   if (patch.username !== undefined) {
-    await assertUsernameFree(teamId, patch.username, id);
+    await assertUsernameFree(db, teamId, patch.username, id);
     set.username = patch.username;
   }
   if (patch.modelCredentialId !== undefined) set.modelCredentialId = patch.modelCredentialId;
@@ -907,26 +976,31 @@ export async function updateAgent(
   // kept rather than dropped as unknown.
   const projectIds =
     patch.projectIds !== undefined
-      ? await setAgentProjects(agent, patch.projectIds)
+      ? await setAgentProjects(db, agent, patch.projectIds)
       : agent.projects.map((p) => p.id);
   if (patch.fieldTriggers !== undefined) {
-    await setFieldTriggers(id, projectIds, patch.fieldTriggers);
+    await setFieldTriggers(db, id, projectIds, patch.fieldTriggers);
   }
-  if (invocationUrl) await ensureInvocationSecret(id);
+  if (invocationUrl) await ensureInvocationSecret(db, id);
 
-  return getAgentById(id, teamId);
+  return getAgentById(db, id, teamId);
 }
 
 // Replaces the agent's API key: deletes the current key row(s) for the bot user
 // and issues a new one. Returns the new plaintext secret, or null if the agent
 // does not exist. There is no atomic rotate in the plugin, so this is delete+create.
 // An internal agent's new secret is re-encrypted onto its row for its runtime.
-export async function regenerateKey(id: number, teamId: number): Promise<string | null> {
-  const agent = await getAgentById(id, teamId);
+export async function regenerateKey(
+  db: Db,
+  auth: AgentKeyAuth,
+  id: number,
+  teamId: number,
+): Promise<string | null> {
+  const agent = await getAgentById(db, id, teamId);
   if (!agent) return null;
   await db.delete(apikey).where(eq(apikey.referenceId, agent.userId));
-  const apiKey = await issueKey(agent.userId, agent.name);
-  if (agent.kind === 'internal') await storeAgentKey(agent.id, apiKey);
+  const { key: apiKey } = await issueKey(db, auth, agent.userId, agent.name);
+  if (agent.kind === 'internal') await storeAgentKey(db, agent.id, apiKey);
   return apiKey;
 }
 
@@ -934,17 +1008,19 @@ export async function regenerateKey(id: number, teamId: number): Promise<string 
 // Deleting the user cascades to the ai_agent row (ON DELETE CASCADE on user_id), sets
 // assignee_user_id to NULL on every issue the agent was on, and nulls the actor on its
 // activity.
-export async function deleteAgent(id: number, teamId: number): Promise<boolean> {
-  const agent = await getAgentById(id, teamId);
+export async function deleteAgent(rt: AgentRuntime, id: number, teamId: number): Promise<boolean> {
+  const { db } = rt;
+  const agent = await getAgentById(db, id, teamId);
   if (!agent) return false;
-  await deleteThreadsWhere({ agentId: id });
+  await deleteThreadsWhere(rt, { agentId: id });
   await db.delete(apikey).where(eq(apikey.referenceId, agent.userId));
-  await deleteAccount(agent.userId);
+  await deleteAccount(db, agent.userId);
   return true;
 }
 
 // True if the agent belongs to the team (guards addressing an agent by id).
 export async function agentInTeam(
+  db: Db,
   agentId: number,
   teamId: number,
   visibleTo?: string,
@@ -964,7 +1040,11 @@ export async function agentInTeam(
 }
 
 // True if the agent works in the project (guards naming an agent for work there).
-export async function agentWorksInProject(agentId: number, projectId: number): Promise<boolean> {
+export async function agentWorksInProject(
+  db: Db,
+  agentId: number,
+  projectId: number,
+): Promise<boolean> {
   const rows = await db
     .select({ id: aiAgent.id })
     .from(aiAgent)
