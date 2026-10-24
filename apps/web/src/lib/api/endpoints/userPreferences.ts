@@ -5,8 +5,7 @@ import type { HotkeyOverrides } from '@/lib/api/endpoints/settings';
 // The signed-in user's interface preferences, held per account so they apply on
 // every device. timezone is an IANA zone name the app renders stored UTC timestamps
 // in; issueOpenMode decides whether a clicked issue opens in the side panel or on
-// its own page; startPage is the section the app root lands on; showChatByDefault
-// keeps the floating AI chat button on screen from the start; lastProjectId is the
+// its own page; startPage is the section the app root lands on; lastProjectId is the
 // project the app root reopens (null until the user has opened one).
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -26,7 +25,6 @@ export interface AccountPreferences {
   theme: ThemePreference;
   issueOpenMode: IssueOpenMode;
   startPage: StartPage;
-  showChatByDefault: boolean;
   // How the status stats section of an issue starts out, and the shape its activity
   // log starts in. Switching either on an issue is not saved — it lasts as long as
   // that issue stays open.

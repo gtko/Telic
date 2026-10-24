@@ -12,7 +12,6 @@ import type { ProjectDefaults } from '@/lib/api/endpoints/projects';
 import { nextPageParam, type PageParams } from '@/lib/api/core/paging';
 import { DEFAULT_PAGE_SIZE } from '@/hooks/usePaging';
 import {
-  type AgentSettings,
   type InstanceAuthSettingsPatch,
   type InstanceEmailSettingsPatch,
   type InstanceGoogleSettingsPatch,
@@ -32,8 +31,6 @@ import {
   updateInstanceTelegramSettings,
   getInstanceProjectDefaults,
   updateInstanceProjectDefaults,
-  getInstanceAgentSettings,
-  updateInstanceAgentSettings,
   getInstanceStorageSettings,
   updateInstanceStorageSettings,
   listInstanceUsers,
@@ -170,22 +167,6 @@ export function useUpdateInstanceProjectDefaults() {
   return useMutation({
     mutationFn: (body: ProjectDefaults) => updateInstanceProjectDefaults(body),
     onSuccess: (data) => qc.setQueryData(qk.instanceProjectDefaults, data),
-  });
-}
-
-// What applies to every team's agents: how long their run traces are kept.
-export function useInstanceAgentSettingsQuery() {
-  return useQuery({
-    queryKey: qk.instanceAgentSettings,
-    queryFn: () => getInstanceAgentSettings(),
-  });
-}
-
-export function useUpdateInstanceAgentSettings() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Partial<AgentSettings>) => updateInstanceAgentSettings(body),
-    onSuccess: (data) => qc.setQueryData(qk.instanceAgentSettings, data),
   });
 }
 

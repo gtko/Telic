@@ -12,7 +12,6 @@ import AssigneeSelect from '@/components/common/fields/AssigneeSelect';
 import DatePill from '@/components/common/fields/DatePill';
 import { Pill } from '@/components/common/fields/Pill';
 import ReadOnlyPill from '@/components/common/fields/ReadOnlyPill';
-import DelegateSelect from '../fields/DelegateSelect';
 import LabelsSelect from '@/components/common/fields/LabelsSelect';
 import PrioritySelect from '@/components/common/fields/PrioritySelect';
 import StatusSelect from '@/components/common/fields/StatusSelect';
@@ -80,7 +79,6 @@ export default function IssueProperties({
 }) {
   const t = useTranslations('issue.fields');
   const hasMembers = project.assignees.some((a) => a.kind === 'member');
-  const hasAgents = project.assignees.some((a) => a.kind === 'agent');
   // The calendars grey out days that would put one date on the wrong side of the
   // other: the start no later than the due date, the due date no earlier than the
   // start. Equal dates are allowed.
@@ -131,17 +129,6 @@ export default function IssueProperties({
               assignees={project.assignees}
               value={issue.assigneeUserId}
               onChange={(userId) => onPatch({ assigneeUserId: userId })}
-              readOnly={readOnly}
-            />
-          </IssuePropertyRow>
-        ),
-
-        hasAgents && (
-          <IssuePropertyRow key="delegate" label={t('delegate')}>
-            <DelegateSelect
-              assignees={project.assignees}
-              value={issue.delegateUserId}
-              onChange={(userId) => onPatch({ delegateUserId: userId })}
               readOnly={readOnly}
             />
           </IssuePropertyRow>

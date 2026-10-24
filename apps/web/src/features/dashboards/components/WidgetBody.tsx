@@ -7,10 +7,7 @@ import BurnupWidget from './widgets/BurnupWidget';
 import PulseWidget from './widgets/PulseWidget';
 import RecentIssuesWidget from './widgets/RecentIssuesWidget';
 import ActivityFeedWidget from './widgets/ActivityFeedWidget';
-import AgentRunsWidget from './widgets/AgentRunsWidget';
-import AgentHealthWidget from './widgets/AgentHealthWidget';
 import WebhookHealthWidget from './widgets/WebhookHealthWidget';
-import AgentWorkloadWidget from './widgets/AgentWorkloadWidget';
 
 // The widget body for a given type. Each widget reads its own config and analytics
 // query and renders a static view; its config is edited through WidgetSettings.
@@ -39,14 +36,8 @@ export default function WidgetBody({
       return <RecentIssuesWidget projectKey={projectKey} config={config} />;
     case 'activity_feed':
       return <ActivityFeedWidget projectKey={projectKey} project={project} config={config} />;
-    case 'agent_runs':
-      return <AgentRunsWidget projectKey={projectKey} config={config} />;
-    case 'agent_health':
-      return <AgentHealthWidget projectKey={projectKey} config={config} />;
     case 'webhook_health':
       return <WebhookHealthWidget projectKey={projectKey} config={config} />;
-    case 'agent_workload':
-      return <AgentWorkloadWidget projectKey={projectKey} />;
     default:
       return null;
   }

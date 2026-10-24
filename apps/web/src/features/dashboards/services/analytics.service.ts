@@ -11,10 +11,7 @@ import {
   getBurnup,
   getPulse,
   getThroughput,
-  getAgentRuns,
-  getAgentRunStats,
   getWebhookStats,
-  getAgentWorkload,
   listActivity,
 } from '@/lib/api/endpoints/analytics';
 import type { BreakdownBy } from '@/utils/dashboardWidgets';
@@ -55,34 +52,10 @@ export function useBurnupQuery(projectKey: string, params: BurnupParams) {
   });
 }
 
-export function useAgentRunsQuery(
-  projectKey: string,
-  params: { status: string | null; limit: number },
-) {
-  return useQuery({
-    queryKey: qk.analytics(projectKey, 'agent-runs', params),
-    queryFn: () => getAgentRuns(projectKey, params),
-  });
-}
-
-export function useAgentRunStatsQuery(projectKey: string, days: number) {
-  return useQuery({
-    queryKey: qk.analytics(projectKey, 'agent-run-stats', { days }),
-    queryFn: () => getAgentRunStats(projectKey, days),
-  });
-}
-
 export function useWebhookStatsQuery(projectKey: string, days: number) {
   return useQuery({
     queryKey: qk.analytics(projectKey, 'webhook-stats', { days }),
     queryFn: () => getWebhookStats(projectKey, days),
-  });
-}
-
-export function useAgentWorkloadQuery(projectKey: string) {
-  return useQuery({
-    queryKey: qk.analytics(projectKey, 'agent-workload'),
-    queryFn: () => getAgentWorkload(projectKey),
   });
 }
 

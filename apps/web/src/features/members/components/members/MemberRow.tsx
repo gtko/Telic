@@ -11,7 +11,6 @@ import { TableCell, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSession } from '@/lib/auth-client';
-import MemberAgentBadge from './MemberAgentBadge';
 import MemberProvisionedBadge from '@/components/common/MemberProvisionedBadge';
 import MemberRoleControl from './MemberRoleControl';
 import MemberDescription from './MemberDescription';
@@ -71,9 +70,7 @@ export default function MemberRow({
                 {provisioned && <MemberProvisionedBadge />}
               </span>
               <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                {member.isAgent ? (
-                  <MemberAgentBadge />
-                ) : (
+                {member.isAgent ? null : (
                   <>
                     {member.username && (
                       <>

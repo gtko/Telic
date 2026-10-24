@@ -67,7 +67,6 @@ function useRoleMutation<TInput, TResult>(
       qc.invalidateQueries({ queryKey: qk.teams });
       qc.invalidateQueries({ queryKey: qk.anyRoleUsage });
       qc.invalidateQueries({ queryKey: qk.anyMembers });
-      qc.invalidateQueries({ queryKey: qk.anyAiAgents });
       qc.invalidateQueries({ queryKey: qk.anyInvites });
       qc.invalidateQueries({ queryKey: qk.anyTeamInvites });
     },

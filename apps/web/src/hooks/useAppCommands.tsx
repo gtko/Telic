@@ -1,4 +1,4 @@
-import { LayoutGrid, ListChecks, MessagesSquare, Plus, SquarePlus, Target } from 'lucide-react';
+import { LayoutGrid, ListChecks, Plus, SquarePlus, Target } from 'lucide-react';
 import type { Project } from '@/lib/api/endpoints/projects';
 import { useTranslations } from 'next-intl';
 import { VIEWS, type WorkItemsView } from '@/utils/viewTypes';
@@ -23,7 +23,6 @@ export function useAppCommands({
   onNewInitiative,
   onNewProject,
   onSelectProject,
-  onToggleChat,
 }: {
   hasProject: boolean;
   initiativesEnabled: boolean;
@@ -39,7 +38,6 @@ export function useAppCommands({
   // null when the user manages no team, so has nowhere to create a project.
   onNewProject: (() => void) | null;
   onSelectProject: (key: string) => void;
-  onToggleChat: () => void;
 }): {
   board: CommandSection | null;
   general: CommandSection | null;
@@ -95,16 +93,6 @@ export function useAppCommands({
       keywords: 'create add goal',
       shortcut: hotkey('initiative.new') ?? undefined,
       run: onNewInitiative,
-    });
-  }
-  if (hasProject && can('ai_agents', 'read')) {
-    generalItems.push({
-      id: 'general.ai-chat',
-      label: tPalette('toggleChat'),
-      icon: <MessagesSquare />,
-      keywords: 'ai agents chat panel',
-      shortcut: hotkey('chat.toggle') ?? undefined,
-      run: onToggleChat,
     });
   }
   if (onNewProject) {

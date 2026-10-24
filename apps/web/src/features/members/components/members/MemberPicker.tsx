@@ -15,7 +15,6 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import MemberAgentBadge from './MemberAgentBadge';
 
 // Who the dialog is about to put in the project: someone already in the team, or an
 // address that gets an invite.
@@ -108,7 +107,6 @@ export default function MemberPicker({
                         </span>
                       )}
                     </div>
-                    {candidate.isAgent && <MemberAgentBadge />}
                     {picked === candidate.userId && <Check className="size-4 shrink-0" />}
                   </CommandItem>
                 ))}

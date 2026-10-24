@@ -6,12 +6,11 @@ import BurnupWidgetSettings from './widgets/BurnupWidgetSettings';
 import PulseWidgetSettings from './widgets/PulseWidgetSettings';
 import RecentIssuesWidgetSettings from './widgets/RecentIssuesWidgetSettings';
 import ActivityFeedWidgetSettings from './widgets/ActivityFeedWidgetSettings';
-import AgentRunsWidgetSettings from './widgets/AgentRunsWidgetSettings';
 import WidgetDaysSettings from './widgets/WidgetDaysSettings';
 
 // Widget types with nothing to configure. The header hides its settings button for
 // them, so the popover is never empty.
-const WITHOUT_SETTINGS: WidgetType[] = ['agent_workload'];
+const WITHOUT_SETTINGS: WidgetType[] = [];
 
 export function hasWidgetSettings(type: WidgetType): boolean {
   return !WITHOUT_SETTINGS.includes(type);
@@ -43,9 +42,6 @@ export default function WidgetSettings({
       return <RecentIssuesWidgetSettings config={config} onConfigChange={onConfigChange} />;
     case 'activity_feed':
       return <ActivityFeedWidgetSettings config={config} onConfigChange={onConfigChange} />;
-    case 'agent_runs':
-      return <AgentRunsWidgetSettings config={config} onConfigChange={onConfigChange} />;
-    case 'agent_health':
     case 'webhook_health':
       return <WidgetDaysSettings config={config} onConfigChange={onConfigChange} />;
     default:

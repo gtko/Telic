@@ -2,14 +2,12 @@
 // instance runs. The hosted build points the alias at its own module exporting the
 // same names, so a cloud-only part is imported from here and nowhere else.
 export { default as AfterSignIn } from './AfterSignIn';
-export { default as AgentAnalyticsExtras } from './AgentAnalyticsExtras';
 export { default as BrandMark } from './BrandMark';
 export { default as BrandPanel } from './BrandPanel';
 export { default as GodSectionExtras } from './GodSectionExtras';
 export { default as godSections } from './godSections';
 export { cloudMessages, loadCloudMessages } from './messages';
 export { default as NoTeamStart } from './NoTeamStart';
-export { default as ScheduleDialog } from './ScheduleDialog';
 export { default as ShellNotice } from './ShellNotice';
 export { default as SignInExtras } from './SignInExtras';
 export { default as SignInPage } from './SignInPage';

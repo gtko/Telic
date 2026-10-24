@@ -15,10 +15,7 @@ export type WidgetType =
   | 'throughput'
   | 'burnup'
   | 'breakdown'
-  | 'agent_runs'
-  | 'agent_health'
-  | 'webhook_health'
-  | 'agent_workload';
+  | 'webhook_health';
 
 export type BreakdownBy = 'status' | 'priority' | 'type' | 'assignee' | 'delegate';
 
@@ -58,9 +55,7 @@ export interface WidgetConfig {
   weeks?: number;
   // breakdown
   by?: BreakdownBy;
-  // agent_runs — the run status filter (null = all)
-  runStatus?: 'pending' | 'success' | 'failed' | null;
-  // agent_health, webhook_health and burnup — the window in days
+  // webhook_health and burnup — the window in days
   days?: number;
   // burnup — one initiative, or null for the whole project
   initiativeId?: number | null;
@@ -103,10 +98,7 @@ export const WIDGET_DEFAULTS: Record<
     config: { days: 90, initiativeId: null, forecastWeeks: 4, forecast: 'range' },
   },
   breakdown: { w: 6, h: 6, minH: 5, config: { by: 'status' } },
-  agent_runs: { w: 6, h: 7, minH: 3, config: { limit: 20 } },
-  agent_health: { w: 3, h: 3, minH: 3, config: { days: 30 } },
   webhook_health: { w: 3, h: 3, minH: 3, config: { days: 30 } },
-  agent_workload: { w: 6, h: 6, minH: 3, config: {} },
 };
 
 // A fresh widget instance with a unique id and the type's default size/config.

@@ -20,54 +20,25 @@ function assignee(over: Partial<Assignee>): Assignee {
 }
 
 describe('mentionCandidatesFrom', () => {
-  it('offers people and the agents a mention by this user would start', () => {
-    const offered = mentionCandidatesFrom(
-      [
-        assignee({ username: 'ana' }),
-        assignee({ username: 'refinar', kind: 'agent', respondsToMention: true }),
-        assignee({ username: 'consultas', kind: 'agent', respondsToMention: false }),
-        assignee({
-          username: 'mine',
-          kind: 'agent',
-          respondsToMention: true,
-          restrictedToUserId: 'me',
-        }),
-        assignee({
-          username: 'theirs',
-          kind: 'agent',
-          respondsToMention: true,
-          restrictedToUserId: 'someone-else',
-        }),
-        assignee({ username: null }),
-      ],
-      'me',
-    );
+  it('offers the people that have a handle', () => {
+    const offered = mentionCandidatesFrom([
+      assignee({ username: 'ana' }),
+      assignee({ username: 'bot', kind: 'agent' }),
+      assignee({ username: null }),
+    ]);
 
     assert.deepEqual(
       offered.map((c) => c.username),
-      ['ana', 'refinar', 'mine'],
+      ['ana'],
     );
   });
 });
 
 // The comment box filters the project's assignees with this, as the editors do.
 describe('offersMention', () => {
-  it('offers people with a handle and the agents that answer mentions', () => {
-    assert.equal(offersMention(assignee({ username: 'ana' }), 'me'), true);
-    assert.equal(
-      offersMention(
-        assignee({ username: 'refinar', kind: 'agent', respondsToMention: true }),
-        'me',
-      ),
-      true,
-    );
-    assert.equal(
-      offersMention(
-        assignee({ username: 'higiene', kind: 'agent', respondsToMention: false }),
-        'me',
-      ),
-      false,
-    );
-    assert.equal(offersMention(assignee({ username: null }), 'me'), false);
+  it('offers people with a handle only', () => {
+    assert.equal(offersMention(assignee({ username: 'ana' })), true);
+    assert.equal(offersMention(assignee({ username: 'bot', kind: 'agent' })), false);
+    assert.equal(offersMention(assignee({ username: null })), false);
   });
 });

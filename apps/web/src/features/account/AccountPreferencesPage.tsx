@@ -172,19 +172,6 @@ export default function AccountPreferencesPage() {
         </AccountPreferenceRow>
       </AccountPreferencesSection>
 
-      <AccountPreferencesSection id="ai-chat" title={t('sections.aiChat')}>
-        <AccountPreferenceRow
-          label={t('showChatByDefault')}
-          description={t('showChatByDefaultDescription')}
-        >
-          <Switch
-            checked={prefs.showChatByDefault}
-            onCheckedChange={(showChatByDefault) => save({ showChatByDefault })}
-            disabled={disabled}
-          />
-        </AccountPreferenceRow>
-      </AccountPreferencesSection>
-
       <AccountPreferencesSection
         id="shortcuts"
         title={t('sections.shortcuts')}

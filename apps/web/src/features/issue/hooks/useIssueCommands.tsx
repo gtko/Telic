@@ -3,7 +3,6 @@ import { toast } from 'sonner';
 import {
   Archive,
   ArchiveRestore,
-  Bot,
   CalendarClock,
   CircleDashed,
   ClipboardCopy,
@@ -40,7 +39,6 @@ import { StateIcon } from '../components/shared/IssueIcons';
 import { dueDatePresets } from '../utils/dueDatePresets';
 import { useDueDatePresetLabel } from './useDueDatePresetLabel';
 import { buildIssuePrompt } from '../utils/issuePrompt';
-import { delegatableAgents } from '../utils/delegates';
 
 // The palette commands for the issue the user is looking at — the issue page or
 // the open detail panel. They are the context menu's actions in command form and
@@ -99,7 +97,6 @@ export function useIssueCommands(
   const canDelete = can('work_items', 'delete');
   const patch = (fields: IssuePatch) => updateIssue.mutate({ id: issue.id, patch: fields });
   const members = project.assignees.filter((a) => a.kind === 'member');
-  const agents = delegatableAgents(project.assignees, session?.user.id ?? null);
   const actions = matchedActions(actionsQuery.data ?? [], project, issue);
   const currentColumn = project.columns.find((c) => c.id === issue.columnId);
 
@@ -199,35 +196,6 @@ export function useIssueCommands(
               icon: <User />,
               checked: a.userId === issue.assigneeUserId,
               run: () => patch({ assigneeUserId: a.userId }),
-            })),
-          ],
-        },
-      });
-    }
-
-    if (agents.length > 0) {
-      items.push({
-        id: 'issue.delegate',
-        label: t('delegate'),
-        icon: <Bot />,
-        keywords: 'ai bot',
-        submenu: {
-          heading: t('delegate'),
-          placeholder: t('delegatePlaceholder'),
-          items: [
-            {
-              id: 'issue.delegate.none',
-              label: t('noDelegate'),
-              icon: <CircleDashed />,
-              checked: issue.delegateUserId == null,
-              run: () => patch({ delegateUserId: null }),
-            },
-            ...agents.map((a) => ({
-              id: `issue.delegate.${a.userId}`,
-              label: a.name,
-              icon: <Bot />,
-              checked: a.userId === issue.delegateUserId,
-              run: () => patch({ delegateUserId: a.userId }),
             })),
           ],
         },
