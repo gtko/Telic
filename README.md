@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="It's a Plan — open-source project management and issue tracking where people and AI agents ship together" width="100%" />
+<img src="assets/banner.png" alt="Telic — open-source project management and issue tracking where people and AI agents ship together" width="100%" />
 
 ### Project management and issue tracking where people and AI agents ship together
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![CI](https://github.com/croffasia/itsaplan/actions/workflows/ci.yml/badge.svg)](https://github.com/croffasia/itsaplan/actions/workflows/ci.yml)
+[![CI](https://github.com/gtko/Telic/actions/workflows/ci.yml/badge.svg)](https://github.com/gtko/Telic/actions/workflows/ci.yml)
 
 </div>
 

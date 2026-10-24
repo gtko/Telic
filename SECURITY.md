@@ -11,7 +11,7 @@ are applied to `main`. There is no backporting to older tags yet.
 
 Report it privately through GitHub Security Advisories:
 
-<https://github.com/croffasia/itsaplan/security/advisories/new>
+<https://github.com/gtko/Telic/security/advisories/new>
 
 Include:
 
