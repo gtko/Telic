@@ -39,9 +39,9 @@ export const agentInvocationRoutes = new Elysia({
 
   .get(
     '/teams/:teamId/ai-agents/:agentId/invocation-secret',
-    async ({ params, membership }) => {
+    async ({ db, params, membership }) => {
       await requireExternalAgent(params.agentId, membership);
-      return { secret: await readInvocationSecret(params.agentId) };
+      return { secret: await readInvocationSecret(db, params.agentId) };
     },
     {
       params: agentParams,
@@ -59,9 +59,9 @@ export const agentInvocationRoutes = new Elysia({
 
   .post(
     '/teams/:teamId/ai-agents/:agentId/invocation-secret',
-    async ({ params, membership }) => {
+    async ({ db, params, membership }) => {
       await requireExternalAgent(params.agentId, membership);
-      return { secret: await rotateInvocationSecret(params.agentId) };
+      return { secret: await rotateInvocationSecret(db, params.agentId) };
     },
     {
       params: agentParams,

@@ -4,6 +4,7 @@ import { guards } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
 import { projectsWithPermission, requireUser, type TeamMembership } from '#shared/access';
 import { HttpError } from '#shared/lib';
+import type { Db } from '@repo/db';
 import { accessErrors, commonErrors, errors } from '#shared/responses';
 import { mcpTool } from '#mcp/generate';
 import { teamParams } from '#modules/teams/model';
@@ -59,6 +60,7 @@ import { peoplePreamble } from './prompt/run-context';
 import { attachmentPreamble, chartPreamble } from './prompt/framing';
 import type { SessionUser } from '#shared/auth-context';
 import { listAgentRuns } from './run-queue';
+import { agentRuntime, type AgentRuntime } from './runtime/bindings';
 import { getAgentTrace, listAgentTraces } from './runtime/traces';
 import {
   analyticsProjects,
@@ -114,21 +116,48 @@ async function* runFrames(events: AsyncIterable<AgentRunEvent>): AsyncGenerator<
 // Where a thread of this agent is kept: an external agent's conversations are held by
 // the chat feed its runner drains, an internal agent's by the runtime memory. The routes
 // below serve both through the same shapes.
-function threadStore(kind: AgentKind) {
+function threadStore(kind: AgentKind, rt: AgentRuntime) {
+  const { db } = rt;
   return kind === 'external'
     ? {
-        list: listExternalThreads,
-        messages: getExternalThreadMessages,
-        rename: renameExternalThread,
-        remove: deleteExternalThread,
-        owns: ownsExternalThread,
+        list: (
+          ...args: Parameters<typeof listExternalThreads> extends [Db, ...infer R] ? R : never
+        ) => listExternalThreads(db, ...args),
+        messages: (
+          ...args: Parameters<typeof getExternalThreadMessages> extends [Db, ...infer R] ? R : never
+        ) => getExternalThreadMessages(db, ...args),
+        rename: (
+          ...args: Parameters<typeof renameExternalThread> extends [Db, ...infer R] ? R : never
+        ) => renameExternalThread(db, ...args),
+        remove: (
+          ...args: Parameters<typeof deleteExternalThread> extends [Db, ...infer R] ? R : never
+        ) => deleteExternalThread(db, ...args),
+        owns: (
+          ...args: Parameters<typeof ownsExternalThread> extends [Db, ...infer R] ? R : never
+        ) => ownsExternalThread(db, ...args),
       }
     : {
-        list: listChatThreads,
-        messages: getChatThreadMessages,
-        rename: renameChatThread,
-        remove: deleteChatThread,
-        owns: ownsChatThread,
+        list: (
+          ...args: Parameters<typeof listChatThreads> extends [AgentRuntime, ...infer R] ? R : never
+        ) => listChatThreads(rt, ...args),
+        messages: (
+          ...args: Parameters<typeof getChatThreadMessages> extends [AgentRuntime, ...infer R]
+            ? R
+            : never
+        ) => getChatThreadMessages(rt, ...args),
+        rename: (
+          ...args: Parameters<typeof renameChatThread> extends [AgentRuntime, ...infer R]
+            ? R
+            : never
+        ) => renameChatThread(rt, ...args),
+        remove: (
+          ...args: Parameters<typeof deleteChatThread> extends [AgentRuntime, ...infer R]
+            ? R
+            : never
+        ) => deleteChatThread(rt, ...args),
+        owns: (
+          ...args: Parameters<typeof ownsChatThread> extends [AgentRuntime, ...infer R] ? R : never
+        ) => ownsChatThread(rt, ...args),
       };
 }
 
@@ -139,13 +168,14 @@ const DEFAULT_ANALYTICS_DAYS = 30;
 // themselves. The list names the project in the query and one trace carries it in its own
 // metadata, so a trace that names none is refused to everyone else.
 async function assertTraceScope(
+  db: Db,
   membership: TeamMembership,
   projectId: number | null,
 ): Promise<void> {
   if (runsTeam(membership.role)) return;
   const mine =
     projectId != null &&
-    (await memberProjectIds(membership.teamId, membership.userId)).includes(projectId);
+    (await memberProjectIds(db, membership.teamId, membership.userId)).includes(projectId);
   if (!mine) {
     throw new HttpError(403, 'You can only read the traces of a project you are a member of');
   }
@@ -153,8 +183,8 @@ async function assertTraceScope(
 
 // The agent a :agentId path addresses, scoped by agentScopeOf — one of another team, and
 // one of a project the caller is not in, both read as missing.
-async function requireVisibleAgent(agentId: number, membership: TeamMembership) {
-  const agent = await getAgentById(agentId, membership.teamId, agentScopeOf(membership));
+async function requireVisibleAgent(db: Db, agentId: number, membership: TeamMembership) {
+  const agent = await getAgentById(db, agentId, membership.teamId, agentScopeOf(membership));
   if (!agent) throw new HttpError(404, 'Agent not found');
   return agent;
 }
@@ -164,12 +194,13 @@ async function requireVisibleAgent(agentId: number, membership: TeamMembership) 
 // themselves. A project outside that set is refused. One the agent already works in
 // and the caller cannot see is kept, so a partial view never detaches it.
 async function resolveAgentProjects(
+  db: Db,
   membership: TeamMembership,
   next: number[] | undefined,
   current: { id: number }[],
 ): Promise<number[] | undefined> {
   if (next == null || runsTeam(membership.role)) return next;
-  const mine = new Set(await memberProjectIds(membership.teamId, membership.userId));
+  const mine = new Set(await memberProjectIds(db, membership.teamId, membership.userId));
   if (next.some((id) => !mine.has(id))) {
     throw new HttpError(403, 'You can only attach an agent to a project you are a member of');
   }
@@ -197,10 +228,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   .use(guards)
   .get(
     '/teams/:teamId/ai-agents',
-    async ({ membership, query }) =>
+    async ({ db, membership, query }) =>
       withCanManage(
+        db,
         membership,
-        await listAgents(membership.teamId, query.projectId, agentScopeOf(membership)),
+        await listAgents(db, membership.teamId, query.projectId, agentScopeOf(membership)),
       ),
     {
       params: teamParams,
@@ -219,9 +251,9 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .get(
     '/teams/:teamId/ai-agents/:agentId',
-    async ({ params, membership }) => {
-      const [agent] = await withCanManage(membership, [
-        await requireVisibleAgent(params.agentId, membership),
+    async ({ db, params, membership }) => {
+      const [agent] = await withCanManage(db, membership, [
+        await requireVisibleAgent(db, params.agentId, membership),
       ]);
       return agent;
     },
@@ -242,15 +274,15 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // runs in-process and has no key, so apiKey comes back null.
   .post(
     '/teams/:teamId/ai-agents',
-    async ({ membership, body, set, user }) => {
-      const projectIds = await resolveAgentProjects(membership, body.projectIds, []);
+    async ({ db, auth, membership, body, set, user }) => {
+      const projectIds = await resolveAgentProjects(db, membership, body.projectIds, []);
       set.status = 201;
-      const created = await createAgent(membership.teamId, {
+      const created = await createAgent(db, auth, membership.teamId, {
         ...body,
         projectIds,
         ownerUserId: requireUser(user).id,
       });
-      const [agent] = await withCanManage(membership, [created.agent]);
+      const [agent] = await withCanManage(db, membership, [created.agent]);
       return { ...created, agent };
     },
     {
@@ -270,18 +302,24 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .patch(
     '/teams/:teamId/ai-agents/:agentId',
-    async ({ params, membership, body, user }) => {
-      const current = await requireVisibleAgent(params.agentId, membership);
-      await assertFullAgentAccess(membership, params.agentId);
-      const projectIds = await resolveAgentProjects(membership, body.projectIds, current.projects);
+    async ({ db, params, membership, body, user }) => {
+      const current = await requireVisibleAgent(db, params.agentId, membership);
+      await assertFullAgentAccess(db, membership, params.agentId);
+      const projectIds = await resolveAgentProjects(
+        db,
+        membership,
+        body.projectIds,
+        current.projects,
+      );
       const agent = await updateAgent(
+        db,
         params.agentId,
         membership.teamId,
         { ...body, projectIds },
         requireUser(user).id,
       );
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const [withAccess] = await withCanManage(membership, [agent]);
+      const [withAccess] = await withCanManage(db, membership, [agent]);
       return withAccess;
     },
     {
@@ -301,17 +339,23 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // a project, so this is both the attach and the detach: the set is replaced.
   .put(
     '/teams/:teamId/ai-agents/:agentId/projects',
-    async ({ params, membership, body, user }) => {
-      const current = await requireVisibleAgent(params.agentId, membership);
-      const projectIds = await resolveAgentProjects(membership, body.projectIds, current.projects);
+    async ({ db, params, membership, body, user }) => {
+      const current = await requireVisibleAgent(db, params.agentId, membership);
+      const projectIds = await resolveAgentProjects(
+        db,
+        membership,
+        body.projectIds,
+        current.projects,
+      );
       const agent = await updateAgent(
+        db,
         params.agentId,
         membership.teamId,
         { projectIds },
         requireUser(user).id,
       );
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const [withAccess] = await withCanManage(membership, [agent]);
+      const [withAccess] = await withCanManage(db, membership, [agent]);
       return withAccess;
     },
     {
@@ -334,12 +378,12 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // Only external agents have a key; regenerating on an internal agent is a 400.
   .post(
     '/teams/:teamId/ai-agents/:agentId/regenerate-key',
-    async ({ params, membership }) => {
-      const agent = await requireVisibleAgent(params.agentId, membership);
-      await assertFullAgentAccess(membership, params.agentId);
+    async ({ db, auth, params, membership }) => {
+      const agent = await requireVisibleAgent(db, params.agentId, membership);
+      await assertFullAgentAccess(db, membership, params.agentId);
       if (agent.kind !== 'external')
         throw new HttpError(400, 'Internal agents do not use an API key');
-      const apiKey = await regenerateKey(params.agentId, membership.teamId);
+      const apiKey = await regenerateKey(db, auth, params.agentId, membership.teamId);
       if (apiKey == null) throw new HttpError(404, 'Agent not found');
       return { apiKey };
     },
@@ -362,12 +406,12 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // reader is a member of — seeing the agent is not seeing what it did everywhere.
   .get(
     '/teams/:teamId/ai-agents/:agentId/runs',
-    async ({ params, membership, query }) => {
-      await requireVisibleAgent(params.agentId, membership);
+    async ({ db, params, membership, query }) => {
+      await requireVisibleAgent(db, params.agentId, membership);
       const projectIds = runsTeam(membership.role)
         ? undefined
-        : await memberProjectIds(membership.teamId, membership.userId);
-      return listAgentRuns(params.agentId, {
+        : await memberProjectIds(db, membership.teamId, membership.userId);
+      return listAgentRuns(db, params.agentId, {
         before: query.before,
         limit: query.limit,
         projectIds,
@@ -392,11 +436,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // run history and its trace name each other.
   .get(
     '/teams/:teamId/ai-agents/:agentId/traces',
-    async ({ params, membership, query }) => {
-      await requireVisibleAgent(params.agentId, membership);
-      await assertTraceScope(membership, query.projectId ?? null);
+    async ({ db, params, membership, query }) => {
+      await requireVisibleAgent(db, params.agentId, membership);
+      await assertTraceScope(db, membership, query.projectId ?? null);
       return paginate(query, (window) =>
-        listAgentTraces(params.agentId, membership.userId, {
+        listAgentTraces(db, params.agentId, membership.userId, {
           ...window,
           projectId: query.projectId,
         }),
@@ -419,11 +463,16 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .get(
     '/teams/:teamId/ai-agents/:agentId/traces/:traceId',
-    async ({ params, membership }) => {
-      await requireVisibleAgent(params.agentId, membership);
-      const trace = await getAgentTrace(params.agentId, params.traceId, membership.userId);
+    async ({ db, env, auth, params, membership }) => {
+      await requireVisibleAgent(db, params.agentId, membership);
+      const trace = await getAgentTrace(
+        agentRuntime(env, auth),
+        params.agentId,
+        params.traceId,
+        membership.userId,
+      );
       if (!trace) throw new HttpError(404, 'Trace not found');
-      await assertTraceScope(membership, trace.trace.projectId);
+      await assertTraceScope(db, membership, trace.trace.projectId);
       return trace;
     },
     {
@@ -441,17 +490,18 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .get(
     '/teams/:teamId/agent-analytics',
-    async ({ membership, query }) => {
+    async ({ db, membership, query }) => {
       const scope = {
         teamIds: [membership.teamId],
-        projectIds: await projectsWithPermission(membership, 'agent_usage', 'read'),
+        projectIds: await projectsWithPermission(db, membership, 'agent_usage', 'read'),
       };
       const [analytics, readableProjects] = await Promise.all([
         getAgentAnalytics(
+          db,
           onlyProject(scope, query.projectId),
           query.days ?? DEFAULT_ANALYTICS_DAYS,
         ),
-        analyticsProjects(scope),
+        analyticsProjects(db, scope),
       ]);
       return { ...analytics, readableProjects };
     },
@@ -473,9 +523,10 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .get(
     '/workspaces/:workspaceId/agent-analytics',
-    async ({ standing, query }) =>
+    async ({ db, standing, query }) =>
       getAgentAnalytics(
-        await workspaceScope(standing.workspaceId),
+        db,
+        await workspaceScope(db, standing.workspaceId),
         query.days ?? DEFAULT_ANALYTICS_DAYS,
       ),
     {
@@ -494,10 +545,10 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .delete(
     '/teams/:teamId/ai-agents/:agentId',
-    async ({ params, membership }) => {
-      await requireVisibleAgent(params.agentId, membership);
-      await assertFullAgentAccess(membership, params.agentId);
-      const ok = await deleteAgent(params.agentId, membership.teamId);
+    async ({ env, db, params, membership }) => {
+      await requireVisibleAgent(db, params.agentId, membership);
+      await assertFullAgentAccess(db, membership, params.agentId);
+      const ok = await deleteAgent(agentRuntime(env, auth), params.agentId, membership.teamId);
       if (!ok) throw new HttpError(404, 'Agent not found');
       return noContent();
     },
@@ -517,8 +568,9 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // project of this path, which it has to be a member of.
   .post(
     '/projects/:projectKey/ai-agents/:agentId/run',
-    async ({ params, project, body, user }) =>
+    async ({ env, auth, params, project, body, user }) =>
       runAgent(
+        agentRuntime(env, auth),
         params.agentId,
         project.id,
         body.prompt,
@@ -549,10 +601,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // nobody reading it.
   .post(
     '/projects/:projectKey/ai-agents/:agentId/run/stream',
-    ({ params, project, body, user, request }) =>
+    ({ env, auth, params, project, body, user, request }) =>
       sseResponse(
         runFrames(
           streamAgent(
+            agentRuntime(env, auth),
             params.agentId,
             project.id,
             body.prompt,
@@ -583,11 +636,15 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // conversations. `q` searches them and `favorites` returns the starred ones instead.
   .get(
     '/projects/:projectKey/ai-agents/:agentId/threads',
-    async ({ params, project, query, user }) => {
+    async ({ db, env, auth, params, project, query, user }) => {
       const caller = requireUser(user);
-      const agent = await getAgentInProject(params.agentId, project.id);
+      const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      return threadStore(agent.kind).list(caller.id, params.agentId, query);
+      return threadStore(agent.kind, agentRuntime(env, auth)).list(
+        caller.id,
+        params.agentId,
+        query,
+      );
     },
     {
       params: projectAgentParams,
@@ -603,13 +660,19 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // with this agent is a 404.
   .put(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId/favorite',
-    async ({ params, project, user }) => {
+    async ({ db, env, auth, params, project, user }) => {
       const caller = requireUser(user);
-      const agent = await getAgentInProject(params.agentId, project.id);
+      const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      if (!(await threadStore(agent.kind).owns(params.threadId, caller.id, params.agentId)))
+      if (
+        !(await threadStore(agent.kind, agentRuntime(env, auth)).owns(
+          params.threadId,
+          caller.id,
+          params.agentId,
+        ))
+      )
         throw new HttpError(404, 'Thread not found');
-      await addFavorite(caller.id, params.agentId, params.threadId);
+      await addFavorite(db, caller.id, params.agentId, params.threadId);
       return noContent();
     },
     {
@@ -622,13 +685,19 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .delete(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId/favorite',
-    async ({ params, project, user }) => {
+    async ({ db, env, auth, params, project, user }) => {
       const caller = requireUser(user);
-      const agent = await getAgentInProject(params.agentId, project.id);
+      const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      if (!(await threadStore(agent.kind).owns(params.threadId, caller.id, params.agentId)))
+      if (
+        !(await threadStore(agent.kind, agentRuntime(env, auth)).owns(
+          params.threadId,
+          caller.id,
+          params.agentId,
+        ))
+      )
         throw new HttpError(404, 'Thread not found');
-      await removeFavorite(caller.id, params.threadId);
+      await removeFavorite(db, caller.id, params.threadId);
       return noContent();
     },
     {
@@ -643,11 +712,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // in the UI. 404 when the thread does not exist or is not owned by the caller.
   .get(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId/messages',
-    async ({ params, project, query, user }) => {
+    async ({ db, env, auth, params, project, query, user }) => {
       const caller = requireUser(user);
-      const agent = await getAgentInProject(params.agentId, project.id);
+      const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const messages = await threadStore(agent.kind).messages(
+      const messages = await threadStore(agent.kind, agentRuntime(env, auth)).messages(
         params.threadId,
         caller.id,
         query.page,
@@ -668,11 +737,15 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // thread owned by another user is a 404.
   .patch(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId',
-    async ({ params, project, body, user }) => {
+    async ({ db, env, auth, params, project, body, user }) => {
       const caller = requireUser(user);
-      const agent = await getAgentInProject(params.agentId, project.id);
+      const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const renamed = await threadStore(agent.kind).rename(params.threadId, caller.id, body.title);
+      const renamed = await threadStore(agent.kind, agentRuntime(env, auth)).rename(
+        params.threadId,
+        caller.id,
+        body.title,
+      );
       if (!renamed) throw new HttpError(404, 'Thread not found');
       return noContent();
     },
@@ -689,11 +762,14 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // reading it: a thread owned by another user is a 404.
   .delete(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId',
-    async ({ params, project, user }) => {
+    async ({ db, env, auth, params, project, user }) => {
       const caller = requireUser(user);
-      const agent = await getAgentInProject(params.agentId, project.id);
+      const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const deleted = await threadStore(agent.kind).remove(params.threadId, caller.id);
+      const deleted = await threadStore(agent.kind, agentRuntime(env, auth)).remove(
+        params.threadId,
+        caller.id,
+      );
       if (!deleted) throw new HttpError(404, 'Thread not found');
       return noContent();
     },

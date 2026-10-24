@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   agentRun,
   agentSchedule,
   aiAgent,
@@ -16,17 +16,17 @@ import { toMemberContext, type MemberRole } from '#modules/members/service';
 import { projectAccess } from '#shared/workspace-roles';
 import { hasPermission } from '#shared/permissions';
 import { iso } from '#shared/lib';
-import { executionState, contextTokensOf } from '../core/run-queue';
+import { executionState, contextTokensOf, nowSql } from '../core/run-queue';
 
 // An agent with an invocation URL is sent its work and only calls back while it has
 // some, so its last contact says nothing about whether the endpoint is up.
 const runnerPresence = sql<'push' | 'online' | 'offline' | 'never'>`CASE
   WHEN ${aiAgent.invocationUrl} IS NOT NULL THEN 'push'
   WHEN ${aiAgent.lastSeenAt} IS NULL THEN 'never'
-  WHEN ${aiAgent.lastSeenAt} > now() - interval '90 seconds' THEN 'online'
+  WHEN ${aiAgent.lastSeenAt} > ${nowSql} - 90000 THEN 'online'
   ELSE 'offline' END`;
 
-async function queueProjectIds(userId: string, mcpOnly = false) {
+async function queueProjectIds(db: Db, userId: string, mcpOnly = false) {
   const grants = await workspaceGrants(userId);
   const grantedTeams = [...grants.keys()];
   const rows = await db
@@ -67,12 +67,13 @@ async function queueProjectIds(userId: string, mcpOnly = false) {
 }
 
 export async function listRunnerQueue(
+  db: Db,
   userId: string,
   window: { limit: number; offset: number },
   mcpOnly = false,
   runId?: number,
 ) {
-  const ids = await queueProjectIds(userId, mcpOnly);
+  const ids = await queueProjectIds(db, userId, mcpOnly);
   if (!ids.length) return { items: [], total: 0, queued: 0, running: 0 };
   const where = and(
     inArray(agentRun.projectId, ids),
@@ -106,7 +107,7 @@ export async function listRunnerQueue(
         issueTitle: issue.title,
         scheduleName: agentSchedule.name,
         projectKey: project.key,
-        teamRef: sql<string>`coalesce(${team.slug}, ${team.id}::text)`,
+        teamRef: sql<string>`coalesce(${team.slug}, CAST(${team.id} AS TEXT))`,
       })
       .from(agentRun)
       .innerJoin(aiAgent, eq(aiAgent.id, agentRun.agentId))
@@ -125,9 +126,9 @@ export async function listRunnerQueue(
       .offset(window.offset),
     db
       .select({
-        total: sql<number>`count(*)::int`,
-        queued: sql<number>`count(*) FILTER (WHERE ${executionState} = 'queued')::int`,
-        running: sql<number>`count(*) FILTER (WHERE ${executionState} = 'running')::int`,
+        total: sql<number>`count(*)`,
+        queued: sql<number>`count(*) FILTER (WHERE ${executionState} = 'queued')`,
+        running: sql<number>`count(*) FILTER (WHERE ${executionState} = 'running')`,
       })
       .from(agentRun)
       .innerJoin(aiAgent, eq(aiAgent.id, agentRun.agentId))
@@ -152,8 +153,8 @@ export async function listRunnerQueue(
   };
 }
 
-export async function runnerQueueRevision(userId: string, mcpOnly = false) {
-  const ids = await queueProjectIds(userId, mcpOnly);
+export async function runnerQueueRevision(db: Db, userId: string, mcpOnly = false) {
+  const ids = await queueProjectIds(db, userId, mcpOnly);
   if (!ids.length) return '0';
   const [rows, expiredRows, presence] = await Promise.all([
     db
@@ -167,14 +168,14 @@ export async function runnerQueueRevision(userId: string, mcpOnly = false) {
       )
       .orderBy(revision.scope),
     db
-      .select({ total: sql<number>`count(*)::int` })
+      .select({ total: sql<number>`count(*)` })
       .from(agentRun)
       .where(
         and(
           inArray(agentRun.projectId, ids),
           eq(agentRun.status, 'pending'),
           isNotNull(agentRun.executionStartedAt),
-          sql`${agentRun.nextAttemptAt} <= now()`,
+          sql`${agentRun.nextAttemptAt} <= ${nowSql}`,
         ),
       ),
     db

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { Agent, type AgentExecutionOptions } from '@mastra/core/agent';
 import type { TracingOptions } from '@mastra/core/observability';
 import {
@@ -16,7 +15,8 @@ import { buildRouteTools } from './tools/route-tools';
 import { buildLocalTools } from './tools/local';
 import { buildSkillTool, skillsPreamble } from './skill-runtime';
 import { buildMemory, ensureThread, DEFAULT_LAST_MESSAGES } from './memory';
-import { getMastra } from './observability';
+import { flushSpans, getMastra } from './observability';
+import type { AgentRuntime } from './bindings';
 import { runRefusal } from '../run-refusal';
 import { toolArgsText, toolText } from '../../chat-parts';
 import { recordContextUsage, type ContextUsage } from '../../chat-usage';
@@ -57,11 +57,15 @@ type ModelConfig = {
 // integration key is the provider id; its decrypted config carries the apiKey and an
 // optional base URL. The model id is stored on the agent. OpenCode Go rejects a request
 // without an x-opencode-session header, which has to stay the same across one conversation.
-async function resolveModel(row: AiAgentRow, sessionId: string): Promise<ModelConfig> {
+async function resolveModel(
+  rt: AgentRuntime,
+  row: AiAgentRow,
+  sessionId: string,
+): Promise<ModelConfig> {
   if (row.modelCredentialId == null) {
     throw new HttpError(400, 'Agent has no model credential set');
   }
-  const secret = await getCredentialSecret(row.modelCredentialId, row.teamId);
+  const secret = await getCredentialSecret(rt.db, row.modelCredentialId, row.teamId);
   if (!secret) throw new HttpError(400, "Agent's model credential not found");
   const provider = secret.integrationKey;
   const modelId = row.model ?? (provider === 'openai' ? DEFAULT_MODEL : null);
@@ -109,17 +113,18 @@ export type AgentRunEvent =
   | { type: 'error'; message: string };
 
 async function buildAgent(
+  rt: AgentRuntime,
   row: AiAgentRow,
   projectId: number,
   contextPreamble: string,
   sessionId: string,
 ): Promise<Agent> {
-  const project = await getProjectById(projectId);
+  const project = await getProjectById(rt.db, projectId);
   if (!project) throw new HttpError(404, 'Project not found');
-  const model = await resolveModel(row, sessionId);
-  const skills = await listAgentSkills(row.id);
-  const customTools = await listAgentToolsForRun(row.id);
-  const apiKey = await getInternalAgentApiKey(row);
+  const model = await resolveModel(rt, row, sessionId);
+  const skills = await listAgentSkills(rt.db, row.id);
+  const customTools = await listAgentToolsForRun(rt.db, row.id);
+  const apiKey = await getInternalAgentApiKey(rt.db, rt.auth, row);
   const instructions =
     projectPreamble(project) +
     contextPreamble +
@@ -137,16 +142,16 @@ async function buildAgent(
     tools: {
       ...buildRouteTools(project, apiKey, row.tools),
       ...buildLocalTools(projectId, row.tools),
-      ...(skills.length > 0 ? buildSkillTool(row.teamId, skills) : {}),
+      ...(skills.length > 0 ? buildSkillTool(rt.db, row.teamId, skills) : {}),
       ...buildCustomTools(customTools),
     },
     // Conversation memory (last N messages of a thread) when enabled.
     ...(row.memoryEnabled
-      ? { memory: buildMemory(row.memoryLastMessages ?? DEFAULT_LAST_MESSAGES) }
+      ? { memory: await buildMemory(rt, row.memoryLastMessages ?? DEFAULT_LAST_MESSAGES) }
       : {}),
   });
   // An agent traces its run only through a container (see observability.ts).
-  agent.__registerMastra(getMastra());
+  agent.__registerMastra(await getMastra(rt));
   return agent;
 }
 
@@ -165,6 +170,7 @@ async function buildAgent(
 // true when the run used its last step still calling tools: Mastra resolves that as a
 // finish too, with the text of the steps and no answer.
 export async function runAgent(
+  rt: AgentRuntime,
   agentId: number,
   projectId: number,
   prompt: string,
@@ -176,19 +182,32 @@ export async function runAgent(
   aborted: boolean;
   stepLimit: boolean;
 }> {
-  const { agent, row, options, threadId } = await prepareRun(agentId, projectId, prompt, opts);
-  const result = await agent.generate(prompt, { ...options, abortSignal: opts.abortSignal });
-  const usage = contextOf(result.usage);
-  // A chat thread keeps one number, replaced by each answer. An autonomous run keeps
-  // the counts of that run instead, on its own row, so its caller stores them.
-  if (threadId && isChatThreadId(threadId)) await recordContextUsage(threadId, row.id, usage);
-  return {
-    text: (result.text ?? '').trim(),
-    threadId,
-    usage,
-    aborted: opts.abortSignal?.aborted ?? false,
-    stepLimit: reachedStepLimit(result.finishReason, result.steps.length, options.maxSteps),
-  };
+  try {
+    const { agent, row, options, threadId } = await prepareRun(
+      rt,
+      agentId,
+      projectId,
+      prompt,
+      opts,
+    );
+    const result = await agent.generate(prompt, { ...options, abortSignal: opts.abortSignal });
+    const usage = contextOf(result.usage);
+    // A chat thread keeps one number, replaced by each answer. An autonomous run keeps
+    // the counts of that run instead, on its own row, so its caller stores them.
+    if (threadId && isChatThreadId(threadId)) {
+      await recordContextUsage(rt.db, threadId, row.id, usage);
+    }
+    return {
+      text: (result.text ?? '').trim(),
+      threadId,
+      usage,
+      aborted: opts.abortSignal?.aborted ?? false,
+      stepLimit: reachedStepLimit(result.finishReason, result.steps.length, options.maxSteps),
+    };
+  } finally {
+    // Always: the spans of a failed run matter most, and the isolate may end right after.
+    await flushSpans(rt);
+  }
 }
 
 export const STEP_LIMIT_MESSAGE = 'Reached the step limit';
@@ -222,6 +241,7 @@ type ModelUsage = { inputTokens?: number; outputTokens?: number };
 // reader that goes away — by pressing stop or by closing the chat — does not leave the
 // run going. An aborted run yields nothing further, not an error: it ended as asked.
 export async function* streamAgent(
+  rt: AgentRuntime,
   agentId: number,
   projectId: number,
   prompt: string,
@@ -229,7 +249,13 @@ export async function* streamAgent(
   signal?: AbortSignal,
 ): AsyncGenerator<AgentRunEvent> {
   try {
-    const { agent, row, options, threadId } = await prepareRun(agentId, projectId, prompt, opts);
+    const { agent, row, options, threadId } = await prepareRun(
+      rt,
+      agentId,
+      projectId,
+      prompt,
+      opts,
+    );
     const result = await agent.stream(prompt, { ...options, abortSignal: signal });
     // The size of the context is what the last call of the answer read, so each step
     // replaces the one before it rather than being added to it.
@@ -270,11 +296,13 @@ export async function* streamAgent(
     }
     // An answer the member stopped never reaches here: the stream is aborted and the
     // thread keeps the number of the answer before it.
-    if (threadId) await recordContextUsage(threadId, row.id, contextOf(usage));
+    if (threadId) await recordContextUsage(rt.db, threadId, row.id, contextOf(usage));
     yield { type: 'done', threadId };
   } catch (err) {
     if (signal?.aborted) return;
     yield { type: 'error', message: errorMessage(err, 'Agent run failed') };
+  } finally {
+    await flushSpans(rt).catch((error: unknown) => console.error('[agents] span flush:', error));
   }
 }
 
@@ -282,12 +310,13 @@ export async function* streamAgent(
 // options (tool-use step bound and, when memory is on, the conversation thread the
 // caller owns). Shared by runAgent and streamAgent.
 async function prepareRun(
+  rt: AgentRuntime,
   agentId: number,
   projectId: number,
   prompt: string,
   opts: RunOpts,
 ): Promise<{ agent: Agent; row: AiAgentRow; options: RunOptions; threadId: string | null }> {
-  const row = await getAgentInProject(agentId, projectId);
+  const row = await getAgentInProject(rt.db, agentId, projectId);
   if (!row) throw new HttpError(404, 'Agent not found');
   if (row.kind !== 'internal') {
     throw new HttpError(400, 'Only internal agents can be run');
@@ -309,10 +338,11 @@ async function prepareRun(
     ? (opts.threadId ?? newChatThreadId(row.id, opts.callerUserId))
     : null;
   const agent = await buildAgent(
+    rt,
     row,
     projectId,
     opts.contextPreamble ?? '',
-    threadId ?? randomUUID(),
+    threadId ?? crypto.randomUUID(),
   );
 
   // Mastra's generate/stream have overloaded options; type the shape we use. In
@@ -345,6 +375,7 @@ async function prepareRun(
     // history can list it and deleting the agent, project or issue can find it. The
     // threadId used is returned so the caller can continue.
     await ensureThread(
+      rt,
       threadId,
       opts.callerUserId,
       {

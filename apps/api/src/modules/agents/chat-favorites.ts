@@ -1,4 +1,4 @@
-import { db, agentChatFavorite } from '@repo/db';
+import { agentChatFavorite, type Db } from '@repo/db';
 import { and, eq, inArray } from 'drizzle-orm';
 
 // The conversations a member starred (see the agent_chat_favorite comment in the
@@ -11,7 +11,11 @@ import { and, eq, inArray } from 'drizzle-orm';
 export const FAVORITES_LIMIT = 50;
 
 // Which of the given threads the user starred.
-export async function readFavorites(userId: string, threadIds: string[]): Promise<Set<string>> {
+export async function readFavorites(
+  db: Db,
+  userId: string,
+  threadIds: string[],
+): Promise<Set<string>> {
   if (threadIds.length === 0) return new Set();
   const rows = await db
     .select({ threadId: agentChatFavorite.threadId })
@@ -25,7 +29,11 @@ export async function readFavorites(userId: string, threadIds: string[]): Promis
 // The threads the user starred with one agent. Only the ids: the conversations
 // themselves are read from whichever store holds them, which is also where the group
 // is cut to FAVORITES_LIMIT, newest first.
-export async function favoriteThreadIds(userId: string, agentId: number): Promise<string[]> {
+export async function favoriteThreadIds(
+  db: Db,
+  userId: string,
+  agentId: number,
+): Promise<string[]> {
   const rows = await db
     .select({ threadId: agentChatFavorite.threadId })
     .from(agentChatFavorite)
@@ -36,6 +44,7 @@ export async function favoriteThreadIds(userId: string, agentId: number): Promis
 // Stars a conversation. Starring one that is already starred changes nothing; the
 // caller has checked the thread is theirs.
 export async function addFavorite(
+  db: Db,
   userId: string,
   agentId: number,
   threadId: string,
@@ -43,13 +52,13 @@ export async function addFavorite(
   await db.insert(agentChatFavorite).values({ userId, agentId, threadId }).onConflictDoNothing();
 }
 
-export async function removeFavorite(userId: string, threadId: string): Promise<void> {
+export async function removeFavorite(db: Db, userId: string, threadId: string): Promise<void> {
   await db
     .delete(agentChatFavorite)
     .where(and(eq(agentChatFavorite.userId, userId), eq(agentChatFavorite.threadId, threadId)));
 }
 
 // The row has no foreign key to the thread, so deleting the thread has to take it along.
-export async function deleteFavorite(threadId: string): Promise<void> {
+export async function deleteFavorite(db: Db, threadId: string): Promise<void> {
   await db.delete(agentChatFavorite).where(eq(agentChatFavorite.threadId, threadId));
 }

@@ -86,8 +86,8 @@ export const integrationRoutes = new Elysia({
   // integrations admin view and may grow fields this one must not carry.
   .get(
     '/teams/:teamId/integrations/options',
-    async ({ membership, query }) => {
-      const credentials = await listAllCredentials(membership.teamId);
+    async ({ db, membership, query }) => {
+      const credentials = await listAllCredentials(db, membership.teamId);
       return credentials.flatMap((c) => {
         const kind = integrationKind(c.integrationKey);
         if (!kind || (query.kind && kind !== query.kind)) return [];
@@ -109,8 +109,8 @@ export const integrationRoutes = new Elysia({
 
   .get(
     '/teams/:teamId/integrations',
-    ({ membership, query }) =>
-      paginate(query, (window) => listCredentials(membership.teamId, window)),
+    ({ db, membership, query }) =>
+      paginate(query, (window) => listCredentials(db, membership.teamId, window)),
     {
       params: teamParams,
       query: credentialListQuery,
@@ -129,9 +129,9 @@ export const integrationRoutes = new Elysia({
 
   .post(
     '/teams/:teamId/integrations',
-    async ({ membership, body, set }) => {
+    async ({ db, membership, body, set }) => {
       set.status = 201;
-      return createCredential(membership.teamId, body);
+      return createCredential(db, membership.teamId, body);
     },
     {
       params: teamParams,
@@ -149,8 +149,8 @@ export const integrationRoutes = new Elysia({
   // keep their stored value. The integration is fixed once created (delete + re-add).
   .patch(
     '/teams/:teamId/integrations/:credentialId',
-    async ({ params, membership, body }) => {
-      const row = await updateCredential(params.credentialId, membership.teamId, body);
+    async ({ db, params, membership, body }) => {
+      const row = await updateCredential(db, params.credentialId, membership.teamId, body);
       if (!row) throw new HttpError(404, 'Credential not found');
       return row;
     },
@@ -168,8 +168,8 @@ export const integrationRoutes = new Elysia({
 
   .delete(
     '/teams/:teamId/integrations/:credentialId',
-    async ({ params, membership }) => {
-      const ok = await deleteCredential(params.credentialId, membership.teamId);
+    async ({ db, params, membership }) => {
+      const ok = await deleteCredential(db, params.credentialId, membership.teamId);
       if (!ok) throw new HttpError(404, 'Credential not found');
       return noContent();
     },

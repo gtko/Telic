@@ -64,13 +64,13 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
 
   .post(
     '/projects/:projectKey/ai-agents/:agentId/chat',
-    async ({ params, project, body, user }) => {
+    async ({ db, params, project, body, user }) => {
       const caller = requireUser(user);
       const agent = await requireExternalAgent(params.agentId, project.id);
       if (!isTriggerableBy(agent, caller.id)) {
         throw new HttpError(403, 'This agent only takes tasks from its owner');
       }
-      const sent = await sendMessage({
+      const sent = await sendMessage(db, {
         agentId: params.agentId,
         userId: caller.id,
         prompt: body.prompt,
@@ -97,10 +97,10 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
   // client that reconnects and for one that would rather poll.
   .get(
     '/projects/:projectKey/ai-agents/:agentId/chat/:messageId/events',
-    async ({ params, project, query, user }) => {
+    async ({ db, params, project, query, user }) => {
       const caller = requireUser(user);
       await requireExternalAgent(params.agentId, project.id);
-      const page = await readEvents(params.messageId, params.agentId, caller.id, query.after);
+      const page = await readEvents(db, params.messageId, params.agentId, caller.id, query.after);
       if (!page) throw new HttpError(404, 'Message not found');
       return page;
     },
@@ -119,13 +119,13 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
   // the chat show that it is waiting.
   .get(
     '/projects/:projectKey/ai-agents/:agentId/chat/:messageId/stream',
-    async ({ params, project, query, user }) => {
+    async ({ db, params, project, query, user }) => {
       const caller = requireUser(user);
       await requireExternalAgent(params.agentId, project.id);
       // Checked before the stream starts, so an unknown answer is a 404 rather than a
       // stream that ends immediately.
       const after = query.after ?? 0;
-      if (!(await readEvents(params.messageId, params.agentId, caller.id, after))) {
+      if (!(await readEvents(db, params.messageId, params.agentId, caller.id, after))) {
         throw new HttpError(404, 'Message not found');
       }
       return sseResponse(streamChatEvents(params.messageId, params.agentId, caller.id, after));
@@ -148,13 +148,13 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
   // kills the command; what the agent wrote before it stays in the transcript.
   .post(
     '/projects/:projectKey/ai-agents/:agentId/chat/:messageId/cancel',
-    async ({ params, project, user }) => {
+    async ({ db, params, project, user }) => {
       const caller = requireUser(user);
       const agent = await requireExternalAgent(params.agentId, project.id);
       if (!isTriggerableBy(agent, caller.id)) {
         throw new HttpError(403, 'This agent only takes tasks from its owner');
       }
-      const ok = await cancelMessage(params.messageId, params.agentId, caller.id);
+      const ok = await cancelMessage(db, params.messageId, params.agentId, caller.id);
       if (!ok) throw new HttpError(404, 'Message not found');
       return noContent();
     },
@@ -171,25 +171,29 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
     },
   )
 
-  .post('/agent-chats/claim', async ({ agent }) => ({ message: await claimNextMessage(agent) }), {
-    runnerAgent: true,
-    response: { 200: ClaimChatResponse, ...errors(401, 403, 409) },
-    detail: {
-      summary: 'Claim the next chat message',
-      description:
-        "Take the calling agent's next chat message to answer. The call waits for one " +
-        'and returns message: null when none arrives. It is leased: report events, ' +
-        'heartbeats, or a result, otherwise it is handed out again. 409 for an agent ' +
-        'with an invocation URL, whose messages are sent to that URL.',
+  .post(
+    '/agent-chats/claim',
+    async ({ agent }) => ({ message: await claimNextMessage(db, agent) }),
+    {
+      runnerAgent: true,
+      response: { 200: ClaimChatResponse, ...errors(401, 403, 409) },
+      detail: {
+        summary: 'Claim the next chat message',
+        description:
+          "Take the calling agent's next chat message to answer. The call waits for one " +
+          'and returns message: null when none arrives. It is leased: report events, ' +
+          'heartbeats, or a result, otherwise it is handed out again. 409 for an agent ' +
+          'with an invocation URL, whose messages are sent to that URL.',
+      },
     },
-  })
+  )
 
   .post(
     '/agent-chats/:messageId/events',
-    async ({ agent, params, body }) => {
-      const ack = await appendEvents(agent.id, params.messageId, body.events);
+    async ({ db, agent, params, body }) => {
+      const ack = await appendEvents(db, agent.id, params.messageId, body.events);
       if (!ack) throw new HttpError(404, 'Message not found');
-      if (body.sessionId) await setThreadSession(agent.id, params.messageId, body.sessionId);
+      if (body.sessionId) await setThreadSession(db, agent.id, params.messageId, body.sessionId);
       return ack;
     },
     {
@@ -210,8 +214,8 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
 
   .post(
     '/agent-chats/:messageId/heartbeat',
-    async ({ agent, params }) => {
-      const ack = await heartbeatMessage(agent.id, params.messageId);
+    async ({ db, agent, params }) => {
+      const ack = await heartbeatMessage(db, agent.id, params.messageId);
       if (!ack) throw new HttpError(404, 'Message not found');
       return ack;
     },
@@ -231,8 +235,8 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
 
   .post(
     '/agent-chats/:messageId/result',
-    async ({ agent, params, body }) => {
-      const ok = await finishMessage(agent.id, params.messageId, body);
+    async ({ db, agent, params, body }) => {
+      const ok = await finishMessage(db, agent.id, params.messageId, body);
       if (!ok) throw new HttpError(404, 'Message not found');
       return noContent();
     },
@@ -267,7 +271,7 @@ async function* streamChatEvents(
   let ended = false;
   let quietSince = Date.now();
   for (;;) {
-    const page = await readEvents(messageId, agentId, userId, cursor);
+    const page = await readEvents(db, messageId, agentId, userId, cursor);
     if (!page) return;
     for (const item of page.items) {
       if (item.event.type === 'RUN_ERROR' || item.event.type === 'RUN_FINISHED') ended = true;

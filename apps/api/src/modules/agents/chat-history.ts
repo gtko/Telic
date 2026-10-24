@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import { sql, type SQL } from 'drizzle-orm';
 import { toIso } from './core/helpers/dates';
 import { contextField, readContextSizes } from './chat-usage';
@@ -45,8 +46,9 @@ export function searchTerm(q: string | undefined): string | null {
   return trimmed.length >= MIN_QUERY ? trimmed : null;
 }
 
-// The ILIKE pattern for the term. The wildcards a member types are escaped, so a query
-// with a % in it looks for that character.
+// The LIKE pattern for the term, used with `ESCAPE ''`. The wildcards a member types are
+// escaped, so a query with a % in it looks for that character. SQLite's LIKE is case
+// insensitive for ASCII only.
 export function likePattern(term: string): string {
   return `%${term.replace(/([\\%_])/g, '\\$1')}%`;
 }
@@ -54,7 +56,7 @@ export function likePattern(term: string): string {
 // The stretch of text around the first match, cut in the database: an answer can be
 // 100,000 characters and must not be read into the app to show 160 of them.
 export function snippetOf(text: SQL, term: string): SQL {
-  return sql`substring(${text} from greatest(position(lower(${term}) in lower(${text})) - ${SNIPPET_RADIUS}, 1) for ${SNIPPET_LENGTH})`;
+  return sql`substr(${text}, max(instr(lower(${text}), lower(${term})) - ${SNIPPET_RADIUS}, 1), ${SNIPPET_LENGTH})`;
 }
 
 // One conversation as the two stores read it, before the parts every list adds. Each
@@ -73,8 +75,11 @@ export interface ThreadRow {
 }
 
 // The conversations as the list returns them, with the context size of each.
-export async function summarize(rows: ThreadRow[]): Promise<ChatThreadSummary[]> {
-  const sizes = await readContextSizes(rows.map((row) => row.id));
+export async function summarize(db: Db, rows: ThreadRow[]): Promise<ChatThreadSummary[]> {
+  const sizes = await readContextSizes(
+    db,
+    rows.map((row) => row.id),
+  );
   return rows.map((row) => ({
     id: row.id,
     title: row.title && row.title.length > 0 ? row.title : null,

@@ -1,7 +1,6 @@
-import { db, aiAgent, modelPrice, project, team, user } from '@repo/db';
+import { aiAgent, modelPrice, project, team, user, type Db } from '@repo/db';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { iso, num } from '#shared/lib';
-import { spansTableExists } from './store';
 import { estimateCost, priceKey, type CallUsage, type OwnPrices } from './model-pricing';
 
 // The figures behind the agent dashboard, read from the traces the runtime records
@@ -66,14 +65,14 @@ function emptyScope(scope: AnalyticsScope): boolean {
   return scope.teamIds.length === 0 || scope.projectIds?.length === 0;
 }
 
-export async function workspaceScope(workspaceId: number): Promise<AnalyticsScope> {
+export async function workspaceScope(db: Db, workspaceId: number): Promise<AnalyticsScope> {
   const rows = await db.select({ id: team.id }).from(team).where(eq(team.workspaceId, workspaceId));
   return { teamIds: rows.map((row) => row.id) };
 }
 
 // The prices the workspace of the scope set itself, which the dashboard costs calls
 // with before the built-in table. The teams of one scope share a workspace.
-export async function ownPrices(scope: AnalyticsScope): Promise<OwnPrices> {
+export async function ownPrices(db: Db, scope: AnalyticsScope): Promise<OwnPrices> {
   if (scope.teamIds.length === 0) return new Map();
   const rows = await db
     .selectDistinct({
@@ -100,6 +99,7 @@ export function onlyProject(scope: AnalyticsScope, projectId?: number): Analytic
 
 // The projects the scope reads, by name: what it may be narrowed to.
 export async function analyticsProjects(
+  db: Db,
   scope: AnalyticsScope,
 ): Promise<{ projectId: number; name: string }[]> {
   if (emptyScope(scope)) return [];
@@ -125,40 +125,35 @@ export function analyticsWindow(days: number): AnalyticsWindow {
 
 // The runs of the scope since `from`, one row per trace, as a statement to put in a
 // WITH clause. `metadata` is the whole of what the run carried, for a reader that
-// groups by more of it; its `runId` is ours on a queued run and Mastra's own UUID on a
-// chat run. A team id that is not a number is left out rather than cast, inside a CASE
-// since Postgres does not evaluate the conditions of an AND in order. The bound is
-// passed as text and cast in the statement: the driver binds no Date inside a composed
-// fragment.
+// groups by more of it; its `runId` is ours on a queued run. The team, agent and project
+// are columns of the root span (see span-exporter.ts), so the scope is an index lookup.
 export function tracedRuns(scope: AnalyticsScope, from: Date): SQL {
-  const ids = (list: number[]) =>
-    sql.join(
-      list.map((id) => sql`${id}`),
-      sql`, `,
-    );
-  const teamId = sql`CASE WHEN r.metadata->>'teamId' ~ '^[0-9]+$'
-                         THEN (r.metadata->>'teamId')::int END`;
-  const projects = scope.projectIds
-    ? sql` AND CASE WHEN r.metadata->>'projectId' ~ '^[0-9]+$'
-                    THEN (r.metadata->>'projectId')::int END IN (${ids(scope.projectIds)})`
-    : sql``;
+  // One bound parameter per list, however long: D1 allows 100 per statement.
+  const ids = (list: number[]) => sql`(SELECT value FROM json_each(${JSON.stringify(list)}))`;
+  const projects = scope.projectIds ? sql` AND r.project_id IN ${ids(scope.projectIds)}` : sql``;
   return sql`
-    SELECT r."traceId" AS trace_id,
-           ${teamId} AS team_id,
-           (r.metadata->>'agentId')::int AS agent_id,
-           (r.metadata->>'projectId')::int AS project_id,
-           r."startedAtZ" AS started_at,
-           r."endedAtZ" AS ended_at,
+    SELECT r.trace_id AS trace_id,
+           r.team_id AS team_id,
+           r.agent_id AS agent_id,
+           r.project_id AS project_id,
+           r.started_at AS started_at,
+           r.ended_at AS ended_at,
            (r.error IS NOT NULL) AS failed,
            r.metadata AS metadata
-      FROM mastra_ai_spans r
-     WHERE r."parentSpanId" IS NULL
-       AND ${teamId} IN (${ids(scope.teamIds)})
-       AND r."startedAtZ" >= ${from.toISOString()}::timestamptz${projects}
+      FROM ai_spans r
+     WHERE r.parent_span_id IS NULL
+       AND r.team_id IN ${ids(scope.teamIds)}
+       AND r.started_at >= ${from.getTime()}${projects}
   `;
 }
 
-// The raw driver hands a timestamp back as text.
+// The start of the bucket a row falls in, as the ISO string the chart reads.
+function bucketOf(bucket: 'hour' | 'day') {
+  const format = bucket === 'hour' ? '%Y-%m-%dT%H:00:00.000Z' : '%Y-%m-%dT00:00:00.000Z';
+  return sql`strftime(${format}, s.started_at / 1000, 'unixepoch')`;
+}
+
+// The bucket comes back as text.
 function dayOf(value: unknown): Date {
   return value instanceof Date ? value : new Date(String(value));
 }
@@ -166,7 +161,7 @@ function dayOf(value: unknown): Date {
 // One row per bucket, period, team, agent, project and model: the model calls the runs
 // of that bucket made. Fine enough to fold into every panel, and coarse enough that a long
 // window stays a few hundred rows. A project belongs to one team, so the team adds no
-// rows of its own. The token sums are bigint, which the driver hands back as a string.
+// rows of its own. The token sums are plain numbers.
 type CallRow = {
   day: unknown;
   in_window: boolean;
@@ -182,52 +177,54 @@ type CallRow = {
   cache_write: unknown;
 };
 
-async function modelCalls(scope: AnalyticsScope, window: AnalyticsWindow): Promise<CallRow[]> {
-  const rows = await db.execute(sql`
+async function modelCalls(
+  db: Db,
+  scope: AnalyticsScope,
+  window: AnalyticsWindow,
+): Promise<CallRow[]> {
+  const rows = await db.all<Omit<CallRow, 'in_window'> & { in_window: number }>(sql`
     WITH runs AS (${tracedRuns(scope, window.previousFrom)})
-    SELECT date_trunc(${window.bucket}::text, s."startedAtZ") AS day,
-           s."startedAtZ" >= ${window.from.toISOString()}::timestamptz AS in_window,
+    SELECT ${bucketOf(window.bucket)} AS day,
+           s.started_at >= ${window.from.getTime()} AS in_window,
            runs.team_id,
            runs.agent_id,
            runs.project_id,
-           s.attributes->>'provider' AS provider,
-           s.attributes->>'model' AS model,
-           count(*)::int AS calls,
-           coalesce(sum((s.attributes->'usage'->>'inputTokens')::bigint), 0) AS input_tokens,
-           coalesce(sum((s.attributes->'usage'->>'outputTokens')::bigint), 0) AS output_tokens,
-           coalesce(sum((s.attributes->'usage'->'inputDetails'->>'cacheRead')::bigint), 0)
-             AS cache_read,
-           coalesce(sum((s.attributes->'usage'->'inputDetails'->>'cacheWrite')::bigint), 0)
-             AS cache_write
-      FROM mastra_ai_spans s
-      JOIN runs ON runs.trace_id = s."traceId"
-     WHERE s."spanType" = 'model_inference'
+           s.provider AS provider,
+           s.model AS model,
+           count(*) AS calls,
+           coalesce(sum(s.input_tokens), 0) AS input_tokens,
+           coalesce(sum(s.output_tokens), 0) AS output_tokens,
+           coalesce(sum(s.cache_read), 0) AS cache_read,
+           coalesce(sum(s.cache_write), 0) AS cache_write
+      FROM ai_spans s
+      JOIN runs ON runs.trace_id = s.trace_id
+     WHERE s.span_type = 'model_inference'
      GROUP BY 1, 2, 3, 4, 5, 6, 7
   `);
-  return rows as unknown as CallRow[];
+  return rows.map((row) => ({ ...row, in_window: row.in_window === 1 }));
 }
 
 // The models the runs of the scope called since `from`, with how many calls each: the
 // models a workspace's price list starts from.
 export async function modelsCalled(
+  db: Db,
   scope: AnalyticsScope,
   from: Date,
 ): Promise<{ provider: string; model: string; calls: number }[]> {
-  if (emptyScope(scope) || !(await spansTableExists())) return [];
-  const rows = await db.execute(sql`
+  if (emptyScope(scope)) return [];
+  return db.all<{ provider: string; model: string; calls: number }>(sql`
     WITH runs AS (${tracedRuns(scope, from)})
-    SELECT s.attributes->>'provider' AS provider,
-           s.attributes->>'model' AS model,
-           count(*)::int AS calls
-      FROM mastra_ai_spans s
-      JOIN runs ON runs.trace_id = s."traceId"
-     WHERE s."spanType" = 'model_inference'
-       AND s.attributes->>'provider' <> ''
-       AND s.attributes->>'model' <> ''
+    SELECT s.provider AS provider,
+           s.model AS model,
+           count(*) AS calls
+      FROM ai_spans s
+      JOIN runs ON runs.trace_id = s.trace_id
+     WHERE s.span_type = 'model_inference'
+       AND coalesce(s.provider, '') <> ''
+       AND coalesce(s.model, '') <> ''
      GROUP BY 1, 2
      ORDER BY calls DESC, 1, 2
   `);
-  return rows as unknown as { provider: string; model: string; calls: number }[];
 }
 
 type RunRow = {
@@ -239,19 +236,23 @@ type RunRow = {
   errors: number;
 };
 
-async function runsPerPeriod(scope: AnalyticsScope, window: AnalyticsWindow): Promise<RunRow[]> {
-  const rows = await db.execute(sql`
+async function runsPerPeriod(
+  db: Db,
+  scope: AnalyticsScope,
+  window: AnalyticsWindow,
+): Promise<RunRow[]> {
+  const rows = await db.all<Omit<RunRow, 'in_window'> & { in_window: number }>(sql`
     WITH runs AS (${tracedRuns(scope, window.previousFrom)})
-    SELECT started_at >= ${window.from.toISOString()}::timestamptz AS in_window,
+    SELECT started_at >= ${window.from.getTime()} AS in_window,
            team_id,
            agent_id,
            project_id,
-           count(*)::int AS runs,
-           count(*) FILTER (WHERE failed)::int AS errors
+           count(*) AS runs,
+           coalesce(sum(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS errors
       FROM runs
      GROUP BY 1, 2, 3, 4
   `);
-  return rows as unknown as RunRow[];
+  return rows.map((row) => ({ ...row, in_window: row.in_window === 1 }));
 }
 
 function callUsage(row: CallRow): CallUsage {
@@ -295,6 +296,7 @@ const tokensOf = (entry: Usage) => entry.inputTokens + entry.outputTokens;
 const byTokens = (a: Usage, b: Usage) => tokensOf(b) - tokensOf(a);
 
 export async function getAgentAnalytics(
+  db: Db,
   scope: AnalyticsScope,
   days: number,
 ): Promise<AgentAnalytics> {
@@ -312,11 +314,11 @@ export async function getAgentAnalytics(
     teams: [],
     tokensPerDay: [],
   };
-  if (emptyScope(scope) || !(await spansTableExists())) return result;
+  if (emptyScope(scope)) return result;
 
   const [calls, runs, agentRows, projectRows, teamRows, own] = await Promise.all([
-    modelCalls(scope, window),
-    runsPerPeriod(scope, window),
+    modelCalls(db, scope, window),
+    runsPerPeriod(db, scope, window),
     db
       .select({ id: aiAgent.id, name: user.name })
       .from(aiAgent)
@@ -327,7 +329,7 @@ export async function getAgentAnalytics(
       .from(project)
       .where(inArray(project.teamId, scope.teamIds)),
     db.select({ id: team.id, name: team.name }).from(team).where(inArray(team.id, scope.teamIds)),
-    ownPrices(scope),
+    ownPrices(db, scope),
   ]);
 
   const agentNames = new Map(agentRows.map((row) => [row.id, row.name]));

@@ -1,12 +1,15 @@
-import { db, agentRun, agentRunTrace, issue } from '@repo/db';
-import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { type Db, agentRun, agentRunTrace, issue } from '@repo/db';
+import { and, desc, eq, gt, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
 import type { AgUiEventBody } from '../model';
 
 const MAX_EVENTS = 2000;
 const MAX_BYTES = 1_000_000;
 
+const byteLength = (text: string) => new TextEncoder().encode(text).length;
+
 export async function appendRunEvents(
+  db: Db,
   agentId: number,
   runId: number,
   input: {
@@ -16,61 +19,65 @@ export async function appendRunEvents(
     sessionId?: string;
   },
 ) {
-  return db.transaction(async (tx) => {
-    const [run] = await tx
-      .select()
-      .from(agentRun)
-      .where(
-        and(
-          eq(agentRun.id, runId),
-          eq(agentRun.agentId, agentId),
-          eq(agentRun.status, 'pending'),
-          eq(agentRun.attempts, input.attempt),
-          sql`${agentRun.executionStartedAt} IS NOT NULL AND ${agentRun.nextAttemptAt} > now()`,
-        ),
-      )
-      .for('update');
-    if (!run) throw new HttpError(404, 'Active run attempt not found');
-    await tx.insert(agentRunTrace).values({ runId, attempt: input.attempt }).onConflictDoNothing();
-    const key = and(eq(agentRunTrace.runId, runId), eq(agentRunTrace.attempt, input.attempt));
-    const [trace] = await tx.select().from(agentRunTrace).where(key);
-    if (input.offset < trace.nextOffset && input.offset + input.events.length <= trace.nextOffset) {
-      return { nextOffset: trace.nextOffset, truncated: trace.truncated };
+  // Read, compute, then one conditional UPDATE: it only lands when the trace is still at
+  // the offset that was read, so two reports of the same attempt cannot both append (the
+  // loser gets the same 409 an out-of-order report gets). D1 has no row lock to take.
+  const now = Date.now();
+  const [run] = await db
+    .select()
+    .from(agentRun)
+    .where(
+      and(
+        eq(agentRun.id, runId),
+        eq(agentRun.agentId, agentId),
+        eq(agentRun.status, 'pending'),
+        eq(agentRun.attempts, input.attempt),
+        isNotNull(agentRun.executionStartedAt),
+        gt(agentRun.nextAttemptAt, new Date(now)),
+      ),
+    );
+  if (!run) throw new HttpError(404, 'Active run attempt not found');
+  await db.insert(agentRunTrace).values({ runId, attempt: input.attempt }).onConflictDoNothing();
+  const key = and(eq(agentRunTrace.runId, runId), eq(agentRunTrace.attempt, input.attempt));
+  const [trace] = await db.select().from(agentRunTrace).where(key);
+  if (!trace) throw new HttpError(404, 'Active run attempt not found');
+  if (input.offset < trace.nextOffset && input.offset + input.events.length <= trace.nextOffset) {
+    return { nextOffset: trace.nextOffset, truncated: trace.truncated };
+  }
+  if (input.offset !== trace.nextOffset) throw new HttpError(409, 'Unexpected trace offset');
+  if (trace.sessionId && input.sessionId && trace.sessionId !== input.sessionId) {
+    throw new HttpError(409, 'Session is already bound to this attempt');
+  }
+  const events = trace.events as { event: AgUiEventBody; receivedAt: string }[];
+  let bytes = byteLength(JSON.stringify(events));
+  let truncated = trace.truncated;
+  const receivedAt = new Date().toISOString();
+  for (const event of input.events) {
+    const stored = { event, receivedAt };
+    const size = byteLength(JSON.stringify(stored)) + 1;
+    if (truncated || events.length >= MAX_EVENTS || bytes + size > MAX_BYTES) {
+      truncated = true;
+      continue;
     }
-    if (input.offset !== trace.nextOffset) throw new HttpError(409, 'Unexpected trace offset');
-    if (trace.sessionId && input.sessionId && trace.sessionId !== input.sessionId) {
-      throw new HttpError(409, 'Session is already bound to this attempt');
-    }
-    const events = trace.events as { event: AgUiEventBody; receivedAt: string }[];
-    let bytes = Buffer.byteLength(JSON.stringify(events));
-    let truncated = trace.truncated;
-    const receivedAt = new Date().toISOString();
-    for (const event of input.events) {
-      const stored = { event, receivedAt };
-      const size = Buffer.byteLength(JSON.stringify(stored)) + 1;
-      if (truncated || events.length >= MAX_EVENTS || bytes + size > MAX_BYTES) {
-        truncated = true;
-        continue;
-      }
-      events.push(stored);
-      bytes += size;
-    }
-    const nextOffset = input.offset + input.events.length;
-    await tx
-      .update(agentRunTrace)
-      .set({
-        events,
-        nextOffset,
-        truncated,
-        sessionId: trace.sessionId ?? input.sessionId ?? null,
-      })
-      .where(key);
-    await tx.execute(sql`SELECT bump_rev(${'runner-queue:' + run.projectId}, ${run.projectId})`);
-    return { nextOffset, truncated };
-  });
+    events.push(stored);
+    bytes += size;
+  }
+  const nextOffset = input.offset + input.events.length;
+  const written = await db
+    .update(agentRunTrace)
+    .set({
+      events,
+      nextOffset,
+      truncated,
+      sessionId: trace.sessionId ?? input.sessionId ?? null,
+    })
+    .where(and(key, eq(agentRunTrace.nextOffset, trace.nextOffset)))
+    .returning({ runId: agentRunTrace.runId });
+  if (written.length === 0) throw new HttpError(409, 'Unexpected trace offset');
+  return { nextOffset, truncated };
 }
 
-export async function runProjectId(runId: number) {
+export async function runProjectId(db: Db, runId: number) {
   const [row] = await db
     .select({ projectId: agentRun.projectId })
     .from(agentRun)
@@ -84,7 +91,7 @@ export async function runProjectId(runId: number) {
   return row?.projectId;
 }
 
-export async function readRunTrace(projectId: number, runId: number, attempt?: number) {
+export async function readRunTrace(db: Db, projectId: number, runId: number, attempt?: number) {
   const [row] = await db
     .select({ trace: agentRunTrace })
     .from(agentRunTrace)

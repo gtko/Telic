@@ -1,4 +1,4 @@
-import { db, aiAgent, agentRun, project, projectMember } from '@repo/db';
+import { aiAgent, agentRun, project, projectMember, type Db } from '@repo/db';
 import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
 import { type ContextUsage } from '../chat-usage';
@@ -58,7 +58,7 @@ export interface RunnerAgent {
 // The agent whose bot user is the caller, or null when the caller is not an agent.
 // The API key identifies the agent, so holding it is the authorization to drain its
 // queue — no permission check applies.
-export async function getRunnerAgent(userId: string): Promise<RunnerAgent | null> {
+export async function getRunnerAgent(db: Db, userId: string): Promise<RunnerAgent | null> {
   const rows = await db
     .select({
       id: aiAgent.id,
@@ -119,7 +119,7 @@ type ClaimedRow = Omit<RunnerRun, 'systemPrompt' | 'traceEvents'> & {
 
 // Records that a runner polled, which is what the UI shows as the agent's presence.
 // The chat feed calls it too: both queues are drained by the same runner.
-export async function touchRunner(agentId: number): Promise<void> {
+export async function touchRunner(db: Db, agentId: number): Promise<void> {
   await db.update(aiAgent).set({ lastSeenAt: new Date() }).where(eq(aiAgent.id, agentId));
 }
 
@@ -127,7 +127,7 @@ export async function touchRunner(agentId: number): Promise<void> {
 // runner keeps dying ends in a visible state instead of being served forever. That is
 // the end of the run, so the issue's timeline gets the same entry a reported failure
 // writes.
-async function expireExhaustedRuns(agent: RunnerAgent): Promise<void> {
+async function expireExhaustedRuns(db: Db, agent: RunnerAgent, now: number): Promise<void> {
   const rows = await db
     .update(agentRun)
     .set({
@@ -141,12 +141,12 @@ async function expireExhaustedRuns(agent: RunnerAgent): Promise<void> {
         eq(agentRun.agentId, agent.id),
         eq(agentRun.status, 'pending'),
         sql`${agentRun.attempts} >= ${agentRunConfig.maxAttempts()}`,
-        sql`${agentRun.nextAttemptAt} <= now()`,
+        sql`${agentRun.nextAttemptAt} <= ${now}`,
       ),
     )
     .returning({ issueId: agentRun.issueId });
   for (const row of rows)
-    await recordAgentRunFinished({ ...row, agentUserId: agent.userId }, 'failed');
+    await recordAgentRunFinished(db, { ...row, agentUserId: agent.userId }, 'failed');
 }
 
 // An agent with an invocation URL is sent its work, so a runner that claims as well
@@ -158,67 +158,75 @@ export function assertRunnerDrained(agent: RunnerAgent): void {
   }
 }
 
-export async function claimRunnerRun(agent: RunnerAgent): Promise<RunnerRun | null> {
+export async function claimRunnerRun(db: Db, agent: RunnerAgent): Promise<RunnerRun | null> {
   assertRunnerDrained(agent);
-  await touchRunner(agent.id);
-  return takeNextRun(agent);
+  await touchRunner(db, agent.id);
+  return takeNextRun(db, agent);
 }
 
-// Claims the agent's next due run, or null when it has none. FOR UPDATE SKIP LOCKED
-// keeps two claims on the same agent from taking the same run.
-export async function takeNextRun(agent: RunnerAgent): Promise<RunnerRun | null> {
+// Claims the agent's next due run, or null when it has none. The pick and the update are
+// one statement, so two claims on the same agent never take the same run.
+export async function takeNextRun(
+  db: Db,
+  agent: RunnerAgent,
+  now = Date.now(),
+): Promise<RunnerRun | null> {
   const agentId = agent.id;
-  await expireExhaustedRuns(agent);
-  const rows = await db.execute(sql`
-    UPDATE agent_run r
-    SET attempts = r.attempts + 1,
-        started_at = coalesce(r.started_at, now()),
+  await expireExhaustedRuns(db, agent, now);
+  const claimed = await db.all<{ id: number }>(sql`
+    UPDATE agent_run
+    SET attempts = attempts + 1,
+        started_at = coalesce(started_at, ${now}),
         execution_started_at = NULL,
-        next_attempt_at = now() + make_interval(secs => ${agentRunConfig.leaseSeconds()})
-    WHERE r.id = (
-      SELECT id FROM agent_run q
-      WHERE q.agent_id = ${agentId} AND q.status = 'pending' AND q.next_attempt_at <= now()
-        AND ${issueRunTurn}
+        next_attempt_at = ${now + agentRunConfig.leaseSeconds() * 1000}
+    WHERE id = (
+      SELECT q.id FROM agent_run q
+      WHERE q.agent_id = ${agentId} AND q.status = 'pending' AND q.next_attempt_at <= ${now}
+        AND ${issueRunTurn(now)}
       ORDER BY q.next_attempt_at, q.id
-      FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING
-      r.id,
-      r.trigger,
-      r.prompt,
-      r.attempts,
-      r.issue_id AS "issueId",
-      r.schedule_id AS "scheduleId",
-      r.project_id AS "projectId",
-      (SELECT p.key FROM project p WHERE p.id = r.project_id) AS "projectKey",
-      (SELECT p.name FROM project p WHERE p.id = r.project_id) AS "projectName",
-      (SELECT p.description FROM project p WHERE p.id = r.project_id) AS "projectDescription",
+    RETURNING id
+  `);
+  if (claimed.length === 0) return null;
+  const rows = await db.all<ClaimedRow>(sql`
+    SELECT
+      r.id AS id,
+      r.trigger AS trigger,
+      r.prompt AS prompt,
+      r.attempts AS attempts,
+      r.issue_id AS issueId,
+      r.schedule_id AS scheduleId,
+      r.project_id AS projectId,
+      (SELECT p.key FROM project p WHERE p.id = r.project_id) AS projectKey,
+      (SELECT p.name FROM project p WHERE p.id = r.project_id) AS projectName,
+      (SELECT p.description FROM project p WHERE p.id = r.project_id) AS projectDescription,
       (SELECT p.key || '-' || i.sequence_number
          FROM issue i JOIN project p ON p.id = i.project_id
-         WHERE i.id = r.issue_id) AS "issueIdentifier",
-      (SELECT title FROM issue i WHERE i.id = r.issue_id) AS "issueTitle",
+         WHERE i.id = r.issue_id) AS issueIdentifier,
+      (SELECT title FROM issue i WHERE i.id = r.issue_id) AS issueTitle,
       (SELECT u.name FROM issue i JOIN "user" u ON u.id = i.assignee_user_id
-         WHERE i.id = r.issue_id) AS "assigneeName",
+         WHERE i.id = r.issue_id) AS assigneeName,
       (SELECT COALESCE(u.username, ag.username)
          FROM issue i JOIN "user" u ON u.id = i.assignee_user_id
          LEFT JOIN ai_agent ag ON ag.user_id = u.id
-         WHERE i.id = r.issue_id) AS "assigneeUsername",
-      r.source_activity_id AS "sourceActivityId",
-      (SELECT actor_name FROM issue_activity a WHERE a.id = r.source_activity_id) AS "requesterName",
+         WHERE i.id = r.issue_id) AS assigneeUsername,
+      r.source_activity_id AS sourceActivityId,
+      (SELECT actor_name FROM issue_activity a WHERE a.id = r.source_activity_id) AS requesterName,
       (SELECT COALESCE(u.username, ag.username)
          FROM issue_activity a JOIN "user" u ON u.id = a.actor_user_id
          LEFT JOIN ai_agent ag ON ag.user_id = u.id
-         WHERE a.id = r.source_activity_id) AS "requesterUsername"
+         WHERE a.id = r.source_activity_id) AS requesterUsername
+    FROM agent_run r WHERE r.id = ${claimed[0]!.id}
   `);
-  const row = (rows as unknown as ClaimedRow[])[0];
+  const row = rows[0];
   if (!row) return null;
   const wait = await runAdmissionDelay({ ...row, agentId });
   if (wait > 0) {
-    await deferRun(row.id, wait);
+    await deferRun(db, row.id, wait);
     return null;
   }
-  const threadContext = await loadThreadContext(row.sourceActivityId);
+  const threadContext = await loadThreadContext(db, row.sourceActivityId);
   const forPrompt = {
     ...row,
     agentUserId: agent.userId,
@@ -228,10 +236,10 @@ export async function takeNextRun(agent: RunnerAgent): Promise<RunnerRun | null>
   // A start that fails is a failed attempt: the run comes back after the retry delay,
   // with the error on it, rather than being handed out half started.
   try {
-    await agentRunStarted(forPrompt);
+    await agentRunStarted(db, forPrompt);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await scheduleRunRetry(row.id, runRetryDelayMs(row.attempts), message);
+    await scheduleRunRetry(db, row.id, runRetryDelayMs(row.attempts), message);
     return null;
   }
   const result = {
@@ -248,7 +256,7 @@ export async function takeNextRun(agent: RunnerAgent): Promise<RunnerRun | null>
     issueId: row.issueId,
     issueIdentifier: row.issueIdentifier,
   };
-  if (!(await markRunExecuting(row.id, row.attempts))) return null;
+  if (!(await markRunExecuting(db, row.id, row.attempts))) return null;
   return result;
 }
 
@@ -271,16 +279,17 @@ function buildSystemPrompt(agent: RunnerAgent, project: RunnerProject, run: RunF
 // run would be handed to another runner mid-flight. False when the run is not this
 // agent's, or is already finished.
 export async function heartbeatRun(
+  db: Db,
   agentId: number,
   runId: number,
   attempt?: number,
 ): Promise<boolean> {
-  await touchRunner(agentId);
+  await touchRunner(db, agentId);
   const rows = await db
     .update(agentRun)
     .set({
-      executionStartedAt: sql`coalesce(${agentRun.executionStartedAt}, now())`,
-      nextAttemptAt: sql`now() + make_interval(secs => ${agentRunConfig.leaseSeconds()})`,
+      executionStartedAt: sql`coalesce(${agentRun.executionStartedAt}, ${Date.now()})`,
+      nextAttemptAt: new Date(Date.now() + agentRunConfig.leaseSeconds() * 1000),
     })
     .where(
       and(
@@ -300,6 +309,7 @@ export async function heartbeatRun(
 // command and it failed, so re-serving the same run would just repeat it. False when
 // the run is not this agent's, or was already finished.
 export async function finishRun(
+  db: Db,
   agent: RunnerAgent,
   runId: number,
   result: {
@@ -310,7 +320,7 @@ export async function finishRun(
     usage?: ContextUsage | null;
   },
 ): Promise<boolean> {
-  await touchRunner(agent.id);
+  await touchRunner(db, agent.id);
   const rows = await db
     .update(agentRun)
     .set({
@@ -333,6 +343,6 @@ export async function finishRun(
     .returning({ issueId: agentRun.issueId });
   const row = rows[0];
   if (!row) return false;
-  await recordAgentRunFinished({ ...row, agentUserId: agent.userId }, result.status);
+  await recordAgentRunFinished(db, { ...row, agentUserId: agent.userId }, result.status);
   return true;
 }

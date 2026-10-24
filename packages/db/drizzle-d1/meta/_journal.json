@@ -12,21 +12,28 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1792838680788,
+      "when": 1792838676249,
       "tag": "0001_triggers",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "6",
-      "when": 1792838688749,
+      "when": 1792838677249,
       "tag": "0002_seed",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "6",
-      "when": 1792837561354,
+      "when": 1792838678249,
+      "tag": "0003_agent_spans",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792838679249,
       "tag": "0004_project_tree",
       "breakpoints": true
     }

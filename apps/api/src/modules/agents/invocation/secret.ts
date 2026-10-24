@@ -1,4 +1,4 @@
-import { db, aiAgent } from '@repo/db';
+import { type Db, aiAgent } from '@repo/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { decryptSecret, encryptSecret } from '@repo/crypto';
 import { generateSecret } from '#modules/webhooks/service';
@@ -18,7 +18,7 @@ function encryptedColumns(secret: string) {
 
 // Issues a secret for an agent that has none and leaves one already issued as it is, so
 // saving the URL again does not break the receiver that verifies with it.
-export async function ensureInvocationSecret(agentId: number): Promise<void> {
+export async function ensureInvocationSecret(db: Db, agentId: number): Promise<void> {
   await db
     .update(aiAgent)
     .set(encryptedColumns(generateSecret()))
@@ -27,13 +27,13 @@ export async function ensureInvocationSecret(agentId: number): Promise<void> {
 
 // Replaces the secret and returns the new one. Requests signed before take the old one,
 // so the receiver has to be given the new value before the next request arrives.
-export async function rotateInvocationSecret(agentId: number): Promise<string> {
+export async function rotateInvocationSecret(db: Db, agentId: number): Promise<string> {
   const secret = generateSecret();
   await db.update(aiAgent).set(encryptedColumns(secret)).where(eq(aiAgent.id, agentId));
   return secret;
 }
 
-export async function readInvocationSecret(agentId: number): Promise<string | null> {
+export async function readInvocationSecret(db: Db, agentId: number): Promise<string | null> {
   const rows = await db
     .select({
       ciphertext: aiAgent.invocationSecretCiphertext,
