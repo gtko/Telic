@@ -55,18 +55,51 @@ function isAllowedHost(host: string): boolean {
     .includes(host);
 }
 
+// Local development only: lets a dev server fetch http: and private addresses. Opt-in
+// through an explicit variable and never inferred from NODE_ENV, which is undefined in a
+// deployed Worker. Read per call so a test can set it around one case.
+function isDevRelaxed(): boolean {
+  const configured: string | undefined = process.env.SSRF_DEV_RELAXED;
+  return configured === '1';
+}
+
+// Expands an IPv6 literal (compressed, extended, or with a dotted IPv4 tail) to its
+// eight 16-bit groups. Returns null when the text is not an IPv6 address.
+function expandIpv6(ip: string): number[] | null {
+  let text = ip;
+  const dotted = text.match(/^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (dotted) {
+    const octets = dotted.slice(2).map(Number);
+    if (octets.some((o) => o > 255)) return null;
+    const hex = (hi: number, lo: number) => ((hi << 8) | lo).toString(16);
+    text = `${dotted[1]}${hex(octets[0]!, octets[1]!)}:${hex(octets[2]!, octets[3]!)}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const parse = (part: string): number[] | null => {
+    if (part === '') return [];
+    const groups = part.split(':');
+    if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null;
+    return groups.map((g) => parseInt(g, 16));
+  };
+  const head = parse(halves[0]!);
+  const tail = halves.length === 2 ? parse(halves[1]!) : [];
+  if (!head || !tail) return null;
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const missing = 8 - head.length - tail.length;
+  if (missing < 1) return null;
+  return [...head, ...new Array<number>(missing).fill(0), ...tail];
+}
+
 // IPv4-mapped and IPv4-compatible IPv6 addresses (`::ffff:127.0.0.1`, `::ffff:7f00:1`,
-// `::127.0.0.1`) reach the same host as the IPv4 they carry, so they are compared as
-// that IPv4 rather than as an IPv6 the range checks below would not recognise.
+// `0:0:0:0:0:ffff:7f00:1`, `::127.0.0.1`) reach the same host as the IPv4 they carry,
+// so they are compared as that IPv4.
 function toIpv4(ip: string): string {
-  const embedded = ip.match(/^::(?:ffff:)?(.+)$/);
-  if (!embedded) return ip;
-  const rest = embedded[1]!;
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(rest)) return rest;
-  const hex = rest.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (!hex) return ip;
-  const n = ((parseInt(hex[1]!, 16) << 16) | parseInt(hex[2]!, 16)) >>> 0;
-  return [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+  const groups = expandIpv6(ip);
+  if (!groups || groups.slice(0, 5).some((g) => g !== 0)) return ip;
+  if (groups[5] !== 0 && groups[5] !== 0xffff) return ip;
+  const [hi, lo] = [groups[6]!, groups[7]!];
+  return [hi >> 8, hi & 255, lo >> 8, lo & 255].join('.');
 }
 
 // A dotted-decimal IPv4 address. The URL parser writes numeric hosts in this form.
@@ -96,11 +129,16 @@ export function isPrivateIp(ip: string): boolean {
       (a === 100 && b >= 64 && b <= 127) // CGNAT
     );
   }
+  const groups = expandIpv6(normalized);
+  if (!groups) return false;
+  const first = groups[0]!;
   return (
-    normalized === '::1' || // loopback
-    normalized === '::' ||
-    normalized.startsWith('fe80:') || // link-local
-    /^f[cd][0-9a-f]{2}:/.test(normalized) // unique local
+    groups.every((g) => g === 0) || // unspecified
+    (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1) || // loopback
+    (first & 0xffc0) === 0xfe80 || // link-local fe80::/10
+    (first & 0xffc0) === 0xfec0 || // deprecated site-local fec0::/10
+    (first & 0xfe00) === 0xfc00 || // unique local fc00::/7
+    first === 0x64 // NAT64 64:ff9b::/96 and 64:ff9b:1::/48 carry an arbitrary IPv4
   );
 }
 
@@ -179,8 +217,7 @@ async function vet(raw: string, policy: UrlPolicy = {}): Promise<URL> {
     throw new UrlNotAllowedError('url must be a valid URL');
   }
 
-  const devRelaxed =
-    !policy.publicOnly && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
+  const devRelaxed = !policy.publicOnly && isDevRelaxed();
   if (
     url.protocol !== 'https:' &&
     !((devRelaxed || policy.publicOnly) && url.protocol === 'http:')

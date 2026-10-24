@@ -21,6 +21,7 @@ export interface Env {
   CLIENT_IP_HEADER?: string;
   TRUSTED_PROXIES?: string;
   SSRF_ALLOWED_HOSTS?: string;
+  SSRF_DEV_RELAXED?: string;
   EMAIL_FROM?: string;
   NOTIFICATIONS_EMAIL_FROM?: string;
   GIT_WEBHOOK_BASE_URL?: string;

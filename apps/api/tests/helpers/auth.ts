@@ -34,7 +34,12 @@ export async function signUpTestUser(
   const response = await app.handle(
     new Request('http://localhost/api/auth/sign-up/email', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: 'http://localhost:3001' },
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://localhost:3001',
+        // The rate limit is per client address; each test user is a different client.
+        'x-forwarded-for': `10.${(counter >> 16) & 255}.${(counter >> 8) & 255}.${counter & 255}`,
+      },
       body: JSON.stringify({ email, password, name }),
     }),
   );

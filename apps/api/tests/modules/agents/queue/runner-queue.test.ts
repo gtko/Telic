@@ -225,9 +225,9 @@ describe('runner queue', () => {
 
   it('reports an agent with an invocation URL as push instead of runner presence', async () => {
     const { api, agent } = await setup();
-    // The SSRF guard refuses a loopback URL under NODE_ENV=test.
-    const environment = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'development';
+    // The SSRF guard refuses a loopback URL unless SSRF_DEV_RELAXED=1.
+    const environment = process.env.SSRF_DEV_RELAXED;
+    process.env.SSRF_DEV_RELAXED = '1';
     try {
       const patched = await api
         .teams({ teamId: await teamOf(api, 'RUN') })
@@ -235,7 +235,8 @@ describe('runner queue', () => {
         .patch({ invocationUrl: 'http://127.0.0.1:9/agent' });
       expect(patched.status).toBe(200);
     } finally {
-      process.env.NODE_ENV = environment;
+      if (environment === undefined) delete process.env.SSRF_DEV_RELAXED;
+      else process.env.SSRF_DEV_RELAXED = environment;
     }
     expect((await api['agent-runs'].queue.get()).data!.items[0]).toMatchObject({
       executionState: 'queued',

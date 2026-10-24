@@ -3,7 +3,7 @@ import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
 
 // Webhooks the instance manages through a provider connection, against a provider served
-// on localhost. The SSRF guard refuses http and loopback hosts under NODE_ENV=test, so
+// on localhost. The SSRF guard refuses http and loopback hosts unless SSRF_DEV_RELAXED=1, so
 // each case runs as development, the way the @repo/net tests reach a local server.
 
 type FakeProvider = 'github' | 'gitea' | 'gitlab';
@@ -102,14 +102,14 @@ describe('Managed repository webhooks', () => {
   let fake: ReturnType<typeof fakeProvider> | null = null;
 
   beforeEach(async () => {
-    process.env.NODE_ENV = 'development';
+    process.env.SSRF_DEV_RELAXED = '1';
     delete process.env.GIT_WEBHOOK_BASE_URL;
   });
 
   afterEach(() => {
     fake?.stop();
     fake = null;
-    process.env.NODE_ENV = environment.NODE_ENV;
+    delete process.env.SSRF_DEV_RELAXED;
     if (environment.GIT_WEBHOOK_BASE_URL === undefined) delete process.env.GIT_WEBHOOK_BASE_URL;
     else process.env.GIT_WEBHOOK_BASE_URL = environment.GIT_WEBHOOK_BASE_URL;
   });

@@ -8,7 +8,7 @@ import { dispatchInvocations } from '#modules/agents/invocation/service';
 
 // An external agent with an invocation URL is sent its runs and chat messages instead of
 // a runner claiming them. The endpoint is a server on localhost, which the SSRF guard
-// refuses under NODE_ENV=test, so each case runs as development, the way the git
+// refuses unless SSRF_DEV_RELAXED=1, so each case sets it, the way the git
 // provider tests reach theirs.
 
 interface Received {
@@ -88,14 +88,18 @@ async function lastRun(asOwner: Api, teamId: number, agentId: number) {
   return (await agentOf(asOwner, teamId, agentId).runs.get({ query: {} })).data!.items[0];
 }
 
-const ENV_KEYS = ['NODE_ENV', 'AGENT_RUN_MAX_ATTEMPTS', 'AGENT_INVOCATION_TIMEOUT_MS'] as const;
+const ENV_KEYS = [
+  'SSRF_DEV_RELAXED',
+  'AGENT_RUN_MAX_ATTEMPTS',
+  'AGENT_INVOCATION_TIMEOUT_MS',
+] as const;
 
 describe('agent invocation', () => {
   const environment = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   let endpoint: ReturnType<typeof fakeEndpoint> | null = null;
 
   beforeEach(async () => {
-    process.env.NODE_ENV = 'development';
+    process.env.SSRF_DEV_RELAXED = '1';
   });
 
   afterEach(async () => {
@@ -144,7 +148,7 @@ describe('agent invocation', () => {
 
   it('refuses a URL that points to a private address', async () => {
     const { asOwner, teamId, agent } = await setup();
-    process.env.NODE_ENV = 'test';
+    delete process.env.SSRF_DEV_RELAXED;
     for (const invocationUrl of ['http://127.0.0.1:9/agent', 'https://10.0.0.1/agent']) {
       const res = await agentOf(asOwner, teamId, agent.id).patch({ invocationUrl });
       expect(res.status).toBe(400);

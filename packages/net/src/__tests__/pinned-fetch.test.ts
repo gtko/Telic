@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { assertPublicHttpUrl, pinnedFetch, UrlNotAllowedError } from '../index';
 
-// The guard is strict under NODE_ENV=test, so these exercise the production rules.
+// The guard is strict unless SSRF_DEV_RELAXED=1, so these exercise the production rules.
 describe('pinnedFetch', () => {
   it('rejects a literal private address', async () => {
     await expect(pinnedFetch('https://127.0.0.1/')).rejects.toBeInstanceOf(UrlNotAllowedError);
@@ -28,7 +28,7 @@ describe('pinnedFetch', () => {
 
 // SSRF_ALLOWED_HOSTS is the operator's escape hatch for a self-hosted repository
 // host: its address is configuration rather than content, and on a self-hosted
-// instance it is normally private. These run under NODE_ENV=test, so the strict
+// instance it is normally private. SSRF_DEV_RELAXED is unset here, so the strict
 // rules apply and the allowlist is the only thing admitting the URL.
 describe('SSRF_ALLOWED_HOSTS', () => {
   const saved = process.env.SSRF_ALLOWED_HOSTS;
@@ -80,12 +80,11 @@ describe('SSRF_ALLOWED_HOSTS', () => {
 
 // node sends no User-Agent of its own, unlike the fetch this replaced, and GitHub
 // answers 403 to a request without one. The requests go to a loopback server, which
-// the guard admits only outside production and test, so NODE_ENV is relaxed around
+// the guard admits only outside production and test, so SSRF_DEV_RELAXED is set around
 // them and restored afterwards.
 describe('pinnedFetch User-Agent', () => {
-  const saved = process.env.NODE_ENV;
   afterEach(() => {
-    process.env.NODE_ENV = saved;
+    delete process.env.SSRF_DEV_RELAXED;
   });
 
   async function headersSeenBy(init?: { headers: Record<string, string> }) {
@@ -97,11 +96,11 @@ describe('pinnedFetch User-Agent', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : 0;
-    process.env.NODE_ENV = 'development';
+    process.env.SSRF_DEV_RELAXED = '1';
     try {
       await pinnedFetch(`http://127.0.0.1:${port}/`, init);
     } finally {
-      process.env.NODE_ENV = saved;
+      delete process.env.SSRF_DEV_RELAXED;
       server.close();
     }
     return seen;
