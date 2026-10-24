@@ -38,14 +38,11 @@
     "documents": "Belgeler",
     "actions": "Eylemler",
     "configuration": "Yapılandırma",
-    "webhooks": "Webhook'lar",
-    "agents": "Ajanlar",
-    "schedules": "Zamanlamalar"
+    "webhooks": "Webhook'lar"
   },
   "title": "Yeni proje",
   "copyTitle": "\"{name}\" projesini kopyala",
   "create": "Proje oluştur",
   "copyAction": "Projeyi kopyala",
-  "defaultAgents": "Bu projeye katılacak ajanlar: {names}",
   "copyName": "{name} kopyası"
 }

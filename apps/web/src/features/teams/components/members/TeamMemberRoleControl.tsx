@@ -14,8 +14,7 @@ import {
 import { useSetTeamMemberRole } from '@/services/teams.service';
 
 // The rank a member holds in the team. An owner or a manager gets a select to change
-// it, anyone else reads a badge. An agent keeps the badge as well: its rank is 'agent',
-// and what it may do is the role of each project it works in. Nobody changes their own
+// it, anyone else reads a badge. Nobody changes their own
 // rank, and only an owner grants the owner rank or changes what another owner holds.
 export default function TeamMemberRoleControl({
   teamId,
@@ -31,12 +30,9 @@ export default function TeamMemberRoleControl({
   const t = useTranslations('teams.members');
   const tManage = useTranslations('teams.manage');
   const setRole = useSetTeamMemberRole(teamId);
-  const isAgent = member.agentId != null;
 
   const canManage =
-    !isAgent &&
-    !self &&
-    (viewerRole === 'owner' || (viewerRole === 'manager' && member.role !== 'owner'));
+    !self && (viewerRole === 'owner' || (viewerRole === 'manager' && member.role !== 'owner'));
 
   if (!canManage) {
     return (

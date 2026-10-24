@@ -95,10 +95,6 @@
       "label": "الإجراءات",
       "description": "أزرار على المهمة بتظبط الحقول بضغطة واحدة."
     },
-    "schedules": {
-      "label": "الجدولات",
-      "description": "تشغيل مهام الوكيل على جدولة بتتكرّر."
-    },
     "webhooks": {
       "label": "خطافات الويب (webhooks)",
       "description": "بعت أحداث المشروع لعناوين URL خارجية، موقّعة بسرّ خاص بكل خطاف ويب."
@@ -110,14 +106,6 @@
     "import-export": {
       "label": "استيراد/تصدير",
       "description": "استورد المهام والتعليقات والوسوم من نسخة Plane مستضافة ذاتيًا، أو صدّر بيانات المشروع كملف JSON."
-    },
-    "ai-agents": {
-      "label": "وكلاء الذكاء الاصطناعي",
-      "description": "وكلاء الذكاء الاصطناعي العاملون في هذا المشروع."
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
@@ -129,33 +117,14 @@
         "teams": "الفرق",
         "projects": "المشاريع",
         "people": "الأشخاص",
-        "agents": "وكلاء الذكاء الاصطناعي",
         "openIssues": "المهام المفتوحة",
         "storage": "التخزين"
       },
       "blocks": {
-        "agents": "وكلاء الذكاء الاصطناعي",
-        "schedules": "التشغيلات المجدولة",
         "time": "الوقت المسجّل",
         "flow": "حركة المهام",
         "projects": "المشاريع النشطة",
         "teams": "الفرق النشطة"
-      }
-    },
-    "agentBudgets": {
-      "title": "ميزانيات الذكاء الاصطناعي",
-      "description": "حدود لما ينفقه الوكلاء على النماذج.",
-      "workspace": "مساحة العمل كلها",
-      "figures": {
-        "spent": "المنفق",
-        "limit": "الحد",
-        "left": "المتبقي",
-        "forecast": "المتوقع حتى نهاية الفترة"
-      },
-      "list": "الميزانيات",
-      "columns": {
-        "budget": "الميزانية",
-        "spent": "المنفق"
       }
     },
     "auditLog": {

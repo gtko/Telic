@@ -82,10 +82,6 @@ function team(id: number, workspaceId: number): Team {
     memberCount: 1,
     ownerCount: 1,
     roleCount: 0,
-    integrationCount: 0,
-    agentCount: 0,
-    skillCount: 0,
-    toolCount: 0,
     createdAt: '2026-01-01T00:00:00Z',
   };
 }

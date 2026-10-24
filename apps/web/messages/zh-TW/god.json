@@ -178,17 +178,7 @@
     "workspacesSaved": "工作區設定已儲存",
     "workspaces": "工作區",
     "personalWorkspaces": "每人一個工作區",
-    "personalWorkspacesHint": "每個帳號都會獲得一個以其姓名命名的專屬工作區。關閉後，成員只能在被新增到的工作區中工作。",
-    "agents": "代理",
-    "agentsSaved": "代理設定已儲存",
-    "traceRetention": "保留執行追蹤",
-    "traceRetentionHint": "代理的每次執行都會記錄模型和工具呼叫。用量面板只統計仍保留的執行。",
-    "traceDays": "{days} 天",
-    "traceForever": "永久",
-    "maxRunTime": "最長執行時間",
-    "maxRunTimeHint": "單次代理執行在被停止並記為失敗之前可持續的時間。代理自身的上限不能超過此值。",
-    "runMinutes": "{minutes, plural, other {# 分鐘}}",
-    "runSeconds": "{seconds} 秒"
+    "personalWorkspacesHint": "每個帳號都會獲得一個以其姓名命名的專屬工作區。關閉後，成員只能在被新增到的工作區中工作。"
   },
   "authentication": {
     "saved": "身分驗證設定已儲存",

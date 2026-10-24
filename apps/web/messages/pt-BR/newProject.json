@@ -38,14 +38,11 @@
     "documents": "Documentos",
     "actions": "Ações",
     "configuration": "Configuração",
-    "webhooks": "Webhooks",
-    "agents": "Agentes",
-    "schedules": "Agendamentos"
+    "webhooks": "Webhooks"
   },
   "title": "Novo projeto",
   "copyTitle": "Copiar projeto \"{name}\"",
   "create": "Criar projeto",
   "copyAction": "Copiar projeto",
-  "defaultAgents": "Agentes que entrarão neste projeto: {names}",
   "copyName": "{name} cópia"
 }

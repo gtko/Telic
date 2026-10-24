@@ -32,8 +32,8 @@ export interface MemberRow {
   createdAt: string;
 }
 
-// Which members a list asks for: everyone, the people, or the AI agents.
-export type MemberKind = 'all' | 'human' | 'agent';
+// Which members a list asks for: everyone or the people.
+export type MemberKind = 'all' | 'human';
 
 // How many members own the project is what a page window cannot answer, and the last
 // owner's row is the one that may not be removed.

@@ -25,8 +25,7 @@
   "lastDays": "最近 {days} 天",
   "showRows": "显示 {count} 条",
   "widgetGroups": {
-    "issues": "工作项",
-    "agents": "AI 代理和 Webhook"
+    "issues": "工作项"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "分类统计",
       "description": "按状态、优先级、类型或负责人统计工作项"
     },
-    "agent_runs": {
-      "label": "代理运行",
-      "description": "最近的 AI 代理运行及其结果"
-    },
-    "agent_health": {
-      "label": "代理运行状况",
-      "description": "指定时间范围内代理运行的成功率和失败情况"
-    },
     "webhook_health": {
       "label": "Webhook 投递状况",
       "description": "Webhook 投递结果和已禁用端点"
-    },
-    "agent_workload": {
-      "label": "代理工作量",
-      "description": "各代理接收的工作项及运行结果"
     }
   },
   "breakdown": {
@@ -179,54 +166,12 @@
     "wholeProject": "整个项目",
     "forecastWeeks": "按最近 {weeks} 周的速度"
   },
-  "agentRuns": {
-    "empty": "暂无代理运行记录。",
-    "filters": {
-      "all": "全部运行",
-      "failed": "失败",
-      "pending": "已排队",
-      "success": "成功"
-    },
-    "status": {
-      "pending": "已排队",
-      "success": "成功",
-      "failed": "失败",
-      "canceled": "已取消"
-    },
-    "trigger": {
-      "mention": "因以下位置的提及而运行：",
-      "delegation": "因以下工作项的委派而运行：",
-      "field": "因以下工作项的字段而运行：",
-      "manual": "手动运行",
-      "schedule": "按定时任务运行",
-      "status": "因以下工作项的状态变更而运行：",
-      "event": "因以下工作项的事件而运行："
-    }
-  },
-  "agentHealth": {
-    "empty": "暂无代理运行记录。",
-    "successRate": "成功率",
-    "runs": "{count, plural, other {# 次运行}}",
-    "failed": "{count} 次失败",
-    "queued": "{count} 次已排队"
-  },
   "webhookHealth": {
     "deliveries": "次投递",
     "failed": "{count} 次失败",
     "pending": "{count} 次待处理",
     "allDelivered": "全部投递成功",
     "disabled": "{count, plural, other {# 个已禁用端点}}"
-  },
-  "agentWorkload": {
-    "empty": "此项目暂无代理。",
-    "agent": "代理",
-    "delegated": "已委派",
-    "runs": "运行次数",
-    "failed": "{count} 次失败",
-    "kind": {
-      "external": "外部",
-      "internal": "内置"
-    }
   },
   "defaultWidgets": {
     "open": "未关闭",

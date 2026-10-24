@@ -4,11 +4,7 @@ import type { PickItem } from '@/components/common/fields/PopoverPick';
 
 // Builds the row one candidate gets in a picker over the project's people, shared by
 // the controls that write such a candidate to an issue.
-export function useCandidatePickItem(
-  assignees: Assignee[],
-  value: string | null,
-  onChange: (userId: string) => void,
-) {
+export function useCandidatePickItem(value: string | null, onChange: (userId: string) => void) {
   return (a: Assignee): PickItem => {
     return {
       key: a.userId,

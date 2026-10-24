@@ -95,10 +95,6 @@
       "label": "Ações",
       "description": "Botões em uma issue que definem campos em um clique."
     },
-    "schedules": {
-      "label": "Agendamentos",
-      "description": "Execute tarefas de agente em um horário recorrente."
-    },
     "webhooks": {
       "label": "Webhooks",
       "description": "Envie eventos do projeto para URLs externas, assinados com um segredo por webhook."
@@ -110,14 +106,6 @@
     "import-export": {
       "label": "Importar/Exportar",
       "description": "Importe issues, comentários e etiquetas de uma instância Plane auto-hospedada, ou exporte os dados deste projeto como JSON."
-    },
-    "ai-agents": {
-      "label": "Agentes de IA",
-      "description": "Agentes de IA trabalhando neste projeto."
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
@@ -129,33 +117,14 @@
         "teams": "Times",
         "projects": "Projetos",
         "people": "Pessoas",
-        "agents": "Agentes de IA",
         "openIssues": "Issues abertas",
         "storage": "Armazenamento"
       },
       "blocks": {
-        "agents": "Agentes de IA",
-        "schedules": "Execuções agendadas",
         "time": "Tempo registrado",
         "flow": "Fluxo de issues",
         "projects": "Projetos ativos",
         "teams": "Times ativos"
-      }
-    },
-    "agentBudgets": {
-      "title": "Orçamentos de IA",
-      "description": "Limites para o que os agentes gastam com modelos.",
-      "workspace": "Espaço inteiro",
-      "figures": {
-        "spent": "Gasto",
-        "limit": "Limite",
-        "left": "Resta",
-        "forecast": "Previsão para o período"
-      },
-      "list": "Orçamentos",
-      "columns": {
-        "budget": "Orçamento",
-        "spent": "Gasto"
       }
     },
     "auditLog": {

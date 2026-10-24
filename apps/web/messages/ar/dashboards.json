@@ -25,8 +25,7 @@
   "lastDays": "آخر {days} يوم",
   "showRows": "عرض {count}",
   "widgetGroups": {
-    "issues": "المهام",
-    "agents": "وكلاء الذكاء الاصطناعي وخطافات الويب"
+    "issues": "المهام"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "التوزيع",
       "description": "بيوزّع عدد المهام حسب الحالة أو الأولوية أو النوع أو المسؤول"
     },
-    "agent_runs": {
-      "label": "تشغيلات الوكلاء",
-      "description": "أحدث تشغيلات وكلاء الذكاء الاصطناعي ونتيجة كل تشغيل"
-    },
-    "agent_health": {
-      "label": "حالة الوكلاء",
-      "description": "معدل نجاح تشغيلات الوكلاء وعدد اللي فشل منها خلال فترة إنت بتحددها"
-    },
     "webhook_health": {
       "label": "حالة خطافات الويب",
       "description": "نتايج تسليم خطافات الويب والنقاط اللي اتعطّلت"
-    },
-    "agent_workload": {
-      "label": "عبء عمل الوكلاء",
-      "description": "المهام المفوّضة لكل وكيل ونتايج تشغيلاته"
     }
   },
   "breakdown": {
@@ -179,54 +166,12 @@
     "wholeProject": "المشروع بأكمله",
     "forecastWeeks": "المعدل خلال {weeks, plural, one {أسبوع واحد} two {أسبوعين} few {# أسابيع} many {# أسبوعًا} other {# أسبوع}}"
   },
-  "agentRuns": {
-    "empty": "لا توجد تشغيلات وكلاء بعد.",
-    "filters": {
-      "all": "كل التشغيلات",
-      "failed": "فاشلة",
-      "pending": "في الانتظار",
-      "success": "ناجحة"
-    },
-    "status": {
-      "pending": "في الانتظار",
-      "success": "نجاح",
-      "failed": "فشل",
-      "canceled": "أُلغي"
-    },
-    "trigger": {
-      "mention": "شُغّل عند ذكره في",
-      "delegation": "شُغّل عند تفويض",
-      "field": "شُغّل عند تعيينه في حقل",
-      "manual": "شُغّل يدويًا",
-      "schedule": "شُغّل حسب الجدولة",
-      "status": "شُغّل عند تغيير حالة",
-      "event": "شُغّل عند حدث في"
-    }
-  },
-  "agentHealth": {
-    "empty": "لا توجد تشغيلات وكلاء.",
-    "successRate": "معدل النجاح",
-    "runs": "{count, plural, zero {لا تشغيلات} one {تشغيل واحد} two {تشغيلان} few {# تشغيلات} many {# تشغيلًا} other {# تشغيل}}",
-    "failed": "{count} فاشلة",
-    "queued": "{count} في الانتظار"
-  },
   "webhookHealth": {
     "deliveries": "عمليات تسليم",
     "failed": "{count} فاشلة",
     "pending": "{count} معلّقة",
     "allDelivered": "تم تسليم الكل",
     "disabled": "{count, plural, zero {لا نقاط معطّلة} one {نقطة معطّلة واحدة} two {نقطتان معطّلتان} few {# نقاط معطّلة} many {# نقطة معطّلة} other {# نقطة معطّلة}}"
-  },
-  "agentWorkload": {
-    "empty": "لا يوجد وكلاء في هذا المشروع.",
-    "agent": "الوكيل",
-    "delegated": "مفوَّضة",
-    "runs": "التشغيلات",
-    "failed": "{count} فاشلة",
-    "kind": {
-      "external": "خارجي",
-      "internal": "داخلي"
-    }
   },
   "defaultWidgets": {
     "open": "مفتوحة",

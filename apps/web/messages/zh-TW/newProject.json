@@ -38,14 +38,11 @@
     "documents": "文件",
     "actions": "操作",
     "configuration": "設定",
-    "webhooks": "Webhook",
-    "agents": "代理",
-    "schedules": "排程"
+    "webhooks": "Webhook"
   },
   "title": "新建專案",
   "copyTitle": "複製專案「{name}」",
   "create": "新建專案",
   "copyAction": "複製專案",
-  "defaultAgents": "將加入此專案的代理：{names}",
   "copyName": "{name} 副本"
 }

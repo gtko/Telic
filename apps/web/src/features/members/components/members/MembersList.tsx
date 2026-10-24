@@ -67,7 +67,6 @@ export default function MembersList({
   const searchPlaceholder = {
     all: t('search.all'),
     human: t('search.people'),
-    agent: t('search.agents'),
   }[kind];
 
   if (membersQuery.isPending) return <ListSkeleton className="mb-8" rowClassName="h-14" />;
@@ -94,7 +93,6 @@ export default function MembersList({
           <TabsList variant="line" className="w-auto border-b-0">
             <TabsTrigger value="all">{t('tabs.all')}</TabsTrigger>
             <TabsTrigger value="human">{t('tabs.people')}</TabsTrigger>
-            <TabsTrigger value="agent">{t('tabs.agents')}</TabsTrigger>
           </TabsList>
           <SearchInput
             value={search}

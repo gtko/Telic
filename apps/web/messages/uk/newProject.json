@@ -38,14 +38,11 @@
     "documents": "Документи",
     "actions": "Дії",
     "configuration": "Конфігурація",
-    "webhooks": "Вебхуки",
-    "agents": "Агенти",
-    "schedules": "Розклади"
+    "webhooks": "Вебхуки"
   },
   "title": "Новий проєкт",
   "copyTitle": "Копіювати проєкт «{name}»",
   "create": "Створити проєкт",
   "copyAction": "Копіювати проєкт",
-  "defaultAgents": "До цього проєкту долучаться агенти: {names}",
   "copyName": "{name} — копія"
 }

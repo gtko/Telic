@@ -109,7 +109,6 @@
       "issueSettingsDescription": "Cómo empiezan las estadísticas y el registro de actividad de un ticket. Cambiarlos mientras un ticket está abierto no modifica estos.",
       "notifications": "Notificaciones",
       "notificationsDescription": "Seguir un ticket te trae sus comentarios y sus cambios de estado.",
-      "aiChat": "Chat de IA",
       "shortcuts": "Atajos de teclado",
       "shortcutsDescription": "Pulsa Cambiar, después las teclas que quieras. Restablecer devuelve un atajo al definido para esta instancia."
     },
@@ -167,8 +166,6 @@
       "grouped": "Agrupada por estado"
     },
     "autoWatch": "Seguir tickets automáticamente",
-    "autoWatchDescription": "Las que creas, te asignen, comentes o en las que te mencionen.",
-    "showChatByDefault": "Mostrar el chat por defecto",
-    "showChatByDefaultDescription": "El panel de chat se abre con una página de proyecto. Ciérralo cuando quiera desde su cabecera o el icono de chat."
+    "autoWatchDescription": "Las que creas, te asignen, comentes o en las que te mencionen."
   }
 }

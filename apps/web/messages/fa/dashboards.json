@@ -25,8 +25,7 @@
   "lastDays": "{days} روز اخیر",
   "showRows": "نمایش {count}",
   "widgetGroups": {
-    "issues": "تسک‌ها",
-    "agents": "ایجنت‌های AI و وب‌هوک‌ها"
+    "issues": "تسک‌ها"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "تفکیک",
       "description": "تعداد تسک‌ها بر اساس وضعیت، اولویت، نوع یا مسئول"
     },
-    "agent_runs": {
-      "label": "اجراهای ایجنت",
-      "description": "اجراهای اخیر ایجنت AI همراه با نتیجه آن‌ها"
-    },
-    "agent_health": {
-      "label": "سلامت ایجنت",
-      "description": "نرخ موفقیت و شکست اجراهای ایجنت در یک بازه"
-    },
     "webhook_health": {
       "label": "سلامت وب‌هوک",
       "description": "نتایج تحویل وب‌هوک و نقاط پایانی غیرفعال"
-    },
-    "agent_workload": {
-      "label": "بار کاری ایجنت",
-      "description": "تسک‌های واگذارشده و نتایج اجرا به تفکیک ایجنت"
     }
   },
   "breakdown": {
@@ -179,54 +166,12 @@
     "wholeProject": "کل پروژه",
     "forecastWeeks": "نرخ در {weeks, plural, one {# هفته} other {# هفته}}"
   },
-  "agentRuns": {
-    "empty": "هنوز اجرای ایجنتی وجود ندارد.",
-    "filters": {
-      "all": "همه اجراها",
-      "failed": "ناموفق",
-      "pending": "در صف",
-      "success": "موفق"
-    },
-    "status": {
-      "pending": "در صف",
-      "success": "موفق",
-      "failed": "ناموفق",
-      "canceled": "لغوشده"
-    },
-    "trigger": {
-      "mention": "اجرا شد با منشن در",
-      "delegation": "اجرا شد با واگذاری",
-      "field": "اجرا شد روی فیلدی از",
-      "manual": "به‌صورت دستی اجرا شد",
-      "schedule": "طبق زمان‌بندی اجرا شد",
-      "status": "اجرا شد با تغییر وضعیت",
-      "event": "اجرا شد با رویدادی از"
-    }
-  },
-  "agentHealth": {
-    "empty": "هیچ اجرای ایجنتی وجود ندارد.",
-    "successRate": "نرخ موفقیت",
-    "runs": "{count, plural, one {# اجرا} other {# اجرا}}",
-    "failed": "{count} ناموفق",
-    "queued": "{count} در صف"
-  },
   "webhookHealth": {
     "deliveries": "تحویل‌ها",
     "failed": "{count} ناموفق",
     "pending": "{count} در انتظار",
     "allDelivered": "همه تحویل شد",
     "disabled": "{count, plural, one {# نقطه پایانی غیرفعال} other {# نقطه پایانی غیرفعال}}"
-  },
-  "agentWorkload": {
-    "empty": "هیچ ایجنتی در این پروژه نیست.",
-    "agent": "ایجنت",
-    "delegated": "واگذارشده",
-    "runs": "اجراها",
-    "failed": "{count} ناموفق",
-    "kind": {
-      "external": "خارجی",
-      "internal": "داخلی"
-    }
   },
   "defaultWidgets": {
     "open": "باز",

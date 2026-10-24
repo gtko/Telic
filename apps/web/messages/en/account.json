@@ -109,7 +109,6 @@
       "issueSettingsDescription": "How the stats and the activity log of an issue start out. Switching them while an issue is open does not change these.",
       "notifications": "Notifications",
       "notificationsDescription": "Watching an issue brings you its comments and status changes.",
-      "aiChat": "AI chat",
       "shortcuts": "Keyboard shortcuts",
       "shortcutsDescription": "Press Change, then the keys you want. Reset takes a shortcut back to the one set for this instance."
     },
@@ -167,8 +166,6 @@
       "grouped": "Grouped by status"
     },
     "autoWatch": "Watch issues automatically",
-    "autoWatchDescription": "The ones you create, get assigned, comment on, or are mentioned in.",
-    "showChatByDefault": "Show the chat by default",
-    "showChatByDefaultDescription": "The chat panel opens with a project page. Close it any time from its header or the chat icon."
+    "autoWatchDescription": "The ones you create, get assigned, comment on, or are mentioned in."
   }
 }

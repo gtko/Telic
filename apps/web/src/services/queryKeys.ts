@@ -141,21 +141,6 @@ export const qk = {
   roleUsage: (teamId: number, roleId: number) => ['roleUsage', teamId, roleId] as const,
   anyRoleUsage: ['roleUsage'] as const,
   permissionCatalog: ['permissionCatalog'] as const,
-  // Everything integration-scoped. A credential belongs to the team, so changing one
-  // is invalidated at this prefix: the pickers its projects fill from go stale too.
-  integrations: ['integrations'] as const,
-  // One page of the team's stored credentials (its Integrations tab); the window
-  // scopes the entry. The integration catalog and an LLM provider's models sit beside
-  // it, under the same team prefix.
-  teamCredentialPage: (teamId: number, params: unknown) =>
-    ['integrations', 'team', teamId, 'page', params] as const,
-  integrationCatalog: (teamId: number) => ['integrations', 'team', teamId, 'catalog'] as const,
-  integrationModels: (teamId: number, provider: string) =>
-    ['integrations', 'team', teamId, 'models', provider] as const,
-  // The connected integrations as picker options, under the same prefix so a
-  // credential mutation refreshes them too.
-  integrationOptions: (teamId: number, kind?: string) =>
-    ['integrations', 'team', teamId, 'options', kind ?? 'all'] as const,
   issue: (id: number) => ['issue', id] as const,
   issueDevelopmentRepositories: (id: number) =>
     ['issue', id, 'development', 'repositories'] as const,

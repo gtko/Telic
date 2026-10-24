@@ -47,21 +47,11 @@ export const documentPath = (ref: string, documentId: number) =>
 export const settingsPath = (ref: string, section: string) =>
   `${projectPath(ref)}/settings/${section}`;
 
-// The AI Team destinations listed in the main sidebar (see AI_TEAM_SECTIONS).
-export const aiTeamPath = (ref: string, section: string) => `${projectPath(ref)}/agents/${section}`;
-
-export const runnerQueuePath = (ref: string) => aiTeamPath(ref, 'queue');
-
-export const runnerQueueRunPath = (ref: string, runId: number) =>
-  `${runnerQueuePath(ref)}/${runId}`;
-
 export const inboxPath = (ref: string) => `${projectPath(ref)}/inbox`;
 
 // The member's own notification preferences (which events, by which channel, their
 // Telegram chat id). A main-nav Configuration destination, open to any member.
 export const notificationsPath = (ref: string) => `${projectPath(ref)}/notifications`;
-
-export const aiAgentsPath = (ref: string) => `${projectPath(ref)}/agents`;
 
 export const mcpServerPath = (ref: string) => `${projectPath(ref)}/mcp`;
 
@@ -152,18 +142,7 @@ export const manageTeamsPath = () => '/account/teams';
 // Every section of a team is a route of its own, so each loads only what it shows.
 // The team itself is the index of the team, so it carries no section segment.
 export type TeamSection =
-  | 'info'
-  | 'projects'
-  | 'members'
-  | 'roles'
-  | 'integrations'
-  | 'git'
-  | 'mcp'
-  | 'ai-agents'
-  | 'agent-skills'
-  | 'agent-tools'
-  | 'analytics'
-  | 'notifications';
+  'info' | 'projects' | 'members' | 'roles' | 'git' | 'mcp' | 'notifications';
 
 // A team's settings, under the team's ref (Team.ref): /acme/settings.
 export const teamPath = (teamRef: string) => `/${encodeURIComponent(teamRef)}/settings`;

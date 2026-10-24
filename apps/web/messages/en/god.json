@@ -178,17 +178,7 @@
     "workspacesSaved": "Workspace settings saved",
     "workspaces": "Workspaces",
     "personalWorkspaces": "A workspace for everyone",
-    "personalWorkspacesHint": "Every account gets a workspace of its own, named after the person. Off, people work only in the workspaces they are added to.",
-    "agents": "Agents",
-    "agentsSaved": "Agent settings saved",
-    "traceRetention": "Keep run traces",
-    "traceRetentionHint": "Each agent run records its model and tool calls. Usage dashboards count only the runs still kept.",
-    "traceDays": "{days, plural, one {# day} other {# days}}",
-    "traceForever": "Forever",
-    "maxRunTime": "Max run time",
-    "maxRunTimeHint": "How long one agent run may take before it is stopped and saved as failed. An agent's own limit cannot exceed it.",
-    "runMinutes": "{minutes, plural, one {# minute} other {# minutes}}",
-    "runSeconds": "{seconds} s"
+    "personalWorkspacesHint": "Every account gets a workspace of its own, named after the person. Off, people work only in the workspaces they are added to."
   },
   "authentication": {
     "saved": "Authentication settings saved",

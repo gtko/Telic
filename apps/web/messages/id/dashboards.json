@@ -25,8 +25,7 @@
   "lastDays": "{days} hari terakhir",
   "showRows": "Tampilkan {count}",
   "widgetGroups": {
-    "issues": "Issue",
-    "agents": "Agen AI & webhook"
+    "issues": "Issue"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "Rincian",
       "description": "Jumlah issue berdasarkan status, prioritas, jenis, atau penerima tugas"
     },
-    "agent_runs": {
-      "label": "Eksekusi agen",
-      "description": "Eksekusi agen AI terbaru beserta hasilnya"
-    },
-    "agent_health": {
-      "label": "Kesehatan agen",
-      "description": "Tingkat keberhasilan dan kegagalan eksekusi agen dalam rentang waktu"
-    },
     "webhook_health": {
       "label": "Kesehatan webhook",
       "description": "Hasil pengiriman webhook dan endpoint yang dinonaktifkan"
-    },
-    "agent_workload": {
-      "label": "Beban kerja agen",
-      "description": "Issue yang didelegasikan dan hasil eksekusi per agen"
     }
   },
   "breakdown": {
@@ -179,54 +166,12 @@
     "wholeProject": "Seluruh proyek",
     "forecastWeeks": "Laju selama {weeks, plural, other {# minggu}}"
   },
-  "agentRuns": {
-    "empty": "Belum ada eksekusi agen.",
-    "filters": {
-      "all": "Semua eksekusi",
-      "failed": "Gagal",
-      "pending": "Dalam antrean",
-      "success": "Berhasil"
-    },
-    "status": {
-      "pending": "dalam antrean",
-      "success": "berhasil",
-      "failed": "gagal",
-      "canceled": "dibatalkan"
-    },
-    "trigger": {
-      "mention": "berjalan saat disebutkan dalam",
-      "delegation": "berjalan saat pendelegasian",
-      "field": "berjalan pada bidang",
-      "manual": "dijalankan secara manual",
-      "schedule": "berjalan sesuai jadwal",
-      "status": "berjalan saat perubahan status",
-      "event": "berjalan saat peristiwa pada"
-    }
-  },
-  "agentHealth": {
-    "empty": "Tidak ada eksekusi agen.",
-    "successRate": "tingkat keberhasilan",
-    "runs": "{count, plural, one {# eksekusi} other {# eksekusi}}",
-    "failed": "{count} gagal",
-    "queued": "{count} dalam antrean"
-  },
   "webhookHealth": {
     "deliveries": "pengiriman",
     "failed": "{count} gagal",
     "pending": "{count} tertunda",
     "allDelivered": "semua terkirim",
     "disabled": "{count, plural, one {# endpoint dinonaktifkan} other {# endpoint dinonaktifkan}}"
-  },
-  "agentWorkload": {
-    "empty": "Tidak ada agen dalam proyek ini.",
-    "agent": "Agen",
-    "delegated": "Didelegasikan",
-    "runs": "Eksekusi",
-    "failed": "{count} gagal",
-    "kind": {
-      "external": "Eksternal",
-      "internal": "Internal"
-    }
   },
   "defaultWidgets": {
     "open": "Terbuka",

@@ -95,10 +95,6 @@
       "label": "操作",
       "description": "設定工作項目上的快捷操作，一次點選即可更改欄位。"
     },
-    "schedules": {
-      "label": "排程",
-      "description": "按固定時間重複執行代理任務。"
-    },
     "webhooks": {
       "label": "Webhook",
       "description": "將專案事件傳送到外部 URL，並使用每個 Webhook 獨立的金鑰簽章。"
@@ -110,14 +106,6 @@
     "import-export": {
       "label": "匯入/匯出",
       "description": "從自託管的 Plane 執行個體匯入工作項目、留言和標籤，或將該專案的資料匯出為 JSON。"
-    },
-    "ai-agents": {
-      "label": "AI 代理",
-      "description": "在該專案中工作的 AI 代理。"
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
@@ -129,33 +117,14 @@
         "teams": "團隊",
         "projects": "專案",
         "people": "人員",
-        "agents": "AI 代理",
         "openIssues": "未完成工作項目",
         "storage": "儲存"
       },
       "blocks": {
-        "agents": "AI 代理",
-        "schedules": "排程執行",
         "time": "已記錄工時",
         "flow": "工作項目流轉",
         "projects": "活躍專案",
         "teams": "活躍團隊"
-      }
-    },
-    "agentBudgets": {
-      "title": "AI 預算",
-      "description": "限制代理在模型上的花費。",
-      "workspace": "整個工作區",
-      "figures": {
-        "spent": "已用",
-        "limit": "限額",
-        "left": "剩餘",
-        "forecast": "本週期預計花費"
-      },
-      "list": "預算",
-      "columns": {
-        "budget": "預算",
-        "spent": "已用"
       }
     },
     "auditLog": {

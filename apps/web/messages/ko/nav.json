@@ -7,8 +7,6 @@
   "cycles": "사이클",
   "notes": "노트",
   "documents": "문서",
-  "aiTeam": "AI 팀",
-  "aiAgents": "AI 에이전트",
   "configuration": "설정",
   "members": "멤버",
   "notifications": "알림",
@@ -31,7 +29,6 @@
   "search": "검색 또는 명령 실행…",
   "searchHint": "검색 또는 명령 실행 ({key})",
   "newIssueHint": "새 이슈 ({key})",
-  "aiChatHint": "AI 에이전트와 대화 ({key})",
   "sections": "섹션",
   "doubleClickToRename": "두 번 클릭하여 이름 변경",
   "groups": {

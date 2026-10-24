@@ -25,8 +25,7 @@
   "lastDays": "Останні {days} дн.",
   "showRows": "Показати {count}",
   "widgetGroups": {
-    "issues": "Задачі",
-    "agents": "AI-агенти та вебхуки"
+    "issues": "Задачі"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "Розподіл",
       "description": "Кількість задач за статусом, пріоритетом, типом чи виконавцем"
     },
-    "agent_runs": {
-      "label": "Запуски агентів",
-      "description": "Останні запуски AI-агентів та їхній результат"
-    },
-    "agent_health": {
-      "label": "Стан агентів",
-      "description": "Частка успішних запусків і збої за період"
-    },
     "webhook_health": {
       "label": "Стан вебхуків",
       "description": "Результати доставок і вимкнені ендпоінти"
-    },
-    "agent_workload": {
-      "label": "Завантаження агентів",
-      "description": "Делеговані задачі та результати запусків по агентах"
     }
   },
   "breakdown": {
@@ -179,54 +166,12 @@
     "wholeProject": "Увесь проєкт",
     "forecastWeeks": "Швидкість за {weeks, plural, one {# тиждень} few {# тижні} many {# тижнів} other {# тижні}}"
   },
-  "agentRuns": {
-    "empty": "Запусків агентів ще немає.",
-    "filters": {
-      "all": "Усі запуски",
-      "failed": "Невдалі",
-      "pending": "У черзі",
-      "success": "Успішні"
-    },
-    "status": {
-      "pending": "у черзі",
-      "success": "успіх",
-      "failed": "збій",
-      "canceled": "скасовано"
-    },
-    "trigger": {
-      "mention": "запущений згадкою в",
-      "delegation": "запущений делегуванням",
-      "field": "запущений полем у",
-      "manual": "запущений вручну",
-      "schedule": "запущений за розкладом",
-      "status": "запущений зміною статусу",
-      "event": "запущений подією в"
-    }
-  },
-  "agentHealth": {
-    "empty": "Запусків агентів немає.",
-    "successRate": "успішних запусків",
-    "runs": "{count, plural, one {# запуск} few {# запуски} many {# запусків} other {# запуску}}",
-    "failed": "{count} зі збоєм",
-    "queued": "{count} у черзі"
-  },
   "webhookHealth": {
     "deliveries": "доставок",
     "failed": "{count} зі збоєм",
     "pending": "{count} в очікуванні",
     "allDelivered": "усі доставлені",
     "disabled": "{count, plural, one {# вимкнений ендпоінт} few {# вимкнені ендпоінти} many {# вимкнених ендпоінтів} other {# вимкненого ендпоінта}}"
-  },
-  "agentWorkload": {
-    "empty": "У цьому проєкті немає агентів.",
-    "agent": "Агент",
-    "delegated": "Делеговано",
-    "runs": "Запуски",
-    "failed": "{count} зі збоєм",
-    "kind": {
-      "external": "Зовнішній",
-      "internal": "Внутрішній"
-    }
   },
   "defaultWidgets": {
     "open": "Відкриті",

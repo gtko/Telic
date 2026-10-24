@@ -95,10 +95,6 @@
       "label": "Eylemler",
       "description": "Bir iş üzerinde tek tıkla alanları güncelleyen özel butonlar."
     },
-    "schedules": {
-      "label": "Zamanlamalar",
-      "description": "Ajan görevlerini yinelenen bir zaman çizelgesine göre çalıştırın."
-    },
     "webhooks": {
       "label": "Webhook'lar",
       "description": "Proje olaylarını harici URL'lere gönderin (her webhook özel bir anahtarla imzalanır)."
@@ -110,14 +106,6 @@
     "import-export": {
       "label": "İçe/Dışa Aktarma",
       "description": "Kendi barındırdığınız bir Plane örnekleminden işleri, yorumları ve etiketleri içe aktarın veya bu projenin verilerini JSON olarak dışa aktarın."
-    },
-    "ai-agents": {
-      "label": "Yapay Zekâ Ajanları",
-      "description": "Bu projede çalışan yapay zekâ ajanları."
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
@@ -129,33 +117,14 @@
         "teams": "Takımlar",
         "projects": "Projeler",
         "people": "Kişiler",
-        "agents": "Yapay zekâ ajanları",
         "openIssues": "Açık işler",
         "storage": "Depolama"
       },
       "blocks": {
-        "agents": "Yapay zekâ ajanları",
-        "schedules": "Zamanlanmış çalışmalar",
         "time": "Kaydedilen süre",
         "flow": "İş akışı",
         "projects": "Aktif projeler",
         "teams": "Aktif takımlar"
-      }
-    },
-    "agentBudgets": {
-      "title": "Yapay zekâ bütçeleri",
-      "description": "Ajanların modeller üzerinde yapabileceği harcama limitleri.",
-      "workspace": "Tüm çalışma alanı",
-      "figures": {
-        "spent": "Harcanan",
-        "limit": "Limit",
-        "left": "Kalan",
-        "forecast": "Dönem tahmini"
-      },
-      "list": "Bütçeler",
-      "columns": {
-        "budget": "Bütçe",
-        "spent": "Harcanan"
       }
     },
     "auditLog": {

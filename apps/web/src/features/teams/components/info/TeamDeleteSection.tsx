@@ -16,7 +16,7 @@ export default function TeamDeleteSection({ team }: { team: Team }) {
   const router = useRouter();
   const remove = useDeleteTeam();
   const [deleting, setDeleting] = useState(false);
-  const blocked = team.projectCount > 0 || team.agentCount > 0;
+  const blocked = team.projectCount > 0;
 
   return (
     <>

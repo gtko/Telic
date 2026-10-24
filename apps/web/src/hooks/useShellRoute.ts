@@ -9,8 +9,6 @@ export type ShellRoute = {
   sub: string | null;
   activeViewId: number | null;
   section: string | null;
-  // The /agents/:section segment, which the header names (see ShellHeaderTitle).
-  aiTeamSection: string | null;
   // The project-scoped issue number from the URL, not the internal id.
   routeIssueSeq: number | null;
   routeInitiativeId: number | null;
@@ -45,7 +43,6 @@ export function useShellRoute(): ShellRoute {
     sub,
     activeViewId: sub === 'view' ? numericSegment(segs[3]) : null,
     section: sub === 'settings' ? (segs[3] ?? null) : null,
-    aiTeamSection: sub === 'agents' ? (segs[3] ?? null) : null,
     routeIssueSeq: issue?.sequenceNumber ?? null,
     // The segment after 'initiatives' / 'cycles' is a list tab when it is a word
     // and a record when it is a number.

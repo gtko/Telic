@@ -35,32 +35,24 @@ export interface Team {
   memberCount: number;
   // How many of those members are owners: the last one cannot leave.
   ownerCount: number;
-  // The roles the team's projects assign from, the integration credentials they run
-  // on, the agents that work in them, and the skills and tools those agents use.
-  // Counted here so the page shows them beside the section without opening it.
+  // The roles the team's projects assign from, counted here so the page shows them
+  // beside the section without opening it.
   roleCount: number;
-  integrationCount: number;
-  agentCount: number;
-  skillCount: number;
-  toolCount: number;
   createdAt: string;
 }
 
 export type TeamRole = 'owner' | 'manager' | 'member';
 
-// One member of a team: a person, or the bot user of one of its agents. An agent's
-// standing in the team is 'agent' and says nothing about what it may do — that is the
-// role each of its project memberships carries.
+// One member of a team.
 export interface TeamMember {
   userId: string;
   name: string;
   email: string;
   image: string | null;
-  role: TeamRole | 'agent';
+  role: TeamRole;
   // 'scim' when a provisioned group granted this membership. It ends at the identity
   // provider, so the list does not remove it.
   source: 'invite' | 'scim';
-  agentId: number | null;
   username: string | null;
   joinedAt: string;
 }
@@ -174,9 +166,7 @@ export type CopyProjectIncludeKey =
   | 'documents'
   | 'actions'
   | 'configuration'
-  | 'webhooks'
-  | 'agents'
-  | 'schedules';
+  | 'webhooks';
 
 export const listTeams = () => request<Team[]>('/teams');
 

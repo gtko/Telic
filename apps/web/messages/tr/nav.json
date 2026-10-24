@@ -7,8 +7,6 @@
   "cycles": "Döngüler",
   "notes": "Notlar",
   "documents": "Belgeler",
-  "aiTeam": "Yapay Zekâ Takımı",
-  "aiAgents": "Yapay Zekâ Ajanları",
   "configuration": "Yapılandırma",
   "members": "Üyeler",
   "notifications": "Bildirimler",
@@ -31,7 +29,6 @@
   "search": "Arama yapın veya komut çalıştırın…",
   "searchHint": "Arama yapın veya komut çalıştırın ({key})",
   "newIssueHint": "Yeni iş ({key})",
-  "aiChatHint": "Yapay zekâ ajanlarınızla sohbet edin ({key})",
   "sections": "Bölümler",
   "doubleClickToRename": "Yeniden adlandırmak için çift tıklayın",
   "groups": {

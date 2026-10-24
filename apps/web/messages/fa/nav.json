@@ -7,8 +7,6 @@
   "cycles": "سیکل‌ها",
   "notes": "یادداشت‌ها",
   "documents": "مستندات",
-  "aiTeam": "تیم AI",
-  "aiAgents": "ایجنت‌های AI",
   "configuration": "پیکربندی",
   "members": "اعضا",
   "notifications": "اعلان‌ها",
@@ -31,7 +29,6 @@
   "search": "جستجو یا اجرای دستور…",
   "searchHint": "جستجو یا اجرای دستور ({key})",
   "newIssueHint": "تسک جدید ({key})",
-  "aiChatHint": "گفتگو با ایجنت‌های AI ({key})",
   "sections": "بخش‌ها",
   "doubleClickToRename": "برای تغییر نام دوبار کلیک کنید",
   "groups": {

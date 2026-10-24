@@ -25,8 +25,7 @@
   "lastDays": "Últimos {days} días",
   "showRows": "Mostrar {count}",
   "widgetGroups": {
-    "issues": "Tickets",
-    "agents": "Agentes de IA y webhooks"
+    "issues": "Tickets"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "Desglose",
       "description": "Recuentos de tickets por estado, prioridad, tipo o asignado"
     },
-    "agent_runs": {
-      "label": "Ejecuciones del agente",
-      "description": "Últimas ejecuciones de agentes de IA con su resultado"
-    },
-    "agent_health": {
-      "label": "Salud del agente",
-      "description": "Tasa de éxito de las ejecuciones del agente y los fallos en una ventana"
-    },
     "webhook_health": {
       "label": "Salud del webhook",
       "description": "Resultados de la entrega de webhooks y endpoints desactivados"
-    },
-    "agent_workload": {
-      "label": "Carga del agente",
-      "description": "Tickets delegados y resultados de las ejecuciones por agente"
     }
   },
   "breakdown": {
@@ -179,54 +166,12 @@
     "wholeProject": "Todo el proyecto",
     "forecastWeeks": "Ritmo de {weeks, plural, one {la última semana} other {las últimas # semanas}}"
   },
-  "agentRuns": {
-    "empty": "Todavía no hay ejecuciones del agente.",
-    "filters": {
-      "all": "Todas las ejecuciones",
-      "failed": "Fallidas",
-      "pending": "En cola",
-      "success": "Con éxito"
-    },
-    "status": {
-      "pending": "en cola",
-      "success": "con éxito",
-      "failed": "fallida",
-      "canceled": "cancelada"
-    },
-    "trigger": {
-      "mention": "se ha ejecutado por una mención en",
-      "delegation": "se ha ejecutado por una delegación de",
-      "field": "se ha ejecutado por un campo de",
-      "manual": "se ha ejecutado manualmente",
-      "schedule": "se ha ejecutado por programado",
-      "status": "se ha ejecutado por un cambio de estado de",
-      "event": "se ha ejecutado por un evento de"
-    }
-  },
-  "agentHealth": {
-    "empty": "No hay ejecuciones del agente.",
-    "successRate": "tasa de éxito",
-    "runs": "{count, plural, one {# ejecución} other {# ejecuciones}}",
-    "failed": "{count} fallidas",
-    "queued": "{count} en cola"
-  },
   "webhookHealth": {
     "deliveries": "entregas",
     "failed": "{count} fallidas",
     "pending": "{count} pendientes",
     "allDelivered": "todas entregadas",
     "disabled": "{count, plural, one {# endpoint desactivado} other {# endpoints desactivados}}"
-  },
-  "agentWorkload": {
-    "empty": "No hay agentes en este proyecto.",
-    "agent": "Agente",
-    "delegated": "Delegadas",
-    "runs": "Ejecuciones",
-    "failed": "{count} fallidas",
-    "kind": {
-      "external": "Externo",
-      "internal": "Interno"
-    }
   },
   "defaultWidgets": {
     "open": "Abiertos",

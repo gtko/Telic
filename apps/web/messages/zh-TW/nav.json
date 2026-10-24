@@ -7,8 +7,6 @@
   "cycles": "週期",
   "notes": "筆記",
   "documents": "文件",
-  "aiTeam": "AI 團隊",
-  "aiAgents": "AI 代理",
   "configuration": "設定",
   "members": "成員",
   "notifications": "通知",
@@ -31,7 +29,6 @@
   "search": "搜尋或執行命令…",
   "searchHint": "搜尋或執行命令（{key}）",
   "newIssueHint": "新建工作項目（{key}）",
-  "aiChatHint": "與 AI 代理聊天（{key}）",
   "sections": "功能區",
   "doubleClickToRename": "雙擊重新命名",
   "groups": {

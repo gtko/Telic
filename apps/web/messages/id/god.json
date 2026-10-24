@@ -178,17 +178,7 @@
     "workspacesSaved": "Pengaturan workspace disimpan",
     "workspaces": "Workspace",
     "personalWorkspaces": "Workspace untuk setiap orang",
-    "personalWorkspacesHint": "Setiap akun mendapat workspace sendiri dengan nama pemiliknya. Jika nonaktif, orang hanya bekerja di workspace tempat mereka ditambahkan.",
-    "agents": "Agen",
-    "agentsSaved": "Pengaturan agen disimpan",
-    "traceRetention": "Simpan trace eksekusi",
-    "traceRetentionHint": "Setiap eksekusi agen mencatat panggilan ke model dan alat. Dasbor penggunaan hanya menghitung eksekusi yang masih disimpan.",
-    "traceDays": "{days} hari",
-    "traceForever": "Selamanya",
-    "maxRunTime": "Waktu jalan maksimum",
-    "maxRunTimeHint": "Berapa lama satu jalannya agen boleh berlangsung sebelum dihentikan dan disimpan sebagai gagal. Batas milik agen tidak boleh melebihinya.",
-    "runMinutes": "{minutes, plural, other {# menit}}",
-    "runSeconds": "{seconds} dtk"
+    "personalWorkspacesHint": "Setiap akun mendapat workspace sendiri dengan nama pemiliknya. Jika nonaktif, orang hanya bekerja di workspace tempat mereka ditambahkan."
   },
   "authentication": {
     "saved": "Pengaturan autentikasi disimpan",

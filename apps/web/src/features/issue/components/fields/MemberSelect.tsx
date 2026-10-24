@@ -37,7 +37,7 @@ export default function MemberSelect({
   const none = t('noMember');
   const options = candidates(assignees, scope);
   const selected = options.find((a) => a.userId === value);
-  const toItem = useCandidatePickItem(assignees, value, onChange);
+  const toItem = useCandidatePickItem(value, onChange);
 
   return (
     <PopoverPick
