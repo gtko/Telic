@@ -1,4 +1,4 @@
-import { db, issue, issueDevelopmentCheck, issueDevelopmentLink } from '@repo/db';
+import { chunk, issue, issueDevelopmentCheck, issueDevelopmentLink, type Db } from '@repo/db';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
 import {
@@ -244,10 +244,10 @@ function pullRequestUpdateValues(event: PullRequestEvent, updatedAt: Date) {
     ...values,
     pipelineStatus: sql<
       string | null
-    >`CASE WHEN ${issueDevelopmentLink.headSha} IS DISTINCT FROM ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineStatus} END`,
+    >`CASE WHEN ${issueDevelopmentLink.headSha} IS NOT ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineStatus} END`,
     pipelineUrl: sql<
       string | null
-    >`CASE WHEN ${issueDevelopmentLink.headSha} IS DISTINCT FROM ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineUrl} END`,
+    >`CASE WHEN ${issueDevelopmentLink.headSha} IS NOT ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineUrl} END`,
   };
 }
 
@@ -398,6 +398,7 @@ export async function removeBranchLinks(
 // the pull request arrives so its pipeline and check rows survive the transition.
 // If the pull request row already exists, only remove the now-redundant branch row.
 export async function promoteBranchLinksToPullRequest(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -405,50 +406,52 @@ export async function promoteBranchLinksToPullRequest(
   if (issueIds.length === 0 || !event.sourceBranch) return [];
   const branchKey = `branch:${event.sourceBranch}`;
   const pullRequestKey = `pull_request:${event.number}`;
-  return db.transaction(async (tx) => {
-    const links = await tx
-      .select({
-        id: issueDevelopmentLink.id,
-        issueId: issueDevelopmentLink.issueId,
-        externalKey: issueDevelopmentLink.externalKey,
-      })
-      .from(issueDevelopmentLink)
-      .where(
+  const now = new Date();
+  // No read-then-write: both steps test their condition inside the statement, and the pair
+  // is one atomic batch. The promotion goes first, and only touches a branch row whose issue
+  // has no pull request row yet; what is left of the branch rows then has one, so the second
+  // statement removes exactly the redundant ones.
+  const promoted: number[] = [];
+  for (const part of chunk(issueIds, 40)) {
+    const [updated] = await db.batch([
+      db
+        .update(issueDevelopmentLink)
+        .set(pullRequestUpdateValues(event, now))
+        .where(
+          and(
+            inArray(issueDevelopmentLink.issueId, part),
+            eq(issueDevelopmentLink.provider, provider),
+            eq(issueDevelopmentLink.repository, event.repo),
+            eq(issueDevelopmentLink.externalKey, branchKey),
+            sql`NOT EXISTS (
+              SELECT 1 FROM issue_development_link AS pr
+              WHERE pr.issue_id = ${issueDevelopmentLink.issueId}
+                AND pr.provider = ${provider}
+                AND pr.repository = ${event.repo}
+                AND pr.external_key = ${pullRequestKey}
+            )`,
+          ),
+        )
+        .returning({ issueId: issueDevelopmentLink.issueId }),
+      db.delete(issueDevelopmentLink).where(
         and(
-          inArray(issueDevelopmentLink.issueId, issueIds),
+          inArray(issueDevelopmentLink.issueId, part),
           eq(issueDevelopmentLink.provider, provider),
           eq(issueDevelopmentLink.repository, event.repo),
-          inArray(issueDevelopmentLink.externalKey, [branchKey, pullRequestKey]),
+          eq(issueDevelopmentLink.externalKey, branchKey),
+          sql`EXISTS (
+              SELECT 1 FROM issue_development_link AS pr
+              WHERE pr.issue_id = ${issueDevelopmentLink.issueId}
+                AND pr.provider = ${provider}
+                AND pr.repository = ${event.repo}
+                AND pr.external_key = ${pullRequestKey}
+            )`,
         ),
-      );
-    const pullRequestIssueIds = new Set(
-      links.filter((link) => link.externalKey === pullRequestKey).map((link) => link.issueId),
-    );
-    const branchLinks = links.filter((link) => link.externalKey === branchKey);
-    const promoted = branchLinks.filter((link) => !pullRequestIssueIds.has(link.issueId));
-    const redundant = branchLinks.filter((link) => pullRequestIssueIds.has(link.issueId));
-
-    if (promoted.length > 0) {
-      await tx
-        .update(issueDevelopmentLink)
-        .set(pullRequestUpdateValues(event, new Date()))
-        .where(
-          inArray(
-            issueDevelopmentLink.id,
-            promoted.map((link) => link.id),
-          ),
-        );
-    }
-    if (redundant.length > 0) {
-      await tx.delete(issueDevelopmentLink).where(
-        inArray(
-          issueDevelopmentLink.id,
-          redundant.map((link) => link.id),
-        ),
-      );
-    }
-    return promoted.map((link) => link.issueId);
-  });
+      ),
+    ]);
+    promoted.push(...updated.map((row) => row.issueId));
+  }
+  return promoted;
 }
 
 export async function updatePipelineLinks(

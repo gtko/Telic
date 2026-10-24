@@ -1,12 +1,15 @@
-import { randomBytes } from 'node:crypto';
-import { db, projectColumn, projectSetting } from '@repo/db';
+import { chunk, projectColumn, projectSetting, type Db } from '@repo/db';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { decryptSecret, encryptSecret, type EncryptedSecret } from '@repo/crypto';
 import { HttpError } from '#shared/lib';
 import { getProjectSetting } from '#shared/project-settings';
 
 // The shared secret a project hands to its repository host.
-const newSecret = () => `whs_${randomBytes(24).toString('hex')}`;
+const randomHex = (bytes: number) =>
+  [...crypto.getRandomValues(new Uint8Array(bytes))]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+const newSecret = () => `whs_${randomHex(24)}`;
 
 // Exported for the project copier, which must not clone this setting: the copy
 // would carry the source's secret and webhook id (a credential disclosure to the
@@ -76,12 +79,12 @@ function toDto(stored: StoredGitSettings): GitSettings {
 // Reads the project's settings, creating a disabled config with a fresh
 // webhook id and secret on first read — the settings page needs both to show
 // before the user has saved anything.
-export async function getOrCreateGitSettings(projectId: number): Promise<GitSettings> {
-  const stored = await getProjectSetting<StoredGitSettings>(projectId, GIT_SETTING_KEY);
+export async function getOrCreateGitSettings(db: Db, projectId: number): Promise<GitSettings> {
+  const stored = await getProjectSetting<StoredGitSettings>(db, projectId, GIT_SETTING_KEY);
   if (stored) return toDto(stored);
   const fresh: StoredGitSettings = {
     enabled: false,
-    webhookId: randomBytes(16).toString('hex'),
+    webhookId: randomHex(16),
     secret: encryptSecret(newSecret()),
     onMergeColumnId: null,
     onOpenColumnId: null,
@@ -94,7 +97,7 @@ export async function getOrCreateGitSettings(projectId: number): Promise<GitSett
     .insert(projectSetting)
     .values({ projectId, key: GIT_SETTING_KEY, value: fresh })
     .onConflictDoNothing();
-  const winner = await getProjectSetting<StoredGitSettings>(projectId, GIT_SETTING_KEY);
+  const winner = await getProjectSetting<StoredGitSettings>(db, projectId, GIT_SETTING_KEY);
   return toDto(winner ?? fresh);
 }
 
@@ -102,19 +105,28 @@ export async function getOrCreateGitSettings(projectId: number): Promise<GitSett
 // writers (a settings edit, a secret rotation, a delivery stamping telemetry)
 // can never clobber each other's fields with a stale read.
 async function mergeGitSettings(
+  db: Db,
   projectId: number,
   fields: Partial<StoredGitSettings>,
 ): Promise<void> {
   await db
     .update(projectSetting)
     .set({
-      value: sql`${projectSetting.value} || ${JSON.stringify(fields)}::jsonb`,
-      updatedAt: sql`now()`,
+      // json_set per field, each value passed through json(): a null stays a JSON null (a merge
+      // patch would delete the key) and a boolean stays a boolean (a bound true is 1).
+      value: sql`json_set(${projectSetting.value}, ${sql.join(
+        Object.entries(fields)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => sql`${'$.' + key}, json(${JSON.stringify(value)})`),
+        sql.raw(', '),
+      )})`,
+      updatedAt: new Date(),
     })
     .where(and(eq(projectSetting.projectId, projectId), eq(projectSetting.key, GIT_SETTING_KEY)));
 }
 
 export async function updateGitSettings(
+  db: Db,
   projectId: number,
   patch: {
     enabled?: boolean;
@@ -123,27 +135,28 @@ export async function updateGitSettings(
     linkbackComments?: boolean;
   },
 ): Promise<GitSettings> {
-  await assertProjectColumn(projectId, patch.onMergeColumnId);
-  await assertProjectColumn(projectId, patch.onOpenColumnId);
-  await getOrCreateGitSettings(projectId);
+  await assertProjectColumn(db, projectId, patch.onMergeColumnId);
+  await assertProjectColumn(db, projectId, patch.onOpenColumnId);
+  await getOrCreateGitSettings(db, projectId);
   const fields: Partial<StoredGitSettings> = {};
   if (patch.enabled !== undefined) fields.enabled = patch.enabled;
   if (patch.onMergeColumnId !== undefined) fields.onMergeColumnId = patch.onMergeColumnId;
   if (patch.onOpenColumnId !== undefined) fields.onOpenColumnId = patch.onOpenColumnId;
   if (patch.linkbackComments !== undefined) fields.linkbackComments = patch.linkbackComments;
-  if (Object.keys(fields).length > 0) await mergeGitSettings(projectId, fields);
-  return getOrCreateGitSettings(projectId);
+  if (Object.keys(fields).length > 0) await mergeGitSettings(db, projectId, fields);
+  return getOrCreateGitSettings(db, projectId);
 }
 
-export async function regenerateGitSecret(projectId: number): Promise<GitSettings> {
-  await getOrCreateGitSettings(projectId);
-  await mergeGitSettings(projectId, { secret: encryptSecret(newSecret()) });
-  return getOrCreateGitSettings(projectId);
+export async function regenerateGitSecret(db: Db, projectId: number): Promise<GitSettings> {
+  await getOrCreateGitSettings(db, projectId);
+  await mergeGitSettings(db, projectId, { secret: encryptSecret(newSecret()) });
+  return getOrCreateGitSettings(db, projectId);
 }
 
 // Resolves an incoming delivery's webhook id to its project. The id is stored
 // inside the jsonb value, so this scans the 'git' settings rows by expression.
 export async function findProjectByGitWebhookId(
+  db: Db,
   webhookId: string,
 ): Promise<{ projectId: number; settings: GitSettings } | null> {
   const rows = await db
@@ -152,7 +165,7 @@ export async function findProjectByGitWebhookId(
     .where(
       and(
         eq(projectSetting.key, GIT_SETTING_KEY),
-        sql`${projectSetting.value}->>'webhookId' = ${webhookId}`,
+        sql`json_extract(${projectSetting.value}, '$.webhookId') = ${webhookId}`,
       ),
     );
   if (!rows[0]) return null;
@@ -169,27 +182,34 @@ const RECENT_DELIVERIES_CAP = 50;
 // redelivery), in which case the caller must not act on it again. Check and
 // append are one UPDATE, so two concurrent claims of the same id cannot both
 // win.
-export async function claimGitDelivery(projectId: number, deliveryId: string): Promise<boolean> {
-  const recent = sql`COALESCE(${projectSetting.value}->'recentDeliveries', '[]'::jsonb)`;
+export async function claimGitDelivery(
+  db: Db,
+  projectId: number,
+  deliveryId: string,
+): Promise<boolean> {
+  const recent = sql`COALESCE(json_extract(${projectSetting.value}, '$.recentDeliveries'), '[]')`;
   const claimed = await db
     .update(projectSetting)
     .set({
-      value: sql`jsonb_set(${projectSetting.value}, '{recentDeliveries}', (
-        SELECT COALESCE(jsonb_agg(elem ORDER BY ord), '[]'::jsonb)
-        FROM (
-          SELECT elem, ord
-          FROM jsonb_array_elements(${recent} || to_jsonb(${deliveryId}::text)) WITH ORDINALITY AS t(elem, ord)
-          ORDER BY ord DESC
-          LIMIT ${RECENT_DELIVERIES_CAP}
-        ) latest
-      ))`,
-      updatedAt: sql`now()`,
+      // Append the id, keep the newest RECENT_DELIVERIES_CAP, oldest first.
+      value: sql`json_set(${projectSetting.value}, '$.recentDeliveries', json((
+        SELECT json_group_array(kept.elem) FROM (
+          SELECT latest.elem AS elem FROM (
+            SELECT j.value AS elem, j.key AS ord
+            FROM json_each(json_insert(${recent}, '$[#]', ${deliveryId})) AS j
+            ORDER BY j.key DESC
+            LIMIT ${RECENT_DELIVERIES_CAP}
+          ) AS latest
+          ORDER BY latest.ord ASC
+        ) AS kept
+      )))`,
+      updatedAt: new Date(),
     })
     .where(
       and(
         eq(projectSetting.projectId, projectId),
         eq(projectSetting.key, GIT_SETTING_KEY),
-        sql`NOT (${recent} ? ${deliveryId}::text)`,
+        sql`NOT EXISTS (SELECT 1 FROM json_each(${recent}) AS seen WHERE seen.value = ${deliveryId})`,
       ),
     )
     .returning({ projectId: projectSetting.projectId });
@@ -205,31 +225,37 @@ const REPOSITORIES_CAP = 20;
 // settings edit, and the list is rebuilt in the same UPDATE that reads it, so two
 // deliveries at once cannot lose one another's entry.
 export async function recordGitEvent(
+  db: Db,
   projectId: number,
   repo: string,
   provider: string,
 ): Promise<void> {
   const entry = JSON.stringify({ repo, provider, lastEventAt: new Date().toISOString() });
-  const known = sql`COALESCE(${projectSetting.value}->'repositories', '[]'::jsonb)`;
+  const known = sql`COALESCE(json_extract(${projectSetting.value}, '$.repositories'), '[]')`;
   await db
     .update(projectSetting)
     .set({
-      value: sql`jsonb_set(${projectSetting.value}, '{repositories}', (
-        SELECT COALESCE(jsonb_agg(elem ORDER BY ord), '[]'::jsonb)
-        FROM (
-          SELECT elem, ord
-          FROM jsonb_array_elements(jsonb_build_array(${entry}::jsonb) || ${known}) WITH ORDINALITY AS t(elem, ord)
-          WHERE ord = 1 OR elem->>'repo' <> ${repo} OR elem->>'provider' <> ${provider}
-          ORDER BY ord
+      value: sql`json_set(${projectSetting.value}, '$.repositories', json((
+        SELECT json_group_array(json(kept.elem)) FROM (
+          SELECT merged.elem AS elem FROM (
+            SELECT json(${entry}) AS elem, 0 AS ord
+            UNION ALL
+            SELECT j.value AS elem, j.key + 1 AS ord
+            FROM json_each(${known}) AS j
+            WHERE json_extract(j.value, '$.repo') <> ${repo}
+              OR json_extract(j.value, '$.provider') <> ${provider}
+          ) AS merged
+          ORDER BY merged.ord
           LIMIT ${REPOSITORIES_CAP}
-        ) kept
-      ))`,
-      updatedAt: sql`now()`,
+        ) AS kept
+      )))`,
+      updatedAt: new Date(),
     })
     .where(and(eq(projectSetting.projectId, projectId), eq(projectSetting.key, GIT_SETTING_KEY)));
 }
 
 async function assertProjectColumn(
+  db: Db,
   projectId: number,
   columnId: number | null | undefined,
 ): Promise<void> {
@@ -242,7 +268,7 @@ async function assertProjectColumn(
 }
 
 // The project's first completed-type column — the default close target.
-export async function firstCompletedColumnId(projectId: number): Promise<number | null> {
+export async function firstCompletedColumnId(db: Db, projectId: number): Promise<number | null> {
   const rows = await db
     .select({ id: projectColumn.id })
     .from(projectColumn)
@@ -254,12 +280,15 @@ export async function firstCompletedColumnId(projectId: number): Promise<number 
 
 // The stateType of each existing column among the given ids. A deleted column is
 // simply absent, which is how callers detect a stale configured target.
-export async function columnStateTypes(columnIds: number[]): Promise<Map<number, string>> {
+export async function columnStateTypes(db: Db, columnIds: number[]): Promise<Map<number, string>> {
   const ids = [...new Set(columnIds)];
-  if (ids.length === 0) return new Map();
-  const rows = await db
-    .select({ id: projectColumn.id, stateType: projectColumn.stateType })
-    .from(projectColumn)
-    .where(inArray(projectColumn.id, ids));
-  return new Map(rows.map((r) => [r.id, r.stateType]));
+  const found = new Map<number, string>();
+  for (const part of chunk(ids)) {
+    const rows = await db
+      .select({ id: projectColumn.id, stateType: projectColumn.stateType })
+      .from(projectColumn)
+      .where(inArray(projectColumn.id, part));
+    for (const row of rows) found.set(row.id, row.stateType);
+  }
+  return found;
 }
