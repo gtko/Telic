@@ -305,7 +305,7 @@ export async function copyProject(
         ...sourceFeatures,
       })
       .returning();
-    const proj = await mapProject({
+    const proj = await mapProject(db, {
       ...row,
       teamName: ownerTeam.name,
       teamSlug: ownerTeam.slug,

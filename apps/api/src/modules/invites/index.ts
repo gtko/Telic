@@ -59,7 +59,7 @@ async function loadActionableInvite(db: Db, token: string, user: AuthUser | unde
   const invite = await getInviteRowByToken(db, token);
   if (!invite) throw new HttpError(404, 'Invite not found');
   if (invite.status !== 'pending') throw new HttpError(409, 'This invite is no longer pending');
-  const since = await inviteValidSince();
+  const since = await inviteValidSince(db);
   if (since && invite.createdAt < since) throw new HttpError(409, 'This invite has expired');
   if ((current.email ?? '').toLowerCase() !== invite.email) {
     throw new HttpError(403, 'This invite was sent to a different email');

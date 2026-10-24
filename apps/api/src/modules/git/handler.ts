@@ -50,7 +50,7 @@ async function resolveIssues(
   const linked = [];
   for (const ref of uniqueRefs(refs)) {
     if (ref.key !== projectKey) continue;
-    const issue = await getIssueBySequence(project.id, ref.sequenceNumber);
+    const issue = await getIssueBySequence(db, project.id, ref.sequenceNumber);
     if (issue && !issue.archivedAt)
       linked.push({ id: issue.id, sequenceNumber: issue.sequenceNumber });
   }
@@ -186,7 +186,7 @@ export async function handlePullRequestEvent(
     const targetId = await mergeTargetColumnId(db, project.id, settings);
     if (targetId == null) return 'ignored';
     for (const ref of inProject(parsed.closes)) {
-      const issue = await getIssueBySequence(project.id, ref.sequenceNumber);
+      const issue = await getIssueBySequence(db, project.id, ref.sequenceNumber);
       // An issue moved to another project keeps its pull requests, but the columns
       // configured here are not its columns.
       if (!issue || issue.archivedAt || issue.projectId !== project.id) continue;
@@ -208,7 +208,7 @@ export async function handlePullRequestEvent(
   if (event.draft) return 'ignored';
   const targetId = await openTargetColumnId(db, settings);
   for (const ref of inProject([...parsed.closes, ...parsed.references])) {
-    const issue = await getIssueBySequence(project.id, ref.sequenceNumber);
+    const issue = await getIssueBySequence(db, project.id, ref.sequenceNumber);
     if (!issue || issue.archivedAt) continue;
     await recordActivity(issue.id, [prEntry('opened')], actor);
     if (targetId == null || issue.columnId === targetId || issue.projectId !== project.id) continue;

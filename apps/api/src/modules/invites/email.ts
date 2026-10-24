@@ -1,5 +1,6 @@
 import { getInstanceEmailConfig, team, type Db } from '@repo/db';
-import { trustedOrigins } from '@repo/auth';
+import { trustedOriginsOf } from '@repo/auth';
+import { getEnv } from '../../env';
 import { emailBody, hasEmailProvider, sendEmail } from '@repo/mailer';
 import { eq, sql } from 'drizzle-orm';
 import type { InviteRow } from './service';
@@ -21,7 +22,7 @@ export async function enqueueInviteEmail(
   const inviter = invite.invitedByName ?? invite.invitedByEmail ?? "An It's a Plan user";
   const role = invite.role === 'owner' ? 'owner' : (invite.roleName ?? 'member');
   const projectName = project.name.replace(/[\r\n]+/g, ' ');
-  const url = new URL(`/invite/${invite.token}`, trustedOrigins[0]).toString();
+  const url = new URL(`/invite/${invite.token}`, trustedOriginsOf(getEnv())[0]).toString();
 
   // One INSERT ... WHERE NOT EXISTS: D1 runs it as a single statement, so two clicks
   // arriving together cannot both observe an empty outbox and queue the same email.
@@ -72,7 +73,7 @@ export async function sendTeamInviteEmail(
     `${inviter} invited you to join the team ${teamName} as ${invite.teamRole}.\n\n` +
       'Open the invitation to sign in or create an account. ' +
       'If you did not expect this invitation, you can ignore this email.',
-    `${trustedOrigins[0]}/invite/${invite.token}`,
+    `${trustedOriginsOf(getEnv())[0]}/invite/${invite.token}`,
   );
   const result = await sendEmail(config, {
     to: invite.email,

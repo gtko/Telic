@@ -257,7 +257,7 @@ export async function listInstanceUsers(
     db,
     rows.map((r) => r.id),
   );
-  const scim = await accountsManagedByScim();
+  const scim = await accountsManagedByScim(db);
   return { items: rows.map((r) => toRow(r, facts, scim)), total: totals[0]?.count ?? 0 };
 }
 
@@ -315,7 +315,7 @@ export async function getInstanceUser(db: Db, userId: string): Promise<InstanceU
     };
   });
 
-  return { ...toRow(row, facts, await accountsManagedByScim()), projects };
+  return { ...toRow(row, facts, await accountsManagedByScim(db)), projects };
 }
 
 // How many owners each of the given projects has, keyed by project id.

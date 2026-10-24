@@ -73,11 +73,11 @@ export interface SharedViewBundle {
 // the people, labels and custom fields does not name them in the scaffold either.
 async function buildScaffold(project: ProjectRow, extended: boolean): Promise<ShareScaffold> {
   const [columns, issueTypes, labels, labelGroups, assignees, customFields] = await Promise.all([
-    listColumns(project.id),
-    listIssueTypes(project.id),
+    listColumns(db, project.id),
+    listIssueTypes(db, project.id),
     extended ? listLabels(db, project.id) : [],
     extended ? listLabelGroups(db, project.id) : [],
-    extended ? listAssigneeCandidates(project.id) : [],
+    extended ? listAssigneeCandidates(db, project.id) : [],
     extended ? listCustomFields(project.id, { allTypes: true }) : [],
   ]);
   const { teamId: _teamId, teamName: _teamName, ...publicProject } = project;
@@ -137,15 +137,15 @@ async function issueBundle(
     onlyIssueIds,
   }: { keepShareToken: boolean; extended: boolean; onlyIssueIds?: Set<number> },
 ): Promise<SharedIssueBundle> {
-  const project = await getProjectById(issueRow.projectId);
+  const project = await getProjectById(db, issueRow.projectId);
   if (!project) throw new Error('project missing for shared issue');
   const [scaffold, fields, feed, links, parent, subtasks] = await Promise.all([
     buildScaffold(project, extended),
-    extended ? getIssueFieldValues(issueRow.id) : [],
+    extended ? getIssueFieldValues(db, issueRow.id) : [],
     extended ? issueFeed(issueRow.id) : [],
-    listIssueLinks(issueRow.id),
-    getParentRef(issueRow.parentId),
-    listSubtasks(issueRow.id),
+    listIssueLinks(db, issueRow.id),
+    getParentRef(db, issueRow.parentId),
+    listSubtasks(db, issueRow.id),
   ]);
   const shown = (id: number) => !onlyIssueIds || onlyIssueIds.has(id);
   const visible = extended ? issueRow : redactIssue(issueRow);
@@ -225,7 +225,7 @@ export async function disableViewShare(viewId: number): Promise<boolean> {
 
 // The bundle for a shared issue link, or null if no issue carries the token.
 export async function getSharedIssue(token: string): Promise<SharedIssueBundle | null> {
-  const issueRow = await getIssue(await issueIdByToken(token));
+  const issueRow = await getIssue(db, await issueIdByToken(token));
   if (!issueRow) return null;
   return issueBundle(issueRow, {
     keepShareToken: true,
@@ -238,11 +238,11 @@ export async function getSharedView(token: string): Promise<SharedViewBundle | n
   const rows = await db.select().from(projectView).where(eq(projectView.shareToken, token));
   const view = rows[0];
   if (!view) return null;
-  const project = await getProjectById(view.projectId);
+  const project = await getProjectById(db, view.projectId);
   if (!project) return null;
   const [scaffold, issues] = await Promise.all([
     buildScaffold(project, view.shareExtended),
-    listIssues(project),
+    listIssues(db, project),
   ]);
   // Apply the view's own filters here so the bundle carries only the issues the
   // view shows, not the whole project. A public link must not expose issues the
@@ -256,7 +256,7 @@ export async function getSharedView(token: string): Promise<SharedViewBundle | n
   for (const row of visible)
     if (row.parentId !== null)
       subtaskCounts.set(row.parentId, (subtaskCounts.get(row.parentId) ?? 0) + 1);
-  const cards = await attachBoardLinks(visible, project.id);
+  const cards = await attachBoardLinks(db, visible, project.id);
   return {
     project: scaffold,
     // The filters stay on the server: they can name assignees, labels and custom
@@ -296,9 +296,12 @@ export async function getSharedViewIssue(
     .from(projectView)
     .where(eq(projectView.shareToken, token));
   if (rows.length === 0) return null;
-  const project = await getProjectById(rows[0].projectId);
+  const project = await getProjectById(db, rows[0].projectId);
   if (!project) return null;
-  const [columns, issues] = await Promise.all([listColumns(project.id), listIssues(project)]);
+  const [columns, issues] = await Promise.all([
+    listColumns(db, project.id),
+    listIssues(db, project),
+  ]);
   const shown = applyFilters(issues, rows[0].filters, columns);
   const issueRow = shown.find((i) => i.id === issueId);
   if (!issueRow) return null;

@@ -82,7 +82,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
   .get(
     '/teams',
     ({ db, user, request }) =>
-      listTeams(db, requireUser(db, user).id, { mcpOnly: isMcpRequest(request.headers) }),
+      listTeams(db, requireUser(user).id, { mcpOnly: isMcpRequest(request.headers) }),
     {
       response: { 200: TeamListResponse, ...errors(401) },
       detail: {
@@ -290,7 +290,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
       const name = body.name.trim();
       if (!name) throw new HttpError(400, 'Team name is required');
       set.status = 201;
-      return createTeam(db, name, body.slug, requireUser(db, user).id, body.workspaceId);
+      return createTeam(db, name, body.slug, requireUser(user).id, body.workspaceId);
     },
     {
       body: createTeamBody,

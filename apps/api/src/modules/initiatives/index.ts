@@ -289,7 +289,7 @@ export const initiativeRoutes = new Elysia({
   .get(
     '/initiatives/:initiativeId/images',
     async ({ db, params }) =>
-      viewAttachments(await listInitiativeAttachments(db, params.initiativeId), attachmentDto),
+      viewAttachments(db, await listInitiativeAttachments(db, params.initiativeId), attachmentDto),
     {
       params: initiativeParams,
       initiative: 'read',

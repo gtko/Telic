@@ -49,7 +49,7 @@ export async function readRevs(
   userId: string,
 ): Promise<Record<string, string>> {
   if (wanted.length === 0) return {};
-  const grants = await workspaceGrants(userId);
+  const grants = await workspaceGrants(db, userId);
   const grantedTeams = [...grants.keys()];
   const rows = await db
     .select({

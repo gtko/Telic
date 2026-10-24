@@ -45,7 +45,10 @@ export const userPreferenceRoutes = new Elysia({
       if (body.timezone !== undefined && !isValidTimezone(body.timezone)) {
         throw new HttpError(400, 'Unknown timezone');
       }
-      if (body.lastProjectId != null && !(await getProjectAccess(body.lastProjectId, current.id))) {
+      if (
+        body.lastProjectId != null &&
+        !(await getProjectAccess(db, body.lastProjectId, current.id))
+      ) {
         throw new HttpError(403, 'You do not have access to this project');
       }
       return updatePreferences(

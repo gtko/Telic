@@ -132,8 +132,8 @@ const projectWithTeam = {
 // A blocked section reads as off whatever the project has stored, so masking here is
 // what turns a feature off everywhere: the web app reads the flags off this DTO, and
 // the route guards read them off the project the guard resolved.
-export async function mapProject(row: ProjectWithTeam): Promise<ProjectRow> {
-  const { blockedFeatures } = await getTeamLimits(row.teamId);
+export async function mapProject(db: Db, row: ProjectWithTeam): Promise<ProjectRow> {
+  const { blockedFeatures } = await getTeamLimits(db, row.teamId);
   const on = (feature: ProjectFeature, stored: boolean) =>
     stored && !blockedFeatures.includes(feature);
   return {
@@ -310,7 +310,7 @@ async function readProjects(
           : null;
         const access = projectAccess(member, grants.get(row.teamId) ?? null)!;
         const item: ProjectListItem = {
-          ...(await mapProject(row)),
+          ...(await mapProject(db, row)),
           role: access.role,
           via: access.via,
           lastActivityAt: lastActivityAt ? iso(lastActivityAt) : null,
@@ -346,7 +346,7 @@ export async function getProjectByRef(
       .from(project)
       .innerJoin(team, eq(team.id, project.teamId))
       .where(and(byTeam, eq(project.key, ref.slice(dot + 1))));
-    return row ? mapProject(row) : null;
+    return row ? mapProject(db, row) : null;
   }
 
   const rows = await db
@@ -354,7 +354,7 @@ export async function getProjectByRef(
     .from(project)
     .innerJoin(team, eq(team.id, project.teamId))
     .where(eq(project.key, ref));
-  if (rows.length <= 1) return rows[0] ? mapProject(rows[0]) : null;
+  if (rows.length <= 1) return rows[0] ? mapProject(db, rows[0]) : null;
 
   const [teamIds, grants] = await Promise.all([
     db
@@ -381,7 +381,7 @@ export async function getProjectByRef(
       `Several of your teams have a project '${ref}'. Name it with its team, as '<team>.${ref}'.`,
     );
   }
-  return mapProject(mine[0]);
+  return mapProject(db, mine[0]);
 }
 
 export async function getProjectById(db: Db, id: number): Promise<ProjectRow | null> {
@@ -390,7 +390,7 @@ export async function getProjectById(db: Db, id: number): Promise<ProjectRow | n
     .from(project)
     .innerJoin(team, eq(team.id, project.teamId))
     .where(eq(project.id, id));
-  return rows[0] ? mapProject(rows[0]) : null;
+  return rows[0] ? mapProject(db, rows[0]) : null;
 }
 
 // The team that owns a project, for the resources the team holds on behalf of all of
@@ -596,7 +596,7 @@ export async function createProject(
       .values({ projectId, key: AUTO_ARCHIVE_KEY, value: DEFAULT_AUTO_ARCHIVE }),
   ]);
   const [row] = results[1] as (typeof project.$inferSelect)[];
-  return mapProject({
+  return mapProject(db, {
     ...row,
     teamName: ownerTeam.name,
     teamSlug: ownerTeam.slug,
@@ -662,7 +662,7 @@ export async function setProjectFeatures(
   projectId: number,
   patch: Partial<ProjectFeatures>,
 ): Promise<ProjectRow | null> {
-  const { blockedFeatures } = await getTeamLimits(await getProjectTeamId(db, projectId));
+  const { blockedFeatures } = await getTeamLimits(db, await getProjectTeamId(db, projectId));
   const blocked = blockedFeatures.find((feature) => patch[feature]);
   if (blocked) {
     throw new HttpError(400, `${featureLabel(blocked)} are not available for this team`);

@@ -56,7 +56,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
   .use(authContext)
   .use(guards)
 
-  .get('/workspaces', ({ db, user }) => listWorkspaces(db, requireUser(db, user).id), {
+  .get('/workspaces', ({ db, user }) => listWorkspaces(db, requireUser(user).id), {
     response: { 200: WorkspaceListResponse, ...errors(401) },
     detail: {
       summary: 'List workspaces',
@@ -179,8 +179,8 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .get(
     '/workspaces/:workspaceId/scim',
-    async ({ standing }) => ({
-      ...(await getScimSettings(standing.workspaceId)),
+    async ({ db, standing }) => ({
+      ...(await getScimSettings(db, standing.workspaceId)),
       baseUrl: SCIM_BASE_URL,
     }),
     {
@@ -199,13 +199,13 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
   .patch(
     '/workspaces/:workspaceId/scim',
     async ({ db, standing, body }) => {
-      const current = await getScimSettings(standing.workspaceId);
+      const current = await getScimSettings(db, standing.workspaceId);
       // Enabling it without a token would leave the endpoint answering 401 to
       // everything, which reads as a broken integration rather than a missing step.
       if (body.enabled && !current.hasToken) {
         throw new HttpError(400, 'Generate a SCIM token first');
       }
-      const settings = await setScimSettings(standing.workspaceId, body);
+      const settings = await setScimSettings(db, standing.workspaceId, body);
       if (settings.enabled !== current.enabled)
         await reconcileWorkspaceGrants(db, standing.workspaceId);
       return { ...settings, baseUrl: SCIM_BASE_URL };
@@ -224,7 +224,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .post(
     '/workspaces/:workspaceId/scim/token',
-    async ({ standing }) => ({ token: await rotateScimToken(standing.workspaceId) }),
+    async ({ db, standing }) => ({ token: await rotateScimToken(db, standing.workspaceId) }),
     {
       workspaceScim: true,
       params: workspaceParams,

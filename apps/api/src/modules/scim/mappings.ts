@@ -105,7 +105,7 @@ export async function setGroupMappings(
   if (projectIds.length > 0) {
     // A mapping the group already has is kept even where it may no longer grant: the
     // reconciliation passes over it there, and it grants again once that changes.
-    const where = await grantable(workspaceId);
+    const where = await grantable(db, workspaceId);
     const known = await db
       .select({ id: project.id, teamId: project.teamId })
       .from(project)
@@ -156,7 +156,7 @@ export async function setGroupMappings(
 // Every project a group may grant, with the roles of the team that owns it. What the
 // group mapping form fills its project and role selects from.
 export async function listMappableProjects(db: Db, workspaceId: number | null) {
-  const where = await grantable(workspaceId);
+  const where = await grantable(db, workspaceId);
   const [projects, roles] = await Promise.all([
     db
       .select({ id: project.id, key: project.key, name: project.name, teamId: project.teamId })
@@ -180,9 +180,9 @@ export async function listMappableProjects(db: Db, workspaceId: number | null) {
 // The teams whose projects a provider's groups may grant, as a condition on `team`: a
 // workspace's own, or for the instance's provider every team outside a workspace with
 // SCIM of its own.
-async function grantable(workspaceId: number | null) {
+async function grantable(db: Db, workspaceId: number | null) {
   if (workspaceId !== null) return eq(team.workspaceId, workspaceId);
-  const own = await workspacesWithOwnScim();
+  const own = await workspacesWithOwnScim(db);
   return own.length > 0 ? notInArray(team.workspaceId, own) : undefined;
 }
 

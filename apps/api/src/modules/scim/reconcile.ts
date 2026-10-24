@@ -103,9 +103,9 @@ export async function resumeReconcile(db: Db): Promise<{ remaining: number }> {
 // granted nothing by its groups. An account the instance's provider deactivated keeps
 // what it had: it cannot sign in, and is back where it was once reactivated. The
 // instance's groups grant nothing in a workspace that set up SCIM of its own.
-async function grantingMembers(workspaceId: number) {
+async function grantingMembers(db: Db, workspaceId: number) {
   const active = or(isNull(scimUser.active), eq(scimUser.active, true));
-  if ((await workspacesWithOwnScim()).includes(workspaceId)) {
+  if ((await workspacesWithOwnScim(db)).includes(workspaceId)) {
     return and(isNotNull(scimGroup.workspaceId), active);
   }
   return or(active, and(isNull(scimGroup.workspaceId), eq(user.active, false)));
@@ -119,7 +119,7 @@ async function desiredMembers(
   projectId: number,
   workspaceId: number,
 ): Promise<Map<string, Desired>> {
-  const granting = await grantingMembers(workspaceId);
+  const granting = await grantingMembers(db, workspaceId);
   const rows = await db
     .select({
       userId: scimGroupMember.userId,
@@ -175,7 +175,7 @@ async function reconcileProject(db: Db, projectId: number, budget: QueryBudget):
   const byUser = new Map(existing.map((row) => [row.userId, row]));
   // A seat ceiling stops the provider from adding people the workspace has no room for.
   // Those already in it keep their membership and still join the project.
-  const { maxSeats } = await getLimits(workspaceId);
+  const { maxSeats } = await getLimits(db, workspaceId);
   const seats =
     maxSeats > 0 ? new Set(await listSeatHolderIds(db, workspaceId)) : new Set<string>();
   // Tracked as rows change so the last-owner guard below stays correct without

@@ -165,8 +165,8 @@ export const importExportRoutes = new Elysia({
     async ({ db, params, user, request }) => {
       const job = await getImportJobDto(db, params.id);
       if (!job) throw new HttpError(404, 'Import job not found');
-      await assertPermission(job.projectId, user, 'import_export', 'read');
-      await assertMcpAllowed(job.projectId, request.headers);
+      await assertPermission(db, job.projectId, user, 'import_export', 'read');
+      await assertMcpAllowed(db, job.projectId, request.headers);
       return job;
     },
     {

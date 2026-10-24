@@ -153,7 +153,7 @@ function expiresAt(createdAt: Date, status: string, ttlDays: number): string | n
   return iso(new Date(createdAt.getTime() + ttlDays * DAY_MS));
 }
 
-const inviteTtlDays = async () => (await getAuthSettings()).inviteTtlDays;
+const inviteTtlDays = async (db: Db) => (await getAuthSettings(db)).inviteTtlDays;
 
 function toRow(r: InviteSelection, ttlDays: number): InviteRow {
   return {
@@ -192,7 +192,7 @@ async function findAccount(db: Db, email: string): Promise<{ id: string } | unde
 // demoted to member; a team member reaches a project through its member list instead.
 async function assertInvitable(db: Db, input: NewInvite, email: string): Promise<void> {
   const account = await findAccount(db, email);
-  if (!(await isInviteEmailAllowed(input.teamId, email, account != null))) {
+  if (!(await isInviteEmailAllowed(db, input.teamId, email, account != null))) {
     throw new HttpError(
       400,
       'Addresses at this domain cannot be invited here',
@@ -257,7 +257,7 @@ export async function createInvite(db: Db, input: NewInvite): Promise<InviteRow>
   const roleId = input.projectRole === 'member' ? input.roleId : null;
   // An expired invite still holds the one pending slot per address; it gives way to the
   // new one, so inviting again (or renewing) works without revoking it first.
-  const since = await inviteValidSince();
+  const since = await inviteValidSince(db);
   // One atomic batch: the expired invite leaves only if the new one lands. Two invites
   // racing for the same address both pass the checks above; the partial unique indexes
   // (team_invite_*_pending_uq) let exactly one insert through and the other is refused.
@@ -308,7 +308,7 @@ export async function createInvite(db: Db, input: NewInvite): Promise<InviteRow>
 
 export async function getInviteById(db: Db, id: number): Promise<InviteRow | null> {
   const rows = await selectInvites(db).where(eq(teamInvite.id, id));
-  return rows[0] ? toRow(rows[0], await inviteTtlDays()) : null;
+  return rows[0] ? toRow(rows[0], await inviteTtlDays(db)) : null;
 }
 
 // issuerId is the viewer when they may send invites here, null when they may only read
@@ -318,7 +318,7 @@ async function toListed(
   rows: InviteSelection[],
   issuerId: string | null,
 ): Promise<ListedInvite[]> {
-  const ttlDays = await inviteTtlDays();
+  const ttlDays = await inviteTtlDays(db);
   return Promise.all(
     rows.map(async (r) => {
       const row = toRow(r, ttlDays);
@@ -398,7 +398,7 @@ export async function getInviteByToken(db: Db, token: string): Promise<InviteVie
   const r = rows[0];
   if (!r) return null;
   const account = await findAccount(db, r.email);
-  const until = expiresAt(r.createdAt, r.status, await inviteTtlDays());
+  const until = expiresAt(r.createdAt, r.status, await inviteTtlDays(db));
   return {
     token: r.token,
     teamName: r.teamName,
@@ -444,7 +444,7 @@ export async function renewInvite(
   invitedByUserId: string,
 ): Promise<InviteRow> {
   if (grant.status !== 'pending') throw new HttpError(409, 'This invite is no longer pending');
-  const since = await inviteValidSince();
+  const since = await inviteValidSince(db);
   if (!since || grant.createdAt >= since) {
     throw new HttpError(409, 'This invite has not expired');
   }
@@ -583,7 +583,7 @@ export async function listReceivedInvites(
   email: string,
   window: { limit: number; offset: number },
 ) {
-  const since = await inviteValidSince();
+  const since = await inviteValidSince(db);
   const where = and(
     eq(teamInvite.email, normalizeEmail(email)),
     eq(teamInvite.status, 'pending'),

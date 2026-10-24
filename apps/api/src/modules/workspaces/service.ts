@@ -97,7 +97,7 @@ export async function requireWorkspaceManager(
   workspaceId: number,
   user: AuthUser | undefined | null,
 ): Promise<WorkspaceStanding> {
-  const current = requireUser(db, user);
+  const current = requireUser(user);
   const role = await getWorkspaceRole(db, workspaceId, current.id);
   if (!role) throw new HttpError(404, 'Workspace not found');
   return { workspaceId, role, userId: current.id };
@@ -258,7 +258,7 @@ export async function workspaceCreation(
   if (await executor.$count(aiAgent, eq(aiAgent.userId, current.id))) {
     return { allowed: false, reason: 'restricted' };
   }
-  if (current.role !== 'god' && !(await getAuthSettings()).personalWorkspaces) {
+  if (current.role !== 'god' && !(await getAuthSettings(db)).personalWorkspaces) {
     return { allowed: false, reason: 'restricted' };
   }
   const limit = getOwnedWorkspaceLimit();

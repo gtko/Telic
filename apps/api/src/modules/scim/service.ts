@@ -292,7 +292,7 @@ export async function createScimUser(
         role: 'user',
         // The @mention handle, derived from the address the same way a sign-up
         // derives it. The identity provider does not supply one.
-        username: await generateUsername(email),
+        username: await generateUsername(db, email),
         active: instanceWide ? input.active : true,
       }),
     );

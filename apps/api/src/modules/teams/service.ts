@@ -841,7 +841,7 @@ export async function listSeatHolderIds(db: Db, workspaceId: number): Promise<st
 // have. Somebody already in another team of the workspace holds a seat.
 export async function assertSeatFree(db: Db, teamId: number, userId: string): Promise<void> {
   const workspaceId = await teamWorkspaceId(teamId, db);
-  const { maxSeats } = await getLimits(workspaceId);
+  const { maxSeats } = await getLimits(db, workspaceId);
   if (maxSeats === 0) return;
   const holders = await listSeatHolderIds(db, workspaceId);
   if (!holders.includes(userId) && holders.length >= maxSeats) {
@@ -857,7 +857,7 @@ export async function createTeam(
   workspaceId: number,
 ): Promise<TeamRow> {
   await assertMayCreateTeam(db, workspaceId, ownerId);
-  const { maxTeams } = await getLimits(workspaceId);
+  const { maxTeams } = await getLimits(db, workspaceId);
   if (maxTeams > 0 && (await db.$count(team, eq(team.workspaceId, workspaceId))) >= maxTeams) {
     throw new HttpError(409, `The workspace already has ${maxTeams} teams`);
   }

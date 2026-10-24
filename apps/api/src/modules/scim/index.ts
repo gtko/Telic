@@ -119,12 +119,12 @@ const scimHandlers = new Elysia({
   .onParse(({ request, contentType }) => {
     if (contentType?.includes('json')) return request.json();
   })
-  .resolve(async ({ headers, set }) => {
+  .resolve(async ({ db, headers, set }) => {
     set.headers['content-type'] = SCIM_CONTENT_TYPE;
     const token = extractToken(headers.authorization);
     // One answer for "off", "no token" and "wrong token": whether provisioning is
     // configured is not something an unauthenticated caller should learn.
-    const provider = token ? await verifyScimToken(token) : null;
+    const provider = token ? await verifyScimToken(db, token) : null;
     if (!provider) throw new ScimError(401, 'Invalid or missing SCIM bearer token');
     return { workspaceId: provider.workspaceId };
   })

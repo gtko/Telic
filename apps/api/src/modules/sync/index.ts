@@ -49,7 +49,11 @@ export const syncRoutes = new Elysia({ name: 'sync', detail: { tags: ['Sync'] } 
         [...reads].map(([scope, read]) => [scope, found[read.key] ?? NO_REV]),
       );
       if (requested.includes('runnerQueue:1')) {
-        revs['runnerQueue:1'] = await runnerQueueRevision(userId, isMcpRequest(request.headers));
+        revs['runnerQueue:1'] = await runnerQueueRevision(
+          db,
+          userId,
+          isMcpRequest(request.headers),
+        );
       }
       return { revs };
     },

@@ -51,7 +51,7 @@ async function receive({
   const deliveryId = provider.deliveryId(headers);
   if (deliveryId && !(await claimGitDelivery(db, found.projectId, deliveryId)))
     return { ok: true, handled: 'duplicate' };
-  const project = await getProjectById(found.projectId);
+  const project = await getProjectById(db, found.projectId);
   if (!project) throw new HttpError(404, 'Unknown webhook');
   const handled = await handleGitEvent(
     db,

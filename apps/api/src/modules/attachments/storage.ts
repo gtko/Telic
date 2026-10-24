@@ -86,7 +86,7 @@ export async function attachmentQuotaCondition(
   const teamId = await projectTeamId(db, projectId);
   if (teamId == null) throw new HttpError(404, 'Project not found');
   const workspaceId = await teamWorkspaceId(teamId, db);
-  const { maxStorageBytes } = await getLimits(workspaceId);
+  const { maxStorageBytes } = await getLimits(db, workspaceId);
 
   const parts: string[] = [];
   const params: Array<string | number | null> = [];
@@ -141,7 +141,7 @@ export async function assertAttachmentStorageCapacity(
   const teamId = await projectTeamId(db, projectId);
   if (teamId == null) throw new HttpError(404, 'Project not found');
   const workspaceId = await teamWorkspaceId(teamId, db);
-  const { maxStorageBytes } = await getLimits(workspaceId);
+  const { maxStorageBytes } = await getLimits(db, workspaceId);
   if (maxStorageBytes > 0) {
     const used = (await workspaceStoredBytes(db, workspaceId)) - replacedBytes;
     if (used + addedBytes > maxStorageBytes) {
