@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3709b495-144e-4c48-85b8-9ce96e32de25",
+  "id": "ae6247ad-76b0-4235-8c23-18994d445109",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "account": {
@@ -218,7 +218,7 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": 86400000
+          "default": 1000
         },
         "rate_limit_max": {
           "name": "rate_limit_max",
@@ -226,7 +226,7 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": 10
+          "default": 100
         },
         "request_count": {
           "name": "request_count",
@@ -9555,6 +9555,23 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "trigger_flag": {
+      "name": "trigger_flag",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

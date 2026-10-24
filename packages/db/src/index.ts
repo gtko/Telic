@@ -34,6 +34,9 @@ export {
   mimeAllowed,
   projectStoredBytes,
   projectTeamId,
+  reserveStorage,
   workspaceStoredBytes,
+  type AttachmentKind,
+  type ReserveStorageInput,
   type StorageSettings,
 } from './domains/storage';

@@ -60,26 +60,26 @@ without being a person in it.
 
 ## Revision engine
 
-`revision` holds one counter per scope — the change markers the clients poll through
+`revision` holds one counter per scope � the change markers the clients poll through
 `GET /sync/rev`. Nothing in the application writes them: the triggers in
-`drizzle/0070_revision_triggers.sql` do, so a write moves the marker whichever
-process it came from. `rev_issue()` is redefined in `0142_issue_key_alias.sql`: an
-issue moved to another project bumps the board of both projects, and its `issue:`
-scope row takes the new project id.
+`drizzle-d1/0001_triggers.sql` do (hand-written SQLite, ported from the Postgres
+migrations 0070 to 0152), so a write moves the marker whichever process it came from.
+SQLite triggers are per operation, so a logical trigger `x` is `x_i`, `x_u`, `x_d`.
+There are no functions: a bump is the inline `INSERT INTO revision ... SELECT ... WHERE ...
+ON CONFLICT (scope) DO UPDATE SET rev = rev + 1`. An issue moved to another project bumps
+the board of both projects, and its `issue:` scope row takes the new project id.
 
-To make a new table move an existing scope, add one line to a migration:
+To make a new table move an existing scope, copy the three `issue_label_rev_*` triggers
+in a new hand-written migration (`drizzle-kit generate --custom --name=...`) and change
+the table, the issue id column and whether the board is bumped (`board`) or only the issue
+screen (`detail`: leave the `board:` statement out). Then add the logical name to
+`EXPECTED` and bump `EXPECTED_PHYSICAL` in `src/__tests__/triggers.test.ts`.
 
-```sql
-CREATE TRIGGER issue_reaction_rev AFTER INSERT OR UPDATE OR DELETE ON issue_reaction
-  FOR EACH ROW EXECUTE FUNCTION rev_issue_child('issue_id', 'detail');
-```
-
-`rev_issue_child` takes the column holding the issue id, and `board` or `detail` —
-whether the board shows the change or only the issue screen does. Tables that reach
-their owner differently get their own function next to the ones in 0070; keep the
-order in which they take the scopes (board, then issue, then initiative, and two of
-one kind in id order), which is what stops two writers from deadlocking on the
-counters.
+drizzle-kit drops a table's triggers when it rebuilds the table: a migration that does so
+must re-create them (the inventory test fails otherwise). Never run `migrateD1` and
+`wrangler d1 migrations apply` on the same database. `app.document_rebalance` and
+`app.document_checkpoint` are rows of `trigger_flag`: insert the row in the same
+`db.batch` as the writes it governs and delete it as the batch's last statement.
 
 A new scope kind also needs its entry in `apps/api/src/sync/store.ts` — its name and
 the resource a watcher must be allowed to read — and the mirror in

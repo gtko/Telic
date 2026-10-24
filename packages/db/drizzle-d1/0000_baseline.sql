@@ -29,8 +29,8 @@ CREATE TABLE `apikey` (
 	`last_refill_at` integer,
 	`enabled` integer DEFAULT true,
 	`rate_limit_enabled` integer DEFAULT true,
-	`rate_limit_time_window` integer DEFAULT 86400000,
-	`rate_limit_max` integer DEFAULT 10,
+	`rate_limit_time_window` integer DEFAULT 1000,
+	`rate_limit_max` integer DEFAULT 100,
 	`request_count` integer DEFAULT 0,
 	`remaining` integer,
 	`last_request` integer,
@@ -1468,6 +1468,10 @@ CREATE TABLE `team_role` (
 CREATE UNIQUE INDEX `team_role_default_uq` ON `team_role` (`team_id`) WHERE "team_role"."is_default";--> statement-breakpoint
 CREATE INDEX `team_role_team_idx` ON `team_role` (`team_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `team_role_team_id_name_unique` ON `team_role` (`team_id`,`name`);--> statement-breakpoint
+CREATE TABLE `trigger_flag` (
+	`name` text PRIMARY KEY NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE `user_notification_preference` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` text NOT NULL,

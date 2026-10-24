@@ -2227,9 +2227,13 @@ export const projectDocument = sqliteTable(
   ],
 );
 
-// Immutable snapshots of every persisted document version. A database trigger
-// fills this table so project copies and bulk tree operations receive the same
-// history guarantees as writes made through the Documents API.
+// Snapshots of the persisted document versions (the newest 20 per document are kept; an
+// edit by the same author within 10 minutes replaces the previous snapshot). The triggers
+// project_document_revision_capture_i/_u of drizzle-d1/0001_triggers.sql fill this table
+// (they are hand-written SQL, not generated from this schema), so project copies and bulk
+// tree operations get the same history as writes made through the Documents API. The
+// document_rebalance / document_checkpoint rows of trigger_flag switch them off / force a
+// new snapshot.
 export const projectDocumentRevision = sqliteTable(
   'project_document_revision',
   {
@@ -2317,7 +2321,8 @@ export const projectDocumentIssue = sqliteTable(
 );
 
 // Docs pages linked to an initiative. Mirrors project_document_issue; both sides
-// must belong to the same project, which a trigger enforces.
+// must belong to the same project, which the project_document_initiative_validate_project_i/_u
+// triggers (drizzle-d1/0001_triggers.sql, RAISE(ABORT)) enforce.
 export const projectDocumentInitiative = sqliteTable(
   'project_document_initiative',
   {
@@ -2644,8 +2649,9 @@ export const notification = sqliteTable(
   ],
 );
 
-// Change markers for live refresh: one counter per scope, bumped by the triggers
-// in migration 0070 on every write to the tables that scope covers. A scope names
+// Change markers for live refresh: one counter per scope, bumped by the *_rev_i/_u/_d
+// triggers of drizzle-d1/0001_triggers.sql (hand-written SQL, ported from the Postgres
+// migrations 0070 to 0152) on every write to the tables that scope covers. A scope names
 // what a screen watches — 'board:<projectId>', 'issue:<issueId>',
 // 'initiative:<initiativeId>', 'inbox:<projectId>:<userId>'. Clients poll the
 // counters they watch and refetch the matching queries when one moves; the value
@@ -2665,6 +2671,19 @@ export const revision = sqliteTable(
   // Backs both the project cleanup and the membership join the read does.
   (t) => [index('revision_project_idx').on(t.projectId)],
 );
+
+// Transaction-scoped switches read by the triggers of drizzle-d1/0001_triggers.sql. They
+// replace the Postgres `set_config('app.document_rebalance' | 'app.document_checkpoint',
+// 'true', true)` calls, which D1 has no equivalent of (no session, no transaction-local
+// setting). A writer puts the row INSIDE the same db.batch as the statements it governs and
+// deletes it as the last statement, so the batch's atomicity scopes it like set_config's
+// `is_local` did: a failed batch rolls the flag back with everything else, and no other
+// request can see it (D1 runs one writer at a time). Known names: 'document_rebalance'
+// (bulk reorder: no snapshot, no revision bump) and 'document_checkpoint' (the snapshot is
+// never merged into the previous one).
+export const triggerFlag = sqliteTable('trigger_flag', {
+  name: text('name').primaryKey(),
+});
 
 export const documentCollaboration = sqliteTable('document_collaboration', {
   documentId: integer('document_id')

@@ -21,7 +21,14 @@ export const auth = betterAuth({
   },
   plugins: [
     passkey({ rpID: 'localhost', rpName: 'Telic', origin: [origin] }),
-    apiKey({ enableSessionForAPIKeys: true, defaultPrefix: 'itp_' }),
+    apiKey({
+      enableSessionForAPIKeys: true,
+      defaultPrefix: 'itp_',
+      // Same values as packages/auth/src/index.ts: they set the column defaults of `apikey`
+      // (rate_limit_time_window 1000 ms, rate_limit_max 100), so keep them in sync.
+      keyExpiration: { defaultExpiresIn: 90 * 24 * 60 * 60, maxExpiresIn: 365 },
+      rateLimit: { enabled: true, timeWindow: 1000, maxRequests: 100 },
+    }),
     magicLink({ storeToken: 'hashed', sendMagicLink: async () => {} }),
     username({ minUsernameLength: 3, maxUsernameLength: 30 }),
     genericOAuth({ config: [] }),
