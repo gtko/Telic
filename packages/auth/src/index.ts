@@ -41,8 +41,10 @@ export interface AuthEnv {
   PASSKEY_RP_NAME?: string;
   CLIENT_IP_HEADER?: string;
   TRUSTED_PROXIES?: string;
-  NODE_ENV?: string;
 }
+
+// Without a secret better-auth falls back to a well-known default, so a session can be forged.
+const MIN_SECRET_LENGTH = 32;
 
 // Parent domain for a cross-subdomain session cookie (".example.com" from
 // "app.example.com"). Returns undefined for localhost, IPs, or apex domains, where
@@ -93,6 +95,16 @@ interface AuthConfig {
 }
 
 const SESSION_COOKIES = ['session_token', 'session_data', 'account_data', 'dont_remember'];
+
+// http://localhost and its loopback siblings are the only origins where a Secure cookie is
+// not needed; every other origin gets Secure cookies whatever NODE_ENV says.
+function isLoopbackUrl(origin: string): boolean {
+  const { protocol, hostname } = new URL(origin);
+  return (
+    protocol === 'http:' &&
+    (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]')
+  );
+}
 
 function authConfig(env: AuthEnv): AuthConfig {
   // Frontend origins allowed to call the auth handler.
@@ -544,6 +556,12 @@ export const API_KEY_MAX_EXPIRES_IN_DAYS = 365;
 // local to this instance, and a build's extendAuth (./extensions) takes effect as long
 // as it runs before the first request.
 export function createAuth(env: AuthEnv, db: Db) {
+  const secret = env.BETTER_AUTH_SECRET;
+  if (!secret || secret.length < MIN_SECRET_LENGTH) {
+    throw new Error(
+      `BETTER_AUTH_SECRET is not set or shorter than ${MIN_SECRET_LENGTH} characters: it signs sessions and tokens.`,
+    );
+  }
   const cfg = authConfig(env);
   const { trustedOrigins, baseURL, apiPublicUrl, mcpOAuth } = cfg;
   const extensions = readAuthExtensions();
@@ -661,7 +679,7 @@ export function createAuth(env: AuthEnv, db: Db) {
 
   return betterAuth({
     baseURL,
-    secret: env.BETTER_AUTH_SECRET,
+    secret,
     onAPIError: { errorURL: cfg.oauthErrorURL },
 
     database: drizzleAdapter(db, {
@@ -671,6 +689,7 @@ export function createAuth(env: AuthEnv, db: Db) {
         session: schema.session,
         account: schema.account,
         verification: schema.verification,
+        rateLimit: schema.rateLimit,
         passkey: schema.passkey,
         apikey: schema.apikey,
         jwks: schema.jwks,
@@ -1059,6 +1078,11 @@ export function createAuth(env: AuthEnv, db: Db) {
     // The frontend runs on a different origin (Next :3001) — allow its requests.
     trustedOrigins,
 
+    // The default store is in memory, per isolate, so on Workers no limit would ever
+    // add up. better-auth's own stricter limits for sign-in, sign-up, password reset
+    // and email verification apply on top of this general one.
+    rateLimit: { enabled: true, storage: 'database', window: 10, max: 100 },
+
     // /is-username-available answers for anyone, and a username is derived from the
     // address, so it would tell a stranger which addresses are registered. Nothing in
     // the app calls it — the profile form learns a name is taken from updateUser's
@@ -1095,7 +1119,7 @@ export function createAuth(env: AuthEnv, db: Db) {
         : {}),
       defaultCookieAttributes: {
         sameSite: 'lax',
-        secure: cfg.hostPrefixedCookies || env.NODE_ENV === 'production',
+        secure: cfg.hostPrefixedCookies || !isLoopbackUrl(baseURL),
       },
       ipAddress: {
         ipAddressHeaders: cfg.clientIpHeader ? [cfg.clientIpHeader] : undefined,
