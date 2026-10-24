@@ -7,7 +7,6 @@ import { enqueueDueSchedules } from './schedules';
 import { processImportTick } from './import-worker';
 import { hasDueImportJobs } from './import-store';
 import { hasDueNotifications, processNotificationDeliveries } from './notification-delivery';
-import { processTelemetry } from './telemetry';
 import {
   type ClaimedDelivery,
   claimDueDeliveries,
@@ -19,7 +18,7 @@ import {
 } from './store';
 
 // Entry point of the Worker: a Cron Trigger every minute (webhook deliveries, agent
-// schedules, telemetry, and the wake-ups of the heavy jobs) and the Queue consumer that runs
+// schedules, and the wake-ups of the heavy jobs) and the Queue consumer that runs
 // those heavy jobs (source imports, notification bursts). The queue message is only a
 // wake-up: the consumer claims the work itself, so a duplicate or late message is harmless.
 
@@ -54,12 +53,6 @@ export async function runScheduled(db: Db, env: Env, nowMs: number): Promise<voi
   if (new Date(nowMs).getUTCMinutes() % Math.max(1, cfg.cleanupEveryMinutes) === 0) {
     const removed = await cleanupOldDeliveries(db, nowMs);
     if (removed > 0) console.log(`[worker] cleaned up ${removed} old deliveries`);
-  }
-  // An unreachable collector must not read as a failed run.
-  try {
-    await processTelemetry(db, nowMs);
-  } catch (error) {
-    console.error('[worker] telemetry send failed:', error);
   }
 }
 
