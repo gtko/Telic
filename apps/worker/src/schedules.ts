@@ -1,6 +1,6 @@
-import { db, agentRun, agentSchedule } from '@repo/db';
-import { Cron } from 'croner';
-import { eq, sql } from 'drizzle-orm';
+import type { Db } from '@repo/db';
+import { CronExpressionParser } from 'cron-parser';
+import { allRows, runBatch, type Statement } from './d1';
 import { parseScheduleTimestamp } from './schedule-timestamp';
 
 type DueSchedule = {
@@ -11,53 +11,78 @@ type DueSchedule = {
   projectId: number;
   prompt: string;
   cron: string;
-  nextRunAt: string;
+  nextRunAt: number;
 };
 
-export async function enqueueDueSchedules(): Promise<void> {
-  await db.transaction(async (tx) => {
-    const rows = (await tx.execute(sql`
-      SELECT s.id, s.agent_id AS "agentId", s.project_id AS "projectId", s.prompt, s.cron,
-             s.next_run_at AS "nextRunAt"
-      FROM agent_schedule s
-      JOIN project p ON p.id = s.project_id
-      WHERE s.type = 'cron' AND s.status = 'active' AND s.next_run_at <= now()
-        AND p.archived_at IS NULL
-      ORDER BY s.next_run_at, s.id
-      FOR UPDATE OF s SKIP LOCKED
-      LIMIT 50
-    `)) as unknown as DueSchedule[];
+const BATCH_LIMIT = 50;
 
-    for (const row of rows) {
-      const scheduledFor = parseScheduleTimestamp(row.nextRunAt);
-      let next: Date | null;
-      try {
-        next = new Cron(row.cron, { timezone: 'UTC', paused: true }).nextRun(new Date());
-      } catch {
-        next = null;
-      }
-      if (!next) {
-        await tx
-          .update(agentSchedule)
-          .set({ status: 'paused', updatedAt: new Date() })
-          .where(eq(agentSchedule.id, row.id));
-        continue;
-      }
-      await tx
-        .insert(agentRun)
-        .values({
-          agentId: row.agentId,
-          projectId: row.projectId,
-          scheduleId: row.id,
-          trigger: 'schedule',
-          scheduledFor,
-          prompt: row.prompt,
-        })
-        .onConflictDoNothing();
-      await tx
-        .update(agentSchedule)
-        .set({ nextRunAt: next, lastRunAt: scheduledFor, updatedAt: new Date() })
-        .where(eq(agentSchedule.id, row.id));
+function nextRunAfter(cron: string, nowMs: number): Date | null {
+  try {
+    return CronExpressionParser.parse(cron, { currentDate: new Date(nowMs), tz: 'UTC' })
+      .next()
+      .toDate();
+  } catch {
+    return null;
+  }
+}
+
+// Queues the run of every due cron schedule and moves its next_run_at forward. D1 has no
+// row locks, so the claim is the schedule's own next_run_at: each schedule's run insert and
+// advance go in one batch that only lands while next_run_at still holds the value that was
+// read, so of two workers handling the same schedule the second one's batch changes nothing
+// (and the unique (schedule_id, scheduled_for) index would drop a duplicate run anyway).
+// Returns how many runs this call queued. `nowMs` is the caller's clock.
+export async function enqueueDueSchedules(db: Db, nowMs: number = Date.now()): Promise<number> {
+  const due = await allRows<DueSchedule>(
+    db,
+    `SELECT s.id, s.agent_id AS agentId, s.project_id AS projectId, s.prompt, s.cron,
+            s.next_run_at AS nextRunAt
+     FROM agent_schedule s
+     JOIN project p ON p.id = s.project_id
+     WHERE s.type = 'cron' AND s.status = 'active' AND s.next_run_at <= ?
+       AND p.archived_at IS NULL
+     ORDER BY s.next_run_at, s.id
+     LIMIT ?`,
+    [nowMs, BATCH_LIMIT],
+  );
+
+  let queued = 0;
+  for (const row of due) {
+    const scheduledFor = parseScheduleTimestamp(row.nextRunAt).getTime();
+    const next = nextRunAfter(row.cron, nowMs);
+    const statements: Statement[] = [];
+    if (!next) {
+      statements.push({
+        sql: `UPDATE agent_schedule SET status = 'paused', updated_at = ?
+              WHERE id = ? AND next_run_at = ?`,
+        params: [nowMs, row.id, scheduledFor],
+      });
+    } else {
+      statements.push(
+        {
+          sql: `INSERT OR IGNORE INTO agent_run
+                  (agent_id, project_id, schedule_id, trigger, scheduled_for, prompt)
+                SELECT ?, ?, ?, 'schedule', ?, ?
+                WHERE EXISTS (SELECT 1 FROM agent_schedule WHERE id = ? AND next_run_at = ?)`,
+          params: [
+            row.agentId,
+            row.projectId,
+            row.id,
+            scheduledFor,
+            row.prompt,
+            row.id,
+            scheduledFor,
+          ],
+        },
+        {
+          sql: `UPDATE agent_schedule SET next_run_at = ?, last_run_at = ?, updated_at = ?
+                WHERE id = ? AND next_run_at = ?`,
+          params: [next.getTime(), scheduledFor, nowMs, row.id, scheduledFor],
+        },
+      );
     }
-  });
+    const changes = await runBatch(db, statements);
+    if (next && (changes[0] ?? 0) > 0) queued++;
+  }
+  return queued;
 }

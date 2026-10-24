@@ -10,6 +10,7 @@
   "scripts": {
     "auth:generate": "bun --filter=@repo/db run auth:generate",
     "lint": "eslint .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -25,10 +26,13 @@
     "jose": "^6.2.3"
   },
   "devDependencies": {
+    "miniflare": "^4.20260730.0",
+    "@cloudflare/workers-types": "^5.20261023.1",
     "@repo/eslint-config": "workspace:*",
     "@types/bun": "latest",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }

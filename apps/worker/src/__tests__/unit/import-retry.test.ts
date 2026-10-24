@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import { tickErrorOutcome, MAX_ATTEMPTS } from '../../import-retry';
 import { SourceRateLimitedError, UnsupportedImportSourceError } from '../../reader';
 

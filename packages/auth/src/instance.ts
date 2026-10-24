@@ -1,6 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  db,
   appSecret,
   teamInvite,
   getSetting,
@@ -10,6 +9,7 @@ import {
   defaultInstanceEmailConfig,
   getInstanceEmailConfig,
   INSTANCE_EMAIL_SECRET_KEY,
+  type Db,
   type InstanceEmailConfig,
 } from '@repo/db';
 import { and, eq, gte, like, lt, sql } from 'drizzle-orm';
@@ -22,13 +22,16 @@ import type { GenericEndpointContext } from 'better-auth';
 // ./index.ts (the registration gate, the mail senders, the Google and OIDC providers)
 // and written by the api, so it lives here rather than in the api.
 //
-// Non-secret settings are one jsonb blob in app_setting under the 'auth' key; the
+// Non-secret settings are one json blob in app_setting under the 'auth' key; the
 // credentials are encrypted in app_secret, each with a `redacted` mirror the settings
 // UI can read without decrypting. The instance's own are under 'auth.email',
 // 'auth.google', 'auth.oidc' and 'auth.scim', set in god mode; a workspace's SCIM, where
 // a build sets it up per workspace, is under 'workspace.<id>.scim'. The mail config is
 // also read by the api and the worker, so its shape and reader live in @repo/db; what
 // stays here is the write side.
+//
+// Every function here takes the database as its first argument: nothing in this module
+// holds a connection, so the caller decides which D1 binding the read or write goes to.
 
 const AUTH_SETTING_KEY = 'auth';
 const GOOGLE_SECRET_KEY = 'auth.google';
@@ -95,25 +98,28 @@ export function emailDomainAllowed(email: string, domains: string[]): boolean {
   return domains.includes(address.slice(address.lastIndexOf('@') + 1));
 }
 
-type RegistrationEmailPolicy = (email: string) => Promise<boolean>;
+type RegistrationEmailPolicy = (db: Db, email: string) => Promise<boolean>;
 
-const atInstanceDomains: RegistrationEmailPolicy = async (email) =>
-  emailDomainAllowed(email, (await getAuthSettings()).allowedEmailDomains);
+const atInstanceDomains: RegistrationEmailPolicy = async (db, email) =>
+  emailDomainAllowed(email, (await getAuthSettings(db)).allowedEmailDomains);
 
 // Whether an address may create an account: by default, when it is at one of the
 // instance's allowed domains. A build that lets a workspace keep domains of its own can
 // also admit an address that workspace invited.
-let registrationEmailPolicy = atInstanceDomains;
+let registrationEmailPolicy: RegistrationEmailPolicy = atInstanceDomains;
 
-export function setRegistrationEmailPolicy(next = atInstanceDomains): void {
+export function setRegistrationEmailPolicy(
+  next: RegistrationEmailPolicy = atInstanceDomains,
+): void {
   registrationEmailPolicy = next;
 }
 
-export function registrationEmailAllowed(email: string): Promise<boolean> {
-  return registrationEmailPolicy(email);
+export function registrationEmailAllowed(db: Db, email: string): Promise<boolean> {
+  return registrationEmailPolicy(db, email);
 }
 
 type RegistrationAdmission = (
+  db: Db,
   email: string,
   ctx: GenericEndpointContext | null,
 ) => Promise<boolean>;
@@ -123,36 +129,37 @@ const noAdmission: RegistrationAdmission = async () => false;
 // Whether an account goes past the registration gate whatever the instance's settings, by
 // the request creating it: a build that manages providers of its own can let one of them
 // create accounts on a closed instance, as SCIM does. It throws to turn the account away.
-let registrationAdmission = noAdmission;
+let registrationAdmission: RegistrationAdmission = noAdmission;
 
-export function setRegistrationAdmission(next = noAdmission): void {
+export function setRegistrationAdmission(next: RegistrationAdmission = noAdmission): void {
   registrationAdmission = next;
 }
 
 export function admittedPastGate(
+  db: Db,
   email: string,
   ctx: GenericEndpointContext | null,
 ): Promise<boolean> {
-  return registrationAdmission(email, ctx);
+  return registrationAdmission(db, email, ctx);
 }
 
-export async function getAuthSettings(): Promise<AuthSettings> {
-  const stored = await getSetting<Partial<AuthSettings>>(AUTH_SETTING_KEY);
+export async function getAuthSettings(db: Db): Promise<AuthSettings> {
+  const stored = await getSetting<Partial<AuthSettings>>(db, AUTH_SETTING_KEY);
   // Merge over the default so a value written before a field was added stays valid.
   return { ...defaultAuthSettings(), ...(stored ?? {}) };
 }
 
 // The cutoff an invite's createdAt must be at or after to still count, or null when
 // the instance has turned expiry off.
-export async function inviteValidSince(): Promise<Date | null> {
-  const days = (await getAuthSettings()).inviteTtlDays;
+export async function inviteValidSince(db: Db): Promise<Date | null> {
+  const days = (await getAuthSettings(db)).inviteTtlDays;
   if (!days || days <= 0) return null;
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
-export async function setAuthSettings(patch: Partial<AuthSettings>): Promise<AuthSettings> {
-  const next = { ...(await getAuthSettings()), ...patch };
-  await setSetting(AUTH_SETTING_KEY, next);
+export async function setAuthSettings(db: Db, patch: Partial<AuthSettings>): Promise<AuthSettings> {
+  const next = { ...(await getAuthSettings(db)), ...patch };
+  await setSetting(db, AUTH_SETTING_KEY, next);
   return next;
 }
 
@@ -226,8 +233,8 @@ function toEmailDto(config: InstanceEmailConfig): InstanceEmailDto {
   };
 }
 
-export async function getEmailSettings(): Promise<InstanceEmailDto> {
-  return toEmailDto((await getInstanceEmailConfig()) ?? defaultInstanceEmailConfig());
+export async function getEmailSettings(db: Db): Promise<InstanceEmailDto> {
+  return toEmailDto((await getInstanceEmailConfig(db)) ?? defaultInstanceEmailConfig());
 }
 
 function resolveSmtp(
@@ -253,9 +260,10 @@ function resolveSmtp(
 // this so an owner can validate edited values first, while omitted secrets still reuse
 // the encrypted value already on the instance.
 export async function resolveEmailConfig(
+  db: Db,
   patch: InstanceEmailPatch = {},
 ): Promise<InstanceEmailConfig> {
-  const current = (await getInstanceEmailConfig()) ?? defaultInstanceEmailConfig();
+  const current = (await getInstanceEmailConfig(db)) ?? defaultInstanceEmailConfig();
   return {
     smtp: patch.smtp ? resolveSmtp(current.smtp, patch.smtp) : current.smtp,
     resend: patch.resend
@@ -269,17 +277,20 @@ export async function resolveEmailConfig(
   };
 }
 
-export async function setEmailSettings(patch: InstanceEmailPatch): Promise<InstanceEmailDto> {
-  const next = await resolveEmailConfig(patch);
+export async function setEmailSettings(
+  db: Db,
+  patch: InstanceEmailPatch,
+): Promise<InstanceEmailDto> {
+  const next = await resolveEmailConfig(db, patch);
   const redacted = toEmailDto(next);
-  await writeSecret(INSTANCE_EMAIL_SECRET_KEY, next, redacted);
+  await writeSecret(db, INSTANCE_EMAIL_SECRET_KEY, next, redacted);
   // Without a provider no confirmation link or sign-in link can be sent, so both
   // settings go with it rather than locking every new account out or answering a
   // magic-link request with a mail that never leaves.
   if (!hasEmailProvider(next)) {
-    const settings = await getAuthSettings();
+    const settings = await getAuthSettings(db);
     if (settings.requireEmailVerification || settings.magicLink) {
-      await setAuthSettings({ requireEmailVerification: false, magicLink: false });
+      await setAuthSettings(db, { requireEmailVerification: false, magicLink: false });
     }
   }
   return redacted;
@@ -323,14 +334,14 @@ function toGoogleDto(config: InstanceGoogleConfig): InstanceGoogleDto {
   };
 }
 
-export async function getGoogleConfig(): Promise<InstanceGoogleConfig> {
-  const stored = await readSecret<InstanceGoogleConfig>(GOOGLE_SECRET_KEY);
+export async function getGoogleConfig(db: Db): Promise<InstanceGoogleConfig> {
+  const stored = await readSecret<InstanceGoogleConfig>(db, GOOGLE_SECRET_KEY);
   // Merge over the default so a config written before a field was added stays valid.
   return { ...defaultGoogleConfig(), ...(stored ?? {}) };
 }
 
-export async function getGoogleSettings(): Promise<InstanceGoogleDto> {
-  return toGoogleDto(await getGoogleConfig());
+export async function getGoogleSettings(db: Db): Promise<InstanceGoogleDto> {
+  return toGoogleDto(await getGoogleConfig(db));
 }
 
 // Whether Google sign-in can run right now. The provider is always mounted, so this
@@ -339,19 +350,22 @@ export function isGoogleUsable(config: InstanceGoogleConfig): boolean {
   return config.enabled && config.clientId.length > 0 && config.clientSecret.length > 0;
 }
 
-export async function hasConfiguredGoogle(): Promise<boolean> {
-  return isGoogleUsable(await getGoogleConfig());
+export async function hasConfiguredGoogle(db: Db): Promise<boolean> {
+  return isGoogleUsable(await getGoogleConfig(db));
 }
 
-export async function setGoogleSettings(patch: InstanceGooglePatch): Promise<InstanceGoogleDto> {
-  const current = await getGoogleConfig();
+export async function setGoogleSettings(
+  db: Db,
+  patch: InstanceGooglePatch,
+): Promise<InstanceGoogleDto> {
+  const current = await getGoogleConfig(db);
   const next: InstanceGoogleConfig = {
     enabled: patch.enabled ?? current.enabled,
     clientId: patch.clientId ?? current.clientId,
     clientSecret: mergeSecret(current.clientSecret, patch.clientSecret),
   };
   const redacted = toGoogleDto(next);
-  await writeSecret(GOOGLE_SECRET_KEY, next, redacted);
+  await writeSecret(db, GOOGLE_SECRET_KEY, next, redacted);
   return redacted;
 }
 
@@ -423,14 +437,14 @@ function toOidcDto(config: InstanceOidcConfig): InstanceOidcDto {
   };
 }
 
-export async function getOidcConfig(): Promise<InstanceOidcConfig> {
-  const stored = await readSecret<InstanceOidcConfig>(OIDC_SECRET_KEY);
+export async function getOidcConfig(db: Db): Promise<InstanceOidcConfig> {
+  const stored = await readSecret<InstanceOidcConfig>(db, OIDC_SECRET_KEY);
   // Merge over the default so a config written before a field was added stays valid.
   return { ...defaultOidcConfig(), ...(stored ?? {}) };
 }
 
-export async function getOidcSettings(): Promise<InstanceOidcDto> {
-  return toOidcDto(await getOidcConfig());
+export async function getOidcSettings(db: Db): Promise<InstanceOidcDto> {
+  return toOidcDto(await getOidcConfig(db));
 }
 
 // Whether OIDC sign-in can run right now. The provider is always mounted, so this is
@@ -444,19 +458,19 @@ export function isOidcUsable(config: InstanceOidcConfig): boolean {
   );
 }
 
-export async function hasConfiguredOidc(): Promise<boolean> {
-  return isOidcUsable(await getOidcConfig());
+export async function hasConfiguredOidc(db: Db): Promise<boolean> {
+  return isOidcUsable(await getOidcConfig(db));
 }
 
 // The button text the sign-in screen shows, or an empty string when OIDC is not
 // usable. Read by the public /auth-config.
-export async function getOidcLabel(): Promise<string> {
-  const config = await getOidcConfig();
+export async function getOidcLabel(db: Db): Promise<string> {
+  const config = await getOidcConfig(db);
   return isOidcUsable(config) ? config.label : '';
 }
 
-export async function setOidcSettings(patch: InstanceOidcPatch): Promise<InstanceOidcDto> {
-  const current = await getOidcConfig();
+export async function setOidcSettings(db: Db, patch: InstanceOidcPatch): Promise<InstanceOidcDto> {
+  const current = await getOidcConfig(db);
   const next: InstanceOidcConfig = {
     enabled: patch.enabled ?? current.enabled,
     label: patch.label ?? current.label,
@@ -467,7 +481,7 @@ export async function setOidcSettings(patch: InstanceOidcPatch): Promise<Instanc
     pkce: patch.pkce ?? current.pkce,
   };
   const redacted = toOidcDto(next);
-  await writeSecret(OIDC_SECRET_KEY, next, redacted);
+  await writeSecret(db, OIDC_SECRET_KEY, next, redacted);
   return redacted;
 }
 
@@ -515,14 +529,14 @@ export function isAccountDeactivated(account: { active?: boolean | null }): bool
 // Whether the instance's identity provider decides which accounts are active, so god
 // does not: its SCIM is on with a token, the condition under which verifyScimToken
 // opens /scim/v2 for it.
-export async function accountsManagedByScim(): Promise<boolean> {
-  const config = await getScimConfig(null);
+export async function accountsManagedByScim(db: Db): Promise<boolean> {
+  const config = await getScimConfig(db, null);
   return config.enabled && config.token.length > 0;
 }
 
 // The workspaces that set up SCIM of their own, read from the redacted mirror. Their own
 // provider decides who is in them, so the instance's groups grant nothing there.
-export async function workspacesWithOwnScim(): Promise<number[]> {
+export async function workspacesWithOwnScim(db: Db): Promise<number[]> {
   if (!scimPerWorkspace) return [];
   const rows = await db
     .select({ key: appSecret.key })
@@ -530,8 +544,8 @@ export async function workspacesWithOwnScim(): Promise<number[]> {
     .where(
       and(
         like(appSecret.key, 'workspace.%.scim'),
-        sql`${appSecret.redacted}->>'enabled' = 'true'`,
-        sql`${appSecret.redacted}->>'hasToken' = 'true'`,
+        sql`json_extract(${appSecret.redacted}, '$.enabled') = 1`,
+        sql`json_extract(${appSecret.redacted}, '$.hasToken') = 1`,
       ),
     );
   return rows.map((row) => Number(row.key.split('.')[1])).filter(Number.isInteger);
@@ -558,42 +572,46 @@ function toScimDto(config: ScimConfig): ScimSettingsDto {
   };
 }
 
-async function getScimConfig(workspaceId: number | null): Promise<ScimConfig> {
-  const stored = await readSecret<ScimConfig>(scimSecretKey(workspaceId));
+async function getScimConfig(db: Db, workspaceId: number | null): Promise<ScimConfig> {
+  const stored = await readSecret<ScimConfig>(db, scimSecretKey(workspaceId));
   return { ...defaultScimConfig(), ...(stored ?? {}) };
 }
 
-export async function getScimSettings(workspaceId: number | null): Promise<ScimSettingsDto> {
-  return toScimDto(await getScimConfig(workspaceId));
+export async function getScimSettings(
+  db: Db,
+  workspaceId: number | null,
+): Promise<ScimSettingsDto> {
+  return toScimDto(await getScimConfig(db, workspaceId));
 }
 
 export async function setScimSettings(
+  db: Db,
   workspaceId: number | null,
   patch: { enabled?: boolean },
 ): Promise<ScimSettingsDto> {
-  const current = await getScimConfig(workspaceId);
+  const current = await getScimConfig(db, workspaceId);
   const next: ScimConfig = { ...current, enabled: patch.enabled ?? current.enabled };
   const redacted = toScimDto(next);
-  await writeSecret(scimSecretKey(workspaceId), next, redacted);
+  await writeSecret(db, scimSecretKey(workspaceId), next, redacted);
   return redacted;
 }
 
 // Mints a token, replacing any previous one, and returns it in the clear. This is
 // the only time the value leaves the server.
-export async function rotateScimToken(workspaceId: number | null): Promise<string> {
-  const current = await getScimConfig(workspaceId);
+export async function rotateScimToken(db: Db, workspaceId: number | null): Promise<string> {
+  const current = await getScimConfig(db, workspaceId);
   const scope = workspaceId === null ? '' : `${workspaceId}_`;
   const token = `${SCIM_TOKEN_PREFIX}${scope}${randomBytes(24).toString('hex')}`;
   const next: ScimConfig = { ...current, token };
-  await writeSecret(scimSecretKey(workspaceId), next, toScimDto(next));
+  await writeSecret(db, scimSecretKey(workspaceId), next, toScimDto(next));
   return token;
 }
 
 // The comparison is constant-time, so a wrong token cannot be recovered by timing the
 // answer. Lengths are compared first because timingSafeEqual rejects buffers of
 // different sizes.
-async function tokenOpens(workspaceId: number | null, candidate: string): Promise<boolean> {
-  const config = await getScimConfig(workspaceId);
+async function tokenOpens(db: Db, workspaceId: number | null, candidate: string): Promise<boolean> {
+  const config = await getScimConfig(db, workspaceId);
   if (!config.enabled || config.token.length === 0) return false;
   const expected = Buffer.from(config.token);
   const given = Buffer.from(candidate);
@@ -603,13 +621,14 @@ async function tokenOpens(workspaceId: number | null, candidate: string): Promis
 // The provider a token opens: the instance's (workspaceId null) or a workspace's, or
 // null when it opens none.
 export async function verifyScimToken(
+  db: Db,
   candidate: string,
 ): Promise<{ workspaceId: number | null } | null> {
-  if (await tokenOpens(null, candidate)) return { workspaceId: null };
+  if (await tokenOpens(db, null, candidate)) return { workspaceId: null };
   const named = candidate.match(SCIM_TOKEN_WORKSPACE)?.[1];
   if (!scimPerWorkspace || !named) return null;
   const workspaceId = Number(named);
-  return (await tokenOpens(workspaceId, candidate)) ? { workspaceId } : null;
+  return (await tokenOpens(db, workspaceId, candidate)) ? { workspaceId } : null;
 }
 
 // ── Invites ───────────────────────────────────────────────────────────────────
@@ -621,10 +640,10 @@ export async function verifyScimToken(
 //
 // The invite itself is accepted after sign-up, on the /invite/:token screen — this
 // only decides whether the account may be created, and leaves the invite pending.
-export async function hasPendingInvite(email: string): Promise<boolean> {
+export async function hasPendingInvite(db: Db, email: string): Promise<boolean> {
   const address = email.trim().toLowerCase();
   if (!address) return false;
-  const since = await inviteValidSince();
+  const since = await inviteValidSince(db);
   const rows = await db
     .select({ id: teamInvite.id })
     .from(teamInvite)
@@ -641,9 +660,9 @@ export async function hasPendingInvite(email: string): Promise<boolean> {
 
 // True when the address has a pending invite that has expired. Asked after
 // hasPendingInvite says no, so the person knows to ask for a new link.
-export async function hasExpiredInvite(email: string): Promise<boolean> {
+export async function hasExpiredInvite(db: Db, email: string): Promise<boolean> {
   const address = email.trim().toLowerCase();
-  const since = await inviteValidSince();
+  const since = await inviteValidSince(db);
   if (!address || !since) return false;
   const rows = await db
     .select({ id: teamInvite.id })

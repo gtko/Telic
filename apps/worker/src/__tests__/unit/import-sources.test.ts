@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import { readerForJob, sourceProjectKeyForJob } from '../../import-sources';
 import { LinearReader } from '../../linear-adapter';
 import { PlaneReader } from '../../plane-adapter';

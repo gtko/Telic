@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import type { PinnedRequestInit } from '@repo/net';
 import { AttachmentRejectedError } from '../../attachment-download';
 import {
