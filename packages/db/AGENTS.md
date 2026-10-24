@@ -1,12 +1,12 @@
 # @repo/db
 
 Drizzle ORM over Cloudflare D1 (SQLite). Single source of truth for the DB schema.
-See `PORTING_NOTES.md` for what the Postgres to D1 move changed and what is still open (ODY-296).
+See `docs/dev/d1-notes.md` for column types, transactions, triggers, limits and the migration workflow.
 See root `AGENTS.md` for monorepo-wide rules.
 
 ## Structure
 
-- `src/client.ts` — the `db` instance (one `postgres()` connection, `prepare: false`).
+- `src/client.ts` — `createDb(env.DB)`, the Drizzle client over a D1 binding.
 - `src/schema/auth.ts` — **generated** by better-auth CLI. Do NOT edit by hand;
   regenerate with `bun run auth:generate` in this package (config: `auth.cli.ts`, sqlite).
 - `src/schema/app.ts` — hand-written application tables. Add domain tables here.
@@ -14,7 +14,7 @@ See root `AGENTS.md` for monorepo-wide rules.
 - `src/permissions.ts` — the permission matrix stored in `team_role.permissions`: the
   resource/action catalog, the default member role, and the normalizer.
 - `src/settings.ts` / `src/secrets.ts` — the two instance config stores: `app_setting`
-  in plaintext jsonb, `app_secret` encrypted with `APP_ENCRYPTION_KEY`. Both are read
+  in plaintext JSON, `app_secret` encrypted with `APP_ENCRYPTION_KEY`. Both are read
   by more than one app, which is why they are here.
 - `src/domains/` — one module per stored config that more than one process reads: its
   shape, its defaults and the reader that decrypts it. Only that. The write side, the
@@ -25,18 +25,20 @@ See root `AGENTS.md` for monorepo-wide rules.
   (`@repo/auth`, api, worker), a team's notification providers (api, worker), and the
   instance's upload limits and project-storage-quota accounting (api, worker — an
   imported attachment is checked against the same limits an interactive upload is).
-- `src/migrate.ts` — programmatic migrator (no drizzle-kit in prod), run by the `migrate` compose service, the api pods' init container, and the api image's CMD. With `BUILD_MIGRATIONS_DIR` set, it applies that folder too, after the core's, under the same lock and backup: a build's own tables, recorded in `drizzle.__build_migrations`.
-- `src/wait-for-migrations.ts` — exits once the database holds this release's migrations; the Helm init container of the worker and bot pods.
-- `drizzle/` — generated SQL migrations (committed).
+- `src/migrate.ts` — `migrateD1(db)`, a helper that applies `drizzle-d1/` to a throwaway local
+  database (tests, scripts). Not exported from the package index.
+- `drizzle-d1/` — SQL migrations (committed), including the hand-written triggers and seed.
+- `legacy-pg/` — the Postgres migrations of the previous deployment. Never run. They document
+  the source schema for `scripts/pg-to-d1`.
 
 ## Workflow
 
 1. Edit `schema/app.ts` (or regen `schema/auth.ts`).
-2. `bun run db:generate` → new SQL in `drizzle/`.
-3. `bun run db:migrate`.
+2. `bun run db:generate` → new SQL in `drizzle-d1/`.
+3. `bun run db:migrate:local`.
 
-Migrations only — never `drizzle-kit push`. Every schema change goes through a
-committed migration in `drizzle/`.
+Migrations only — never `drizzle-kit push`. A deployed D1 is migrated by
+`wrangler d1 migrations apply` only; see `docs/dev/d1-notes.md`.
 
 ## Team-owned agents
 
@@ -60,7 +62,7 @@ without being a person in it.
 
 ## Revision engine
 
-`revision` holds one counter per scope � the change markers the clients poll through
+`revision` holds one counter per scope — the change markers the clients poll through
 `GET /sync/rev`. Nothing in the application writes them: the triggers in
 `drizzle-d1/0001_triggers.sql` do (hand-written SQLite, ported from the Postgres
 migrations 0070 to 0152), so a write moves the marker whichever process it came from.
@@ -81,7 +83,7 @@ must re-create them (the inventory test fails otherwise). Never run `migrateD1` 
 `app.document_checkpoint` are rows of `trigger_flag`: insert the row in the same
 `db.batch` as the writes it governs and delete it as the batch's last statement.
 
-A new scope kind also needs its entry in `apps/api/src/sync/store.ts` — its name and
+A new scope kind also needs its entry in `apps/api/src/modules/sync/service.ts` — its name and
 the resource a watcher must be allowed to read — and the mirror in
 `apps/web/src/utils/revScopes.ts`.
 
@@ -89,7 +91,7 @@ the resource a watcher must be allowed to read — and the mirror in
 
 - Explicit snake_case column names (`text("created_at")`) — matches the generated auth schema; no `casing` option.
 - FKs use `.references(() => other.id, { onDelete: "cascade" })`.
-- `drizzle.config.ts` loads the root `.env` via `dotenv` — needs a valid `DATABASE_URL`.
+- `drizzle.config.ts` uses the `sqlite` dialect and needs no connection.
 
 `0152_agent_execution_state.sql` adds the current execution marker to `agent_run`.
 Its trigger bumps `runner-queue:<projectId>` on queue writes. It does not write the

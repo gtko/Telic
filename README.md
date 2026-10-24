@@ -2,221 +2,82 @@
 
 <img src="assets/banner.png" alt="It's a Plan — open-source project management and issue tracking where people and AI agents ship together" width="100%" />
 
-### Open-source alternative to Linear, Jira, Trello, and Plane, with AI agents built in
-
-Self-hosted project management and issue tracking. The difference: AI agents work here like any
-teammate — and everything is available over the REST API, webhooks, and MCP.
-
-If It's a Plan looks useful to you, star the repo ⭐ — it helps other people find it.
-
-<a href="https://railway.com/deploy/its-a-plan?referralCode=lQ5O6i&utm_medium=integration&utm_source=button&utm_campaign=itsaplan"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="40" /></a>
-<a href="docs/coolify.md"><img src="assets/coolify-button.svg" alt="Deploy on Coolify" height="40" /></a>
-<a href="docs/self-hosting.md"><img src="assets/docker-button.svg" alt="Self-host with Docker" height="40" /></a>
-
-[Website](https://itsaplan.dev) · [Pro](https://itsaplan.dev/pro) · [Discussions](https://github.com/croffasia/itsaplan/discussions) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Leave a review](https://www.producthunt.com/products/it-s-a-plan/reviews/new?utm_source=badge-product_review&utm_medium=badge)
+### Project management and issue tracking where people and AI agents ship together
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![CI](https://github.com/croffasia/itsaplan/actions/workflows/ci.yml/badge.svg)](https://github.com/croffasia/itsaplan/actions/workflows/ci.yml)
-[![Stars](https://img.shields.io/github/stars/croffasia/itsaplan?style=flat)](https://github.com/croffasia/itsaplan/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/croffasia/itsaplan)](https://github.com/croffasia/itsaplan/commits/main)
-
-<a href="https://trendshift.io/repositories/95056?utm_source=repository-badge&utm_medium=badge&utm_campaign=badge-repository-95056" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/95056" alt="#8 Repository of the Day on GitHub Trending" width="250" height="55"/></a>
-<a href="https://trendshift.io/repositories/95056?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-95056" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/95056/daily?language=TypeScript" alt="#13 TypeScript Repository of the Day on Trendshift" width="250" height="55"/></a>
-
-<img src="assets/screenshots/tour.gif" alt="Board, AI chat, initiatives, timeline, calendar, and agent schedules" width="100%" />
 
 </div>
 
-## About
+AI agents work here like any teammate. Everything is available over the REST API, webhooks, and MCP.
 
-It's a Plan is a full issue tracker on its own: projects, boards, cycles, custom fields,
-and dashboards. Use it that way and never turn on a single agent.
+## Architecture
 
-**The difference: AI agents work here like any teammate.** An agent gets a role,
-permissions, and an assignee slot, and takes issues on the same board as your people.
+The application runs on Cloudflare only: Workers, D1, R2, and Queues.
 
-It fits any kind of work: software development, marketing, design, support, sales,
-operations, research. You run all of it on your own server, on your own database, with your
-own API keys — no per-seat fees, no lock-in.
+| Worker         | Role                                                        | Bindings                                       |
+| -------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| `telic-api`    | Elysia API, better-auth, agent runs, cron jobs              | D1 `DB`, R2 `BUCKET`, Queue `telic-agent-runs` |
+| `telic-worker` | webhook and notification delivery, agent schedules, imports | D1 `DB`, R2 `BUCKET`, Queue `telic-jobs`       |
+| `telic-bot`    | Telegram bot webhook                                        | D1 `DB`                                        |
+| `telic-web`    | Next.js (SSR) through OpenNext, shadcn/ui, TanStack Query   | none                                           |
 
-It's a Plan is under active development. Expect breaking changes before the first stable
-release.
+Data is in the D1 database `telic`. Attachments are in the R2 bucket `telic-attachments`. The monorepo
+uses Bun and Turborepo. `AGENTS.md` describes the layout and the rules.
 
-## How to help
+## Local development
 
-1. **Star the repo** if you think more people should see it. That is the whole cost, and it
-   is what makes the project findable.
-2. **Share it** — post it on social media or send it to a colleague who runs a team or
-   writes code. One link reaches people search never will.
-3. **Contribute.** Issues, bug reports, and pull requests are all welcome — start with
-   [CONTRIBUTING.md](CONTRIBUTING.md).
-4. **Buy Pro.** The license pays for the work on the free Community edition, and your
-   instance gets the [Pro features](#pro-edition) in return —
-   [pricing and license terms](https://itsaplan.dev/pro).
-
-## Features
-
-| Area | What you get |
-| --------- | ------------------------------------------------------------------------------------- |
-| Product management | Kanban, table, timeline, and calendar views · cycles · custom fields · dashboards · docs · notes boards |
-| AI agents | Agents as project members · internal on any model, or external on your coding CLI · runs start on an @mention, an assignment, or a schedule |
-| Platform | REST API with OpenAPI · MCP server · webhooks · pull requests from 5 forges · passkeys and Google sign-in · 12 languages |
-
-<details>
-<summary><b>Product management</b> — the full list</summary>
-
-- Configure issues per project: custom fields, labels, states, and issue types
-- Kanban, table, timeline, and calendar views. Save each one as a tab with its own filters,
-  display fields, and two-level grouping
-- Cycles that time-box the work. Unfinished issues move to the next cycle
-- Subtasks, checklists, attachments, and links between issues: blocks, relates, duplicates
-- Comment threads with replies, and @username mentions of people and agents
-- Configurable dashboards for project analytics: throughput, burnup with a projected
-  completion date, breakdown, pulse
-- Quick actions that run on an issue, and auto-assignment when an issue moves into a state
-- Docs: shared Markdown pages in a tree, with revision history, private and locked pages,
-  favorites, embedded files, and links to the issues they describe
-- Freeform notes boards: sticky notes on a canvas, with colors, checklists, and connections
-- Share a view or an issue by public link, read-only and without sign-in
-- Initiatives that group and track related work inside a project
-- Auto-archive, a notification inbox, role-based access control, and more
-
-</details>
-
-<details>
-<summary><b>AI agents</b> — the full list</summary>
-
-- Agents as project members, with their own permissions and assigned issues
-- Internal agents run on the instance. Configure the model, system prompt, tools, and
-  reusable skills, written inline or imported from a GitHub repository
-- External agents run on your own machine, under your own account. Install
-  [`@itsaplan/runner`](packages/runner) and it gives every task to Claude Code, Codex,
-  Antigravity CLI, GitHub Copilot CLI, opencode, or any command that reads stdin
-- Or control the run queue through the API and do the work in your own implementation
-- A run starts on an @mention in a comment, on an assignment, or on a schedule
-- Tools for the services outside the tracker: Notion, Telegram, Threads, Instagram, Jina,
-  Firecrawl, Gitea, and GitHub
-- Built-in chat with each agent, with its own conversation history
-- Chat with an external agent too. The runner answers from your machine, streams the reply
-  and its tool calls, and resumes the same coding agent session on each message
-
-</details>
-
-<details>
-<summary><b>Platform</b> — the full list</summary>
-
-- REST API with an OpenAPI reference and API keys
-- MCP server, so an external assistant can read and change issues through the same API
-- Pull requests from GitHub, GitLab, Gitea, Forgejo, and Bitbucket. "Fixes KEY-42" links the
-  pull request to the issue, and the issue moves when the pull request opens and merges
-- Outgoing webhooks: subscribe to events, signed payloads, and retries with a delivery log
-- Sign in with an email or a username and a password, a passkey, or Google
-- Notifications by email (SMTP or Resend) and Telegram, with per-member preferences
-- Interface in English, Ukrainian, Russian, Simplified Chinese, Traditional Chinese (Taiwan), Arabic, Persian, French, Portuguese (Brazil), Bahasa Indonesia, Spanish (Spain), Korean, and Turkish
-- Instance administration: storage limits, mail transport, and instance-wide settings
-
-</details>
-
-## Pro edition
-
-Buying Pro supports It's a Plan. The license pays for the work on Community, the free edition:
-new features, fixes, and releases for everyone who self-hosts. In return, your instance gets the
-Pro features below, with full control over AI agents and what they spend. One license covers one
-instance, with no limit on seats or workspaces.
-
-| | Community | Pro |
-| --- | --- | --- |
-| Workspaces | One per person | Any number |
-| SSO and SCIM | One OIDC provider and one SCIM for the instance | SAML or OIDC and SCIM per workspace |
-| Audit log | — | Every action, with changes before and after |
-| Workspace dashboard | — | Issues, agent runs, schedules, and logged time for every team |
-| Agent schedules | Timer or state change | Plus issue events, filters, and run limits |
-| Agent analytics | Tokens and cost | Plus cost by person and trigger, run time, and tool calls |
-| AI budgets | — | Limits for the workspace, teams, projects, and each person |
-
-Deploy Pro with [`docker-compose.pro.yml`](docs/self-hosting.md),
-[`docker-compose.coolify-pro.yml`](docs/coolify.md), or [`values-pro.yaml`](docs/helm.md), and
-enter the license key in god mode, under **License**. Without a key, or after the license ends,
-the Pro images run as Community. Both editions use the same database, so an instance moves
-between them with its data.
-
-**[Pricing and license terms →](https://itsaplan.dev/pro)**
-
-## Getting started
-
-### Deploy on Railway — recommended
-
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/its-a-plan?referralCode=lQ5O6i&utm_medium=integration&utm_source=button&utm_campaign=itsaplan)
-
-The whole stack in one click, with no server to maintain. You give Railway two hostnames,
-and it generates every secret. You need a domain of your own: [the guide](docs/railway.md)
-explains why, and what to do after the deploy.
-
-### Try it on your machine
-
-Requirements: Docker and [Bun](https://bun.sh).
+Requirements: [Bun](https://bun.sh) and Git.
 
 ```bash
-git clone https://github.com/croffasia/itsaplan.git
-cd itsaplan
 bun install
-bun run setup   # answer "Try it"
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # then set BETTER_AUTH_SECRET and APP_ENCRYPTION_KEY
+cp apps/web/.dev.vars.example apps/web/.dev.vars
+bun run db:migrate:local
+bun run dev    # web on :3001, api on :8787, with wrangler dev and a local D1
 ```
 
-It picks free ports, generates the secrets, starts the whole stack in Docker, and opens
-<http://localhost:3001>. Everything runs on localhost, so no domain and no reverse proxy are
-needed. Run it again later to restart the instance; the data stays.
+See [docs/development.md](docs/development.md).
 
-### Everything else
+## Tests
 
-- [Deploy on Railway](docs/railway.md) — one-click hosted deploy from the template
-- [Self-hosting](docs/self-hosting.md) — the full production setup, secrets, and updates
-- [Deploy on Coolify](docs/coolify.md) — the same stack on a Coolify instance
-- [Deploy on Kubernetes](docs/helm.md) — Helm chart for any Kubernetes cluster
-- [Local development](docs/development.md) — running the apps on the host, and the tests
-- [Coding agent setup](docs/runner.md) — the config for each CLI that `@itsaplan/runner` runs
-- [Agent endpoint](docs/agent-endpoint.md) — the instance sends an external agent's tasks to a URL that you run, such as an AWS Lambda function
+```bash
+bun run test        # vitest on a local D1 and workerd, bun test for web
+bun run typecheck
+bun run lint
+```
 
-## Built with
+## Deploy
 
-| Layer     | Technology                                               |
-| --------- | -------------------------------------------------------- |
-| Runtime   | [Bun](https://bun.sh) + [Turborepo](https://turbo.build) |
-| Backend   | [Elysia](https://elysiajs.com/)                          |
-| Frontend  | [Next.js](https://nextjs.org/) App Router, SSR           |
-| UI        | [shadcn/ui](https://ui.shadcn.com/) + Tailwind v4        |
-| Auth      | [better-auth](https://better-auth.com/)                  |
-| Database  | [Drizzle](https://orm.drizzle.team/) + PostgreSQL        |
-| Storage   | S3-compatible object store (RustFS)                      |
-| AI agents | [Mastra](https://github.com/mastra-ai/mastra)            |
+Pushes to `main` run `.github/workflows/deploy.yml`. It applies the D1 migrations
+(`wrangler d1 migrations apply telic --remote`), then deploys the four Workers. By hand:
 
-## Contributing
+```bash
+export CLOUDFLARE_API_TOKEN=...
+bun run db:migrate:remote
+bun run deploy
+```
 
-Issues and pull requests are welcome — bug fixes, features, docs, all of it. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md). It covers the setup, the conventions, and how a change
-gets merged. Be kind; we follow a [Code of Conduct](CODE_OF_CONDUCT.md).
+## Secrets
 
-Thank you to everyone who has contributed to It's a Plan:
+Set secrets with `wrangler secret put <NAME>` in the app folder. Never commit them.
 
-<a href="https://github.com/croffasia/itsaplan/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=croffasia/itsaplan&columns=20" alt="Contributors" />
-</a>
+| Worker         | Secrets                                         |
+| -------------- | ----------------------------------------------- |
+| `telic-api`    | `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY`      |
+| `telic-worker` | `APP_ENCRYPTION_KEY` (same value as the api)    |
+| `telic-bot`    | `TELEGRAM_WEBHOOK_SECRET`, `APP_ENCRYPTION_KEY` |
 
-Not ready to contribute code? [Star the repo](https://github.com/croffasia/itsaplan) and share
-it — it is the simplest way to help the project grow.
+The CI deploy uses the `CLOUDFLARE_API_TOKEN` repository secret. Provider credentials (Resend, Telegram
+token) are stored encrypted in D1 and edited in god mode.
 
-## Security
+## More
 
-Found a vulnerability? Report it privately through
-[GitHub Security Advisories](https://github.com/croffasia/itsaplan/security/advisories/new),
-not a public issue, so we can fix it first. Details in [SECURITY.md](SECURITY.md).
+- [Local development](docs/development.md) · [D1 notes](docs/dev/d1-notes.md)
+- [Coding agent setup](docs/runner.md) · [Agent endpoint](docs/agent-endpoint.md)
+- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
 
 ## License
 
-Copyright © 2026 Andrii Poluosmak.
-
-[AGPL-3.0](LICENSE), except `packages/runner`, which is
+Copyright © 2026 Andrii Poluosmak. [AGPL-3.0](LICENSE), except `packages/runner`, which is
 [Apache-2.0](packages/runner/LICENSE).
-
-A commercial licence is available if AGPL-3.0 does not fit your company. Ask on
-[Telegram](https://telegram.me/croffasia).
