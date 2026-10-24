@@ -1,0 +1,12 @@
+{
+  // Configuration de test : une base D1 locale, sans migrations_dir (le schéma est fixture).
+  "name": "pg-to-d1-fixture",
+  "compatibility_date": "2026-01-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pg-to-d1-fixture",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+    },
+  ],
+}
