@@ -1,6 +1,6 @@
-import { db, issue, issueLink, project as projectTable } from '@repo/db';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { type Db, issue, issueLink, project as projectTable } from '@repo/db';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { HttpError } from '#shared/lib';
 import { recordActivityEntries, rowSide, textSide, type ActivityInput } from './activity';
 import { emitIssueEvents } from './webhook-payload';
@@ -69,7 +69,7 @@ function storedLink(
 
 // Every relation the issue takes part in, on either side, ordered by kind and
 // then by the other issue's number.
-export async function listIssueLinks(issueId: number): Promise<IssueLinkRow[]> {
+export async function listIssueLinks(db: Db, issueId: number): Promise<IssueLinkRow[]> {
   const rows = await db
     .select({
       id: issueLink.id,
@@ -126,6 +126,7 @@ export interface BoardIssueLink {
 // nothing there could name it — which also keeps an issue's relations from
 // growing as it ages into an archive full of finished work.
 export async function attachBoardLinks<T extends { id: number }>(
+  db: Db,
   issues: T[],
   projectId: number,
 ): Promise<(T & { links: BoardIssueLink[] })[]> {
@@ -198,19 +199,6 @@ function historyEntries(
   ];
 }
 
-// One end of a new relation, as the statement below returns it.
-interface EndRow {
-  id: number;
-  projectId: number;
-  projectKey: string;
-  sequenceNumber: number;
-  title: string;
-  columnId: number;
-  typeId: number | null;
-  archived: boolean;
-  linkId: number | null;
-}
-
 // Links two issues of the same project. The relation is stated as read from
 // issueId: it blocks, is blocked by, relates to, duplicates or is duplicated by
 // targetIssueId. A pair already linked with this kind, in either direction, is
@@ -225,6 +213,7 @@ interface EndRow {
 // duplicate. The activity entries join it in one transaction; the webhooks fire
 // after it commits, so a rolled-back relation is never announced.
 export async function addIssueLink(
+  db: Db,
   issueId: number,
   targetIssueId: number,
   kind: IssueLinkInputKind,
@@ -233,55 +222,58 @@ export async function addIssueLink(
   if (issueId === targetIssueId) throw new HttpError(400, 'An issue cannot be linked to itself');
   const stored = storedLink(issueId, targetIssueId, kind);
 
-  const { target, linkId } = await db.transaction(async (tx) => {
-    const rows = (await tx.execute(sql`
-      with ends as (
-        select i.id,
-               i.project_id as "projectId",
-               p.key as "projectKey",
-               i.sequence_number as "sequenceNumber",
-               i.title,
-               i.column_id as "columnId",
-               i.type_id as "typeId",
-               i.archived_at is not null as archived
-          from ${issue} i
-          join ${projectTable} p on p.id = i.project_id
-         where i.id in (${issueId}, ${targetIssueId})
-      ),
-      inserted as (
-        insert into ${issueLink} (source_issue_id, target_issue_id, kind)
-        select ${stored.sourceIssueId}, ${stored.targetIssueId}, ${stored.kind}
-         where (select count(*) from ends) = 2
-           and (select count(distinct "projectId") from ends) = 1
-        on conflict do nothing
-        returning id
-      )
-      select ends.*, (select id from inserted) as "linkId" from ends
-    `)) as unknown as EndRow[];
+  const ends = await db
+    .select({
+      id: issue.id,
+      projectId: issue.projectId,
+      projectKey: projectTable.key,
+      sequenceNumber: issue.sequenceNumber,
+      title: issue.title,
+      columnId: issue.columnId,
+      typeId: issue.typeId,
+      archivedAt: issue.archivedAt,
+    })
+    .from(issue)
+    .innerJoin(projectTable, eq(projectTable.id, issue.projectId))
+    .where(inArray(issue.id, [issueId, targetIssueId]));
+  const sourceEnd = ends.find((row) => row.id === issueId);
+  const targetEnd = ends.find((row) => row.id === targetIssueId);
+  if (!sourceEnd) throw new HttpError(404, 'Issue not found');
+  if (!targetEnd) throw new HttpError(404, 'Linked issue not found');
+  if (sourceEnd.projectId !== targetEnd.projectId)
+    throw new HttpError(400, 'Both issues must belong to the same project');
+  const target = { ...targetEnd, archived: targetEnd.archivedAt !== null };
 
-    const source = rows.find((row) => row.id === issueId);
-    const target = rows.find((row) => row.id === targetIssueId);
-    if (!source) throw new HttpError(404, 'Issue not found');
-    if (!target) throw new HttpError(404, 'Linked issue not found');
-    if (source.projectId !== target.projectId)
-      throw new HttpError(400, 'Both issues must belong to the same project');
-    if (target.linkId == null) throw new HttpError(409, 'These issues are already linked');
+  // The insert carries its own preconditions (both issues exist and share a project) and
+  // the pair index (issue_link_pair_kind_idx) decides the duplicate, so nothing can slip
+  // in between the checks above and the write: no row back, with the preconditions met,
+  // can only be the duplicate. Of two simultaneous identical requests exactly one inserts,
+  // so the feed entries below are written once.
+  const [insertedRow] = await db.all<{ id: number }>(sql`
+    insert into ${issueLink} (source_issue_id, target_issue_id, kind)
+    select ${stored.sourceIssueId}, ${stored.targetIssueId}, ${stored.kind}
+     where (select count(*) from ${issue} where id in (${issueId}, ${targetIssueId})) = 2
+       and (select count(distinct project_id) from ${issue} where id in (${issueId}, ${targetIssueId})) = 1
+    on conflict do nothing
+    returning id
+  `);
+  if (!insertedRow) throw new HttpError(409, 'These issues are already linked');
+  const linkId = insertedRow.id;
 
-    await recordActivityEntries(
-      historyEntries('link_add', [
-        { issueId, subject: kind, identifier: identifierOf(source) },
-        { issueId: targetIssueId, subject: INVERSE_KIND[kind], identifier: identifierOf(target) },
-      ]),
-      actorUserId,
-      tx,
-    );
-    return { target, linkId: target.linkId };
-  });
+  await recordActivityEntries(
+    db,
+    historyEntries('link_add', [
+      { issueId, subject: kind, identifier: identifierOf(sourceEnd) },
+      { issueId: targetIssueId, subject: INVERSE_KIND[kind], identifier: identifierOf(targetEnd) },
+    ]),
+    actorUserId,
+  );
 
   await emitIssueEvents(
+    db,
     target.projectId,
     'issue.link_changed',
-    () => getIssues([issueId, targetIssueId]),
+    () => getIssues(db, [issueId, targetIssueId]),
     actorUserId,
   );
 
@@ -305,72 +297,72 @@ function identifierOf(row: { projectKey: string; sequenceNumber: number }): stri
   return `${row.projectKey}-${row.sequenceNumber}`;
 }
 
-// One end of a removed relation, paired with the row that was deleted.
-interface RemovedRow {
-  kind: string;
-  sourceIssueId: number;
-  targetIssueId: number;
-  id: number;
-  projectId: number;
-  identifier: string;
-}
-
 // Removes a relation. The link must involve issueId, so a link id from another
 // issue's set cannot be deleted through it — that is a condition of the delete
 // rather than a check around it, which also makes a concurrent double removal
 // write the change to the feed once. Returns false when there is no such link on
 // this issue.
 export async function removeIssueLink(
+  db: Db,
   issueId: number,
   linkId: number,
   actorUserId?: string | null,
 ): Promise<boolean> {
-  const removed = await db.transaction(async (tx) => {
-    const rows = (await tx.execute(sql`
-      with removed as (
-        delete from ${issueLink}
-         where id = ${linkId}
-           and (source_issue_id = ${issueId} or target_issue_id = ${issueId})
-        returning id, kind, source_issue_id, target_issue_id
-      )
-      select r.kind,
-             r.source_issue_id as "sourceIssueId",
-             r.target_issue_id as "targetIssueId",
-             i.id,
-             i.project_id as "projectId",
-             p.key || '-' || i.sequence_number as identifier
-        from removed r
-        join ${issue} i on i.id in (r.source_issue_id, r.target_issue_id)
-        join ${projectTable} p on p.id = i.project_id
-    `)) as unknown as RemovedRow[];
-    if (rows.length === 0) return null;
+  // The delete is conditioned on the link involving issueId, and what it returns is what
+  // was actually removed: of two simultaneous removals only one gets the row back, so
+  // the change reaches the feed once.
+  const [gone] = await db
+    .delete(issueLink)
+    .where(
+      and(
+        eq(issueLink.id, linkId),
+        or(eq(issueLink.sourceIssueId, issueId), eq(issueLink.targetIssueId, issueId)),
+      ),
+    )
+    .returning({
+      kind: issueLink.kind,
+      sourceIssueId: issueLink.sourceIssueId,
+      targetIssueId: issueLink.targetIssueId,
+    });
+  if (!gone) return false;
 
-    const kind = rows[0].kind as IssueLinkKind;
-    const isSource = rows[0].sourceIssueId === issueId;
-    const otherIssueId = isSource ? rows[0].targetIssueId : rows[0].sourceIssueId;
-    const self = rows.find((row) => row.id === issueId)!;
-    const other = rows.find((row) => row.id === otherIssueId)!;
+  const ends = await db
+    .select({
+      id: issue.id,
+      projectId: issue.projectId,
+      identifier: sql<string>`${projectTable.key} || '-' || ${issue.sequenceNumber}`,
+    })
+    .from(issue)
+    .innerJoin(projectTable, eq(projectTable.id, issue.projectId))
+    .where(inArray(issue.id, [gone.sourceIssueId, gone.targetIssueId]));
+  const kind = gone.kind as IssueLinkKind;
+  const isSource = gone.sourceIssueId === issueId;
+  const otherIssueId = isSource ? gone.targetIssueId : gone.sourceIssueId;
+  const self = ends.find((row) => row.id === issueId);
+  const other = ends.find((row) => row.id === otherIssueId);
+  // An end deleted with its issue takes the link with it (cascade), so there is nothing
+  // left to announce.
+  if (!self || !other) return true;
 
-    await recordActivityEntries(
-      historyEntries('link_remove', [
-        { issueId, subject: isSource ? kind : INVERSE_KIND[kind], identifier: self.identifier },
-        {
-          issueId: otherIssueId,
-          subject: isSource ? INVERSE_KIND[kind] : kind,
-          identifier: other.identifier,
-        },
-      ]),
-      actorUserId,
-      tx,
-    );
-    return { projectId: self.projectId, issueIds: [issueId, otherIssueId] };
-  });
+  await recordActivityEntries(
+    db,
+    historyEntries('link_remove', [
+      { issueId, subject: isSource ? kind : INVERSE_KIND[kind], identifier: self.identifier },
+      {
+        issueId: otherIssueId,
+        subject: isSource ? INVERSE_KIND[kind] : kind,
+        identifier: other.identifier,
+      },
+    ]),
+    actorUserId,
+  );
+  const removed = { projectId: self.projectId, issueIds: [issueId, otherIssueId] };
 
-  if (!removed) return false;
   await emitIssueEvents(
+    db,
     removed.projectId,
     'issue.link_changed',
-    () => getIssues(removed.issueIds),
+    () => getIssues(db, removed.issueIds),
     actorUserId,
   );
   return true;

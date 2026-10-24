@@ -40,7 +40,7 @@ export function projectRef(team: { id: number; slug: string | null }, key: strin
 }
 
 // projectRef as a column, for a query that joins team to project.
-export const projectRefSql = sql<string>`coalesce(${team.slug}, ${team.id}::text) || '.' || ${project.key}`;
+export const projectRefSql = sql<string>`coalesce(${team.slug}, cast(${team.id} as text)) || '.' || ${project.key}`;
 
 // The web page of an issue, e.g. "/acme/issue/MKT-42".
 export function issueWebPath(teamRef: string, key: string, seq: number): string {

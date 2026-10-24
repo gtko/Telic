@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db, issue, projectView } from '@repo/db';
+import { issue, projectView, type Db } from '@repo/db';
 import { eq } from 'drizzle-orm';
 import { getProjectById, type ProjectRow } from '#modules/projects/service';
 import { listColumns } from '#modules/columns/service';
@@ -71,14 +71,18 @@ export interface SharedViewBundle {
 // The scaffold for a bundle. Without `extended` it carries only what the reduced
 // issue payload can reference — the columns and issue types — so a link that hides
 // the people, labels and custom fields does not name them in the scaffold either.
-async function buildScaffold(project: ProjectRow, extended: boolean): Promise<ShareScaffold> {
+async function buildScaffold(
+  db: Db,
+  project: ProjectRow,
+  extended: boolean,
+): Promise<ShareScaffold> {
   const [columns, issueTypes, labels, labelGroups, assignees, customFields] = await Promise.all([
-    listColumns(project.id),
-    listIssueTypes(project.id),
-    extended ? listLabels(project.id) : [],
-    extended ? listLabelGroups(project.id) : [],
-    extended ? listAssigneeCandidates(project.id) : [],
-    extended ? listCustomFields(project.id, { allTypes: true }) : [],
+    listColumns(db, project.id),
+    listIssueTypes(db, project.id),
+    extended ? listLabels(db, project.id) : [],
+    extended ? listLabelGroups(db, project.id) : [],
+    extended ? listAssigneeCandidates(db, project.id) : [],
+    extended ? listCustomFields(db, project.id, { allTypes: true }) : [],
   ]);
   const { teamId: _teamId, teamName: _teamName, ...publicProject } = project;
   return {
@@ -118,8 +122,8 @@ function redactIssue<T extends IssueRow>(row: T): T {
 // The read-only feed shows the newest activity; a public share never paginates,
 // so it is capped at listFeed's max page (100). An issue with more than that
 // shows its latest 100 entries.
-async function issueFeed(issueId: number): Promise<FeedItemRow[]> {
-  const page = await listFeed(issueId, { limit: 100 });
+async function issueFeed(db: Db, issueId: number): Promise<FeedItemRow[]> {
+  const page = await listFeed(db, issueId, { limit: 100 });
   return page.items;
 }
 
@@ -130,6 +134,7 @@ async function issueFeed(issueId: number): Promise<FeedItemRow[]> {
 // onlyIssueIds limits the relations and the subtask hierarchy to the issues a
 // shared board shows, so they cannot name one its filter excludes.
 async function issueBundle(
+  db: Db,
   issueRow: IssueRow,
   {
     keepShareToken,
@@ -137,15 +142,15 @@ async function issueBundle(
     onlyIssueIds,
   }: { keepShareToken: boolean; extended: boolean; onlyIssueIds?: Set<number> },
 ): Promise<SharedIssueBundle> {
-  const project = await getProjectById(issueRow.projectId);
+  const project = await getProjectById(db, issueRow.projectId);
   if (!project) throw new Error('project missing for shared issue');
   const [scaffold, fields, feed, links, parent, subtasks] = await Promise.all([
-    buildScaffold(project, extended),
-    extended ? getIssueFieldValues(issueRow.id) : [],
-    extended ? issueFeed(issueRow.id) : [],
-    listIssueLinks(issueRow.id),
-    getParentRef(issueRow.parentId),
-    listSubtasks(issueRow.id),
+    buildScaffold(db, project, extended),
+    extended ? getIssueFieldValues(db, issueRow.id) : [],
+    extended ? issueFeed(db, issueRow.id) : [],
+    listIssueLinks(db, issueRow.id),
+    getParentRef(db, issueRow.parentId),
+    listSubtasks(db, issueRow.id),
   ]);
   const shown = (id: number) => !onlyIssueIds || onlyIssueIds.has(id);
   const visible = extended ? issueRow : redactIssue(issueRow);
@@ -171,6 +176,7 @@ async function issueBundle(
 // much the link exposes as it stands. Returns the token, or null if the issue does
 // not exist.
 export async function enableIssueShare(
+  db: Db,
   issueId: number,
   extended?: boolean,
 ): Promise<string | null> {
@@ -188,7 +194,7 @@ export async function enableIssueShare(
 }
 
 // Revokes sharing for an issue. Returns false if the issue does not exist.
-export async function disableIssueShare(issueId: number): Promise<boolean> {
+export async function disableIssueShare(db: Db, issueId: number): Promise<boolean> {
   const rows = await db
     .update(issue)
     .set({ shareToken: null, shareExtended: false })
@@ -198,7 +204,11 @@ export async function disableIssueShare(issueId: number): Promise<boolean> {
 }
 
 // Enables sharing for a view, the same way enableIssueShare does for an issue.
-export async function enableViewShare(viewId: number, extended?: boolean): Promise<string | null> {
+export async function enableViewShare(
+  db: Db,
+  viewId: number,
+  extended?: boolean,
+): Promise<string | null> {
   const rows = await db
     .select({ token: projectView.shareToken })
     .from(projectView)
@@ -212,7 +222,7 @@ export async function enableViewShare(viewId: number, extended?: boolean): Promi
   return token;
 }
 
-export async function disableViewShare(viewId: number): Promise<boolean> {
+export async function disableViewShare(db: Db, viewId: number): Promise<boolean> {
   const rows = await db
     .update(projectView)
     .set({ shareToken: null, shareExtended: false })
@@ -224,25 +234,25 @@ export async function disableViewShare(viewId: number): Promise<boolean> {
 // --- Public reads ---------------------------------------------------------------
 
 // The bundle for a shared issue link, or null if no issue carries the token.
-export async function getSharedIssue(token: string): Promise<SharedIssueBundle | null> {
-  const issueRow = await getIssue(await issueIdByToken(token));
+export async function getSharedIssue(db: Db, token: string): Promise<SharedIssueBundle | null> {
+  const issueRow = await getIssue(db, await issueIdByToken(db, token));
   if (!issueRow) return null;
-  return issueBundle(issueRow, {
+  return issueBundle(db, issueRow, {
     keepShareToken: true,
     extended: issueRow.shareExtended,
   });
 }
 
 // The bundle for a shared view link, or null if no view carries the token.
-export async function getSharedView(token: string): Promise<SharedViewBundle | null> {
+export async function getSharedView(db: Db, token: string): Promise<SharedViewBundle | null> {
   const rows = await db.select().from(projectView).where(eq(projectView.shareToken, token));
   const view = rows[0];
   if (!view) return null;
-  const project = await getProjectById(view.projectId);
+  const project = await getProjectById(db, view.projectId);
   if (!project) return null;
   const [scaffold, issues] = await Promise.all([
-    buildScaffold(project, view.shareExtended),
-    listIssues(project),
+    buildScaffold(db, project, view.shareExtended),
+    listIssues(db, project),
   ]);
   // Apply the view's own filters here so the bundle carries only the issues the
   // view shows, not the whole project. A public link must not expose issues the
@@ -256,7 +266,7 @@ export async function getSharedView(token: string): Promise<SharedViewBundle | n
   for (const row of visible)
     if (row.parentId !== null)
       subtaskCounts.set(row.parentId, (subtaskCounts.get(row.parentId) ?? 0) + 1);
-  const cards = await attachBoardLinks(visible, project.id);
+  const cards = await attachBoardLinks(db, visible, project.id);
   return {
     project: scaffold,
     // The filters stay on the server: they can name assignees, labels and custom
@@ -284,6 +294,7 @@ export async function getSharedView(token: string): Promise<SharedViewBundle | n
 // excludes (nor archived issues, which listIssues omits). Null if the token is
 // unknown or the issue is not on the shared board.
 export async function getSharedViewIssue(
+  db: Db,
   token: string,
   issueId: number,
 ): Promise<SharedIssueBundle | null> {
@@ -296,13 +307,16 @@ export async function getSharedViewIssue(
     .from(projectView)
     .where(eq(projectView.shareToken, token));
   if (rows.length === 0) return null;
-  const project = await getProjectById(rows[0].projectId);
+  const project = await getProjectById(db, rows[0].projectId);
   if (!project) return null;
-  const [columns, issues] = await Promise.all([listColumns(project.id), listIssues(project)]);
+  const [columns, issues] = await Promise.all([
+    listColumns(db, project.id),
+    listIssues(db, project),
+  ]);
   const shown = applyFilters(issues, rows[0].filters, columns);
   const issueRow = shown.find((i) => i.id === issueId);
   if (!issueRow) return null;
-  return issueBundle(issueRow, {
+  return issueBundle(db, issueRow, {
     keepShareToken: false,
     extended: rows[0].extended,
     onlyIssueIds: new Set(shown.map((i) => i.id)),
@@ -311,7 +325,7 @@ export async function getSharedViewIssue(
 
 // Resolves an issue share token to its issue id, or 0 (never a real id) when
 // unknown, so getIssue then returns null.
-async function issueIdByToken(token: string): Promise<number> {
+async function issueIdByToken(db: Db, token: string): Promise<number> {
   const rows = await db.select({ id: issue.id }).from(issue).where(eq(issue.shareToken, token));
   return rows[0]?.id ?? 0;
 }

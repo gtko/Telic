@@ -1,0 +1,56 @@
+name: Deploy
+
+# Applies the D1 migrations, then deploys the four Workers (api, worker, bot, web).
+# Runs on main only and does nothing while the CLOUDFLARE_API_TOKEN repository secret is unset; the token needs
+# Workers Scripts, D1, Queues and R2 edit permissions on the account.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.3
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Migrate and deploy
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Check the deploy token
+        id: token
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "CLOUDFLARE_API_TOKEN is not set, skipping."; fi
+
+      - uses: actions/checkout@v7
+        if: steps.token.outputs.present == 'true'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.token.outputs.present == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: actions/cache@v6
+        if: steps.token.outputs.present == 'true'
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile
+        if: steps.token.outputs.present == 'true'
+
+      - name: Apply D1 migrations
+        if: steps.token.outputs.present == 'true'
+        run: bun run db:migrate:remote
+
+      - name: Deploy the Workers
+        if: steps.token.outputs.present == 'true'
+        run: bun run deploy

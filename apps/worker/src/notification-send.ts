@@ -1,5 +1,4 @@
 import {
-  db,
   project,
   teamInvite,
   emailSource,
@@ -8,6 +7,7 @@ import {
   getInstanceEmailConfig,
   getProjectEmailConfig,
   isInstanceBotUsable,
+  type Db,
   type DeliveryPayload,
   type NotificationConfig,
 } from '@repo/db';
@@ -32,7 +32,7 @@ export interface SendInput {
   config: NotificationConfig;
 }
 
-async function sendNotificationEmail(input: SendInput): Promise<SendResult> {
+async function sendNotificationEmail(db: Db, input: SendInput): Promise<SendResult> {
   if (!input.recipient) return { ok: false, retryable: false, error: 'no recipient' };
   // The team's own provider when it configured one, otherwise the instance
   // provider (which carries its own From address). A team set to the instance
@@ -40,12 +40,12 @@ async function sendNotificationEmail(input: SendInput): Promise<SendResult> {
   const source = emailSource(input.config);
   const config: EmailConfig | null =
     input.payload.emailSource === 'instance'
-      ? await getInstanceEmailConfig()
+      ? await getInstanceEmailConfig(db)
       : source === 'system'
-        ? await getProjectEmailConfig()
+        ? await getProjectEmailConfig(db)
         : source === 'none'
           ? null
-          : { smtp: input.config.smtp, resend: input.config.resend };
+          : { resend: input.config.resend };
   if (!config) return { ok: false, retryable: false, error: 'email not configured' };
   const { text, html } = emailBody(input.payload.text, input.payload.url);
   return sendEmail(config, {
@@ -57,14 +57,14 @@ async function sendNotificationEmail(input: SendInput): Promise<SendResult> {
   });
 }
 
-async function sendTelegram(input: SendInput): Promise<SendResult> {
+async function sendTelegram(db: Db, input: SendInput): Promise<SendResult> {
   const { telegram } = input.config;
   if (!telegram.enabled) {
     return { ok: false, retryable: false, error: 'telegram not configured' };
   }
   // The team's own bot when it set one, otherwise the instance bot the members
   // linked their accounts through.
-  const instance = telegram.botToken ? null : await getInstanceBotConfig();
+  const instance = telegram.botToken ? null : await getInstanceBotConfig(db);
   const botToken =
     telegram.botToken || (instance && isInstanceBotUsable(instance) ? instance.botToken : '');
   if (!botToken) return { ok: false, retryable: false, error: 'telegram not configured' };
@@ -108,14 +108,14 @@ async function sendTelegram(input: SendInput): Promise<SendResult> {
   }
 }
 
-async function sendDelivery(input: SendInput): Promise<SendResult> {
-  if (input.channel === 'email') return sendNotificationEmail(input);
-  if (input.channel === 'telegram') return sendTelegram(input);
+async function sendDelivery(db: Db, input: SendInput): Promise<SendResult> {
+  if (input.channel === 'email') return sendNotificationEmail(db, input);
+  if (input.channel === 'telegram') return sendTelegram(db, input);
   return { ok: false, retryable: false, error: `unknown channel: ${input.channel}` };
 }
 
 // Whether a queued invite email still has a live invite behind it.
-async function isInvitePending(projectId: number, inviteId: number): Promise<boolean> {
+async function isInvitePending(db: Db, projectId: number, inviteId: number): Promise<boolean> {
   const rows = await db
     .select({ id: teamInvite.id })
     .from(teamInvite)
@@ -131,7 +131,7 @@ async function isInvitePending(projectId: number, inviteId: number): Promise<boo
 }
 
 // The credentials belong to the team that owns the project the row came from.
-async function teamOf(projectId: number): Promise<number | null> {
+async function teamOf(db: Db, projectId: number): Promise<number | null> {
   const rows = await db
     .select({ teamId: project.teamId })
     .from(project)
@@ -146,21 +146,21 @@ export interface DeliveryRow {
   payload: DeliveryPayload;
 }
 
-export async function deliverNotification(row: DeliveryRow): Promise<SendResult> {
+export async function deliverNotification(db: Db, row: DeliveryRow): Promise<SendResult> {
   if (
     row.payload.projectInviteId != null &&
-    !(await isInvitePending(row.projectId, row.payload.projectInviteId))
+    !(await isInvitePending(db, row.projectId, row.payload.projectInviteId))
   ) {
     // The invite was accepted, rejected, or revoked while its email waited in the
     // outbox. Treat it as delivered so the row is removed.
     return { ok: true };
   }
-  const teamId = await teamOf(row.projectId);
+  const teamId = await teamOf(db, row.projectId);
   if (teamId == null) return { ok: false, retryable: false, error: 'Project not found' };
-  return sendDelivery({
+  return sendDelivery(db, {
     channel: row.channel,
     recipient: row.recipient,
     payload: row.payload,
-    config: await getDeliveryConfig(teamId),
+    config: await getDeliveryConfig(db, teamId),
   });
 }

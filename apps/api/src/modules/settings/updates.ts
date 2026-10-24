@@ -1,4 +1,5 @@
 import pkg from '../../../../../package.json';
+import { CHANGELOG_MARKDOWN } from './changelog.generated';
 
 // Whether a newer release is published, plus the notes to show. The repository's
 // releases atom feed is the source of the history; the CHANGELOG.md of this build
@@ -19,8 +20,6 @@ const FEED_TTL_MS = 30 * 60_000;
 // Fixed: an instance checks the project it is built from, so there is nothing to
 // configure.
 const FEED_URL = 'https://github.com/croffasia/itsaplan/releases.atom';
-
-const CHANGELOG_PATH = `${import.meta.dir}/../../../../../CHANGELOG.md`;
 
 export interface Release {
   tag: string;
@@ -123,11 +122,12 @@ export function parseChangelog(markdown: string): Release[] {
 
 let changelog: Release[] | null = null;
 
-// The file ships with the build and never changes at runtime, so it is read once.
+// The changelog is embedded in the bundle (changelog.generated.ts) and never changes at
+// runtime, so it is parsed once.
 async function localHistory(): Promise<Release[]> {
   if (changelog) return changelog;
   try {
-    changelog = parseChangelog(await Bun.file(CHANGELOG_PATH).text());
+    changelog = parseChangelog(CHANGELOG_MARKDOWN);
   } catch (err) {
     console.error('[updates] changelog unreadable:', err);
     changelog = [];

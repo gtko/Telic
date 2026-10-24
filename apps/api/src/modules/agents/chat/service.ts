@@ -1,7 +1,13 @@
-import { db, agentChatEvent, agentChatFavorite, agentChatMessage, agentChatThread } from '@repo/db';
-import { and, asc, desc, eq, gt, inArray, notExists, sql } from 'drizzle-orm';
-import { setTimeout as sleep } from 'node:timers/promises';
+import {
+  type Db,
+  agentChatEvent,
+  agentChatFavorite,
+  agentChatMessage,
+  agentChatThread,
+} from '@repo/db';
+import { and, asc, desc, eq, gt, inArray, lte, notExists, sql } from 'drizzle-orm';
 import { intEnv, iso } from '#shared/lib';
+import { batchAll } from '../core/helpers/batch';
 import { deleteContextUsage, recordContextUsage, type ContextUsage } from '../chat-usage';
 import { deleteFavorite, FAVORITES_LIMIT } from '../chat-favorites';
 import {
@@ -44,6 +50,9 @@ export const agentChatConfig = {
   historyMessages: () => intEnv('AGENT_CHAT_HISTORY_MESSAGES', 20),
 };
 
+// Pause between two looks at the feed while a claim waits.
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 const PAGE_SIZE = 25;
 const TITLE_LIMIT = 80;
 // How much of an answer is kept as its text. A reply nobody would read to the end is
@@ -52,6 +61,8 @@ const ANSWER_LIMIT = 100_000;
 // Events handed out per read. A stream that falls behind catches up over several reads
 // instead of loading everything an agent has said in one go.
 const EVENT_PAGE = 500;
+// Event rows per INSERT (two bound parameters each, 100 at most per statement).
+const EVENT_INSERT_ROWS = 40;
 
 // The statuses an answer can still be worked on in: a runner claims either, and only
 // these take events, heartbeats and a result.
@@ -60,23 +71,24 @@ const LIVE_STATUSES = ['pending', 'streaming'];
 // The caller's conversations with one external agent: the favorites group, the hits of
 // a search, or one page of the rest of them, newest first.
 export async function listThreads(
+  db: Db,
   userId: string,
   agentId: number,
   opts: ThreadListOpts = {},
 ): Promise<ChatThreadPage> {
-  if (opts.favorites) return favoriteThreads(userId, agentId);
+  if (opts.favorites) return favoriteThreads(db, userId, agentId);
   const term = searchTerm(opts.q);
   const page = opts.page ?? 0;
   const rows = term
-    ? await searchThreads(userId, agentId, term, page)
-    : await unstarredPage(userId, agentId, page);
+    ? await searchThreads(db, userId, agentId, term, page)
+    : await unstarredPage(db, userId, agentId, page);
   const hasMore = rows.length > PAGE_SIZE;
-  const items = await summarize(hasMore ? rows.slice(0, PAGE_SIZE) : rows);
+  const items = await summarize(db, hasMore ? rows.slice(0, PAGE_SIZE) : rows);
   return { items, nextPage: hasMore ? page + 1 : null };
 }
 
 // The conversations the caller starred, newest first, in one go.
-async function favoriteThreads(userId: string, agentId: number): Promise<ChatThreadPage> {
+async function favoriteThreads(db: Db, userId: string, agentId: number): Promise<ChatThreadPage> {
   const rows = await db
     .select(threadColumns)
     .from(agentChatThread)
@@ -91,7 +103,10 @@ async function favoriteThreads(userId: string, agentId: number): Promise<ChatThr
     .orderBy(desc(agentChatThread.updatedAt))
     .limit(FAVORITES_LIMIT);
   return {
-    items: await summarize(rows.map((row) => ({ ...row, favorite: true }))),
+    items: await summarize(
+      db,
+      rows.map((row) => ({ ...row, favorite: true })),
+    ),
     nextPage: null,
   };
 }
@@ -107,7 +122,12 @@ const threadColumns = {
 // One page of the conversations that are not starred, newest first, with one row over
 // the page to tell whether there is another. The starred ones are left out because the
 // group above the list already holds them.
-async function unstarredPage(userId: string, agentId: number, page: number): Promise<ThreadRow[]> {
+async function unstarredPage(
+  db: Db,
+  userId: string,
+  agentId: number,
+  page: number,
+): Promise<ThreadRow[]> {
   const rows = await db
     .select(threadColumns)
     .from(agentChatThread)
@@ -142,6 +162,7 @@ async function unstarredPage(userId: string, agentId: number, page: number): Pro
 // to ANSWER_LIMIT characters. The rank puts a title hit first, then the ones where the
 // member's own message matches, then the ones matching only in the agent's reply.
 async function searchThreads(
+  db: Db,
   userId: string,
   agentId: number,
   term: string,
@@ -149,39 +170,40 @@ async function searchThreads(
 ): Promise<ThreadRow[]> {
   const like = likePattern(term);
   const snippet = snippetOf(sql`msg.content`, term);
-  const rows = await db.execute(sql`
-    SELECT t.id,
-           t.title,
-           t.cli_session_id AS "cliSessionId",
-           t.created_at AS "createdAt",
-           t.updated_at AS "updatedAt",
-           f.thread_id IS NOT NULL AS favorite,
-           hit.snippet,
+  const rows = await db.all<Omit<ThreadRow, 'favorite'> & { favorite: number }>(sql`
+    SELECT t.id AS id,
+           t.title AS title,
+           t.cli_session_id AS cliSessionId,
+           t.created_at AS createdAt,
+           t.updated_at AS updatedAt,
+           EXISTS (SELECT 1 FROM agent_chat_favorite f
+                    WHERE f.thread_id = t.id AND f.user_id = t.user_id) AS favorite,
+           (SELECT ${snippet} FROM agent_chat_message msg
+             WHERE msg.thread_id = t.id AND msg.content LIKE ${like} ESCAPE '\\'
+             ORDER BY msg.id DESC LIMIT 1) AS snippet,
            CASE
-             WHEN t.title ILIKE ${like} THEN 1
-             WHEN coalesce(hit.user_match, false) THEN 2
+             WHEN t.title LIKE ${like} ESCAPE '\\' THEN 1
+             WHEN EXISTS (SELECT 1 FROM agent_chat_message msg
+                           WHERE msg.thread_id = t.id AND msg.role = 'user'
+                             AND msg.content LIKE ${like} ESCAPE '\\') THEN 2
              ELSE 3
            END AS rank
     FROM agent_chat_thread t
-    LEFT JOIN agent_chat_favorite f ON f.thread_id = t.id AND f.user_id = t.user_id
-    LEFT JOIN LATERAL (
-      SELECT bool_or(msg.role = 'user') AS user_match,
-             (array_agg(${snippet} ORDER BY msg.id DESC))[1] AS snippet
-      FROM agent_chat_message msg
-      WHERE msg.thread_id = t.id AND msg.content ILIKE ${like}
-    ) hit ON true
     WHERE t.agent_id = ${agentId}
       AND t.user_id = ${userId}
-      AND (t.title ILIKE ${like} OR hit.snippet IS NOT NULL)
+      AND (t.title LIKE ${like} ESCAPE '\\'
+           OR EXISTS (SELECT 1 FROM agent_chat_message msg
+                       WHERE msg.thread_id = t.id AND msg.content LIKE ${like} ESCAPE '\\'))
     ORDER BY rank, t.updated_at DESC
     LIMIT ${PAGE_SIZE + 1} OFFSET ${page * PAGE_SIZE}
   `);
-  return rows as unknown as ThreadRow[];
+  return rows.map((row) => ({ ...row, favorite: Boolean(row.favorite) }));
 }
 
 // Whether the conversation is the caller's own, and with this agent where the caller
 // names one. False is a 404 for everything a thread is addressed by.
 export async function ownsThread(
+  db: Db,
   threadId: string,
   userId: string,
   agentId?: number,
@@ -204,11 +226,12 @@ export async function ownsThread(
 // newest — the shape the chat history loads backwards from. Null when the thread is not
 // the caller's, which the route maps to a 404.
 export async function getThreadMessages(
+  db: Db,
   threadId: string,
   userId: string,
   page = 0,
 ): Promise<ChatMessagePage | null> {
-  if (!(await ownsThread(threadId, userId))) return null;
+  if (!(await ownsThread(db, threadId, userId))) return null;
   const rows = await db
     .select()
     .from(agentChatMessage)
@@ -219,6 +242,7 @@ export async function getThreadMessages(
   const hasMore = rows.length > PAGE_SIZE;
   const turns = (hasMore ? rows.slice(0, PAGE_SIZE) : rows).reverse();
   const answers = await readAnswerParts(
+    db,
     turns.filter((r) => r.role === 'assistant').map((r) => r.id),
   );
   const items = turns
@@ -250,23 +274,23 @@ const TRANSCRIPT_EVENTS = [
 // Rebuilds each answer's parts from the events its runner reported. A call's start is
 // what puts it between the stretches of text around it; its arguments and result are
 // filled in afterwards, and stay unset for a runner that reports neither.
-async function readAnswerParts(messageIds: number[]): Promise<Map<number, ChatPart[]>> {
+async function readAnswerParts(db: Db, messageIds: number[]): Promise<Map<number, ChatPart[]>> {
   const parts = new Map<number, ChatPart[]>();
   if (messageIds.length === 0) return parts;
   const rows = await db
     .select({
       messageId: agentChatEvent.messageId,
-      type: sql<string>`${agentChatEvent.payload}->>'type'`,
-      delta: sql<string | null>`${agentChatEvent.payload}->>'delta'`,
-      content: sql<string | null>`${agentChatEvent.payload}->>'content'`,
-      toolCallId: sql<string | null>`${agentChatEvent.payload}->>'toolCallId'`,
-      toolCallName: sql<string | null>`${agentChatEvent.payload}->>'toolCallName'`,
+      type: sql<string>`json_extract(${agentChatEvent.payload}, '$.type')`,
+      delta: sql<string | null>`json_extract(${agentChatEvent.payload}, '$.delta')`,
+      content: sql<string | null>`json_extract(${agentChatEvent.payload}, '$.content')`,
+      toolCallId: sql<string | null>`json_extract(${agentChatEvent.payload}, '$.toolCallId')`,
+      toolCallName: sql<string | null>`json_extract(${agentChatEvent.payload}, '$.toolCallName')`,
     })
     .from(agentChatEvent)
     .where(
       and(
         inArray(agentChatEvent.messageId, messageIds),
-        inArray(sql`${agentChatEvent.payload}->>'type'`, TRANSCRIPT_EVENTS),
+        inArray(sql`json_extract(${agentChatEvent.payload}, '$.type')`, TRANSCRIPT_EVENTS),
       ),
     )
     .orderBy(asc(agentChatEvent.id));
@@ -308,6 +332,7 @@ async function readAnswerParts(messageIds: number[]): Promise<Map<number, ChatPa
 // Renames one of the caller's conversations. False when it is not theirs, which the
 // route maps to a 404.
 export async function renameThread(
+  db: Db,
   threadId: string,
   userId: string,
   title: string,
@@ -320,61 +345,73 @@ export async function renameThread(
   return rows.length > 0;
 }
 
-export async function deleteThread(threadId: string, userId: string): Promise<boolean> {
+export async function deleteThread(db: Db, threadId: string, userId: string): Promise<boolean> {
   const rows = await db
     .delete(agentChatThread)
     .where(and(eq(agentChatThread.id, threadId), eq(agentChatThread.userId, userId)))
     .returning({ id: agentChatThread.id });
   if (rows.length === 0) return false;
-  await deleteContextUsage(threadId);
-  await deleteFavorite(threadId);
+  await deleteContextUsage(db, threadId);
+  await deleteFavorite(db, threadId);
   return true;
 }
 
 // Stores the member's message and queues the answer next to it. A thread id continues
 // that conversation; without one a thread is created, titled after the message. Null
 // when the thread named is not the caller's.
-export async function sendMessage(input: {
-  agentId: number;
-  userId: string;
-  prompt: string;
-  threadId?: string;
-}): Promise<{ threadId: string; messageId: number } | null> {
+export async function sendMessage(
+  db: Db,
+  input: {
+    agentId: number;
+    userId: string;
+    prompt: string;
+    threadId?: string;
+  },
+): Promise<{ threadId: string; messageId: number } | null> {
   const { agentId, userId, prompt } = input;
-  return db.transaction(async (tx) => {
-    let threadId = input.threadId;
-    if (threadId) {
-      const rows = await tx
-        .select({ id: agentChatThread.id })
-        .from(agentChatThread)
-        .where(
-          and(
-            eq(agentChatThread.id, threadId),
-            eq(agentChatThread.agentId, agentId),
-            eq(agentChatThread.userId, userId),
-          ),
-        )
-        .limit(1);
-      if (!rows[0]) return null;
-      await tx
+  // Known up front once the thread is settled, so the writes go in one atomic batch: the
+  // thread (created or touched), the member's message and the queued answer.
+  let threadId = input.threadId;
+  const writes: Parameters<typeof batchAll>[1] = [];
+  if (threadId) {
+    const rows = await db
+      .select({ id: agentChatThread.id })
+      .from(agentChatThread)
+      .where(
+        and(
+          eq(agentChatThread.id, threadId),
+          eq(agentChatThread.agentId, agentId),
+          eq(agentChatThread.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!rows[0]) return null;
+    writes.push(
+      db
         .update(agentChatThread)
         .set({ updatedAt: new Date() })
-        .where(eq(agentChatThread.id, threadId));
-    } else {
-      threadId = newChatThreadId(agentId, userId);
-      await tx
+        .where(eq(agentChatThread.id, threadId)),
+    );
+  } else {
+    threadId = newChatThreadId(agentId, userId);
+    writes.push(
+      db
         .insert(agentChatThread)
-        .values({ id: threadId, agentId, userId, title: prompt.slice(0, TITLE_LIMIT) });
-    }
-    await tx
+        .values({ id: threadId, agentId, userId, title: prompt.slice(0, TITLE_LIMIT) }),
+    );
+  }
+  writes.push(
+    db
       .insert(agentChatMessage)
-      .values({ threadId, agentId, role: 'user', content: prompt, status: 'success' });
-    const answer = await tx
+      .values({ threadId, agentId, role: 'user', content: prompt, status: 'success' }),
+    db
       .insert(agentChatMessage)
       .values({ threadId, agentId, role: 'assistant' })
-      .returning({ id: agentChatMessage.id });
-    return { threadId, messageId: answer[0].id };
-  });
+      .returning({ id: agentChatMessage.id }),
+  );
+  const results = await batchAll(db, writes);
+  const answer = results[results.length - 1] as { id: number }[];
+  return { threadId, messageId: answer[0]!.id };
 }
 
 export interface ClaimedChat {
@@ -399,7 +436,7 @@ interface ClaimedRow {
 // Fails answers handed out too many times without a result, so a chat whose runner
 // keeps dying ends visibly instead of being served forever. Called once per claim, not
 // once per look at the feed: a claim waits for work and looks many times.
-async function expireExhausted(agentId: number): Promise<void> {
+async function expireExhausted(db: Db, agentId: number): Promise<void> {
   await db
     .update(agentChatMessage)
     .set({
@@ -412,7 +449,7 @@ async function expireExhausted(agentId: number): Promise<void> {
         eq(agentChatMessage.agentId, agentId),
         inArray(agentChatMessage.status, LIVE_STATUSES),
         sql`${agentChatMessage.attempts} >= ${agentChatConfig.maxAttempts()}`,
-        sql`${agentChatMessage.nextAttemptAt} <= now()`,
+        lte(agentChatMessage.nextAttemptAt, new Date()),
       ),
     );
 }
@@ -420,13 +457,13 @@ async function expireExhausted(agentId: number): Promise<void> {
 // Waits for the agent's next answer to produce and hands it over under a lease, or null
 // when none turns up in time. Waiting instead of polling is what makes an answer start
 // the moment it is sent.
-export async function claimNextMessage(agent: RunnerAgent): Promise<ClaimedChat | null> {
+export async function claimNextMessage(db: Db, agent: RunnerAgent): Promise<ClaimedChat | null> {
   assertRunnerDrained(agent);
-  await touchRunner(agent.id);
-  await expireExhausted(agent.id);
+  await touchRunner(db, agent.id);
+  await expireExhausted(db, agent.id);
   const deadline = Date.now() + agentChatConfig.claimWaitMs();
   for (;;) {
-    const message = await claimMessage(agent);
+    const message = await claimMessage(db, agent);
     if (message) return message;
     if (Date.now() >= deadline) return null;
     await sleep(Math.min(agentChatConfig.claimPollMs(), Math.max(0, deadline - Date.now())));
@@ -435,79 +472,66 @@ export async function claimNextMessage(agent: RunnerAgent): Promise<ClaimedChat 
 
 // The agent's next due answer without waiting for one, for an agent whose answers are
 // sent to its invocation URL rather than claimed.
-export async function takeNextMessage(agent: RunnerAgent): Promise<ClaimedChat | null> {
-  await expireExhausted(agent.id);
-  return claimMessage(agent);
+export async function takeNextMessage(db: Db, agent: RunnerAgent): Promise<ClaimedChat | null> {
+  await expireExhausted(db, agent.id);
+  return claimMessage(db, agent);
 }
 
 // Takes the agent's next due answer, or null when it has none. Claiming clears whatever
 // a previous attempt produced: the answer is generated again from the start, and the
 // browser would otherwise read the abandoned half twice.
-async function claimMessage(agent: RunnerAgent): Promise<ClaimedChat | null> {
-  const rows = await db.transaction(async (tx) => {
-    const threads = await tx.execute(sql`
-      WITH live_heads AS MATERIALIZED (
-        SELECT q.thread_id, min(q.id) AS id FROM agent_chat_message q
-        WHERE q.agent_id = ${agent.id}
-          AND q.role = 'assistant'
-          AND q.status IN ('pending', 'streaming')
-        GROUP BY q.thread_id
-      ), ready_heads AS MATERIALIZED (
-        SELECT h.thread_id FROM live_heads h
-        JOIN agent_chat_message head ON head.id = h.id
-        WHERE head.next_attempt_at <= now()
-          AND head.attempts < ${agentChatConfig.maxAttempts()}
-        ORDER BY head.next_attempt_at, head.id
-      )
-      SELECT t.id FROM ready_heads h
-      CROSS JOIN LATERAL (
-        SELECT t.id FROM agent_chat_thread t
-        WHERE t.id = h.thread_id AND t.agent_id = ${agent.id}
-        FOR UPDATE SKIP LOCKED
-      ) t
+async function claimMessage(db: Db, agent: RunnerAgent): Promise<ClaimedChat | null> {
+  // One statement picks the head of a ready thread and claims it: D1 runs a write at a
+  // time, so two runners can never both take the same answer (there is no lock to take).
+  // The head is the first unfinished answer of a thread, so a thread's answers go in order.
+  const now = Date.now();
+  const lease = now + agentChatConfig.leaseSeconds() * 1000;
+  const maxAttempts = agentChatConfig.maxAttempts();
+  const rows = await db.all<ClaimedRow>(sql`
+    UPDATE agent_chat_message AS m
+    SET attempts = m.attempts + 1,
+        status = 'streaming',
+        content = '',
+        started_at = coalesce(m.started_at, ${now}),
+        next_attempt_at = ${lease}
+    WHERE m.id = (
+      SELECT head.id FROM agent_chat_message head
+      WHERE head.agent_id = ${agent.id}
+        AND head.role = 'assistant'
+        AND head.status IN ('pending', 'streaming')
+        AND head.next_attempt_at <= ${now}
+        AND head.attempts < ${maxAttempts}
+        AND head.id = (
+          SELECT min(q.id) FROM agent_chat_message q
+          WHERE q.thread_id = head.thread_id
+            AND q.agent_id = ${agent.id}
+            AND q.role = 'assistant'
+            AND q.status IN ('pending', 'streaming')
+        )
+      ORDER BY head.next_attempt_at, head.id
       LIMIT 1
-    `);
-    const thread = (threads as unknown as { id: string }[])[0];
-    if (!thread) return [];
-    // Re-read the first unfinished answer after taking the thread lock: a concurrent
-    // claim may have committed while the thread selection used an earlier snapshot.
-    return tx.execute(sql`
-      UPDATE agent_chat_message m
-      SET attempts = m.attempts + 1,
-          status = 'streaming',
-          content = '',
-          started_at = coalesce(m.started_at, now()),
-          next_attempt_at = now() + make_interval(secs => ${agentChatConfig.leaseSeconds()})
-      WHERE m.id = (
-        SELECT q.id FROM agent_chat_message q
-        WHERE q.thread_id = ${thread.id}
-          AND q.role = 'assistant'
-          AND q.status IN ('pending', 'streaming')
-        ORDER BY q.id
-        LIMIT 1
-      )
-        AND m.status IN ('pending', 'streaming')
-        AND m.next_attempt_at <= now()
-        AND m.attempts < ${agentChatConfig.maxAttempts()}
-      RETURNING
-        m.id,
-        m.thread_id AS "threadId",
-        m.attempts,
-        (SELECT u.name FROM agent_chat_thread t JOIN "user" u ON u.id = t.user_id
-           WHERE t.id = m.thread_id) AS "requesterName",
-        (SELECT u.username FROM agent_chat_thread t JOIN "user" u ON u.id = t.user_id
-           WHERE t.id = m.thread_id) AS "requesterUsername",
-        (SELECT cli_session_id FROM agent_chat_thread t WHERE t.id = m.thread_id) AS "sessionId"
-    `);
-  });
-  const row = (rows as unknown as ClaimedRow[])[0];
+    )
+      AND m.status IN ('pending', 'streaming')
+      AND m.next_attempt_at <= ${now}
+      AND m.attempts < ${maxAttempts}
+    RETURNING
+      id,
+      thread_id AS threadId,
+      attempts,
+      (SELECT u.name FROM agent_chat_thread t JOIN "user" u ON u.id = t.user_id
+         WHERE t.id = thread_id) AS requesterName,
+      (SELECT u.username FROM agent_chat_thread t JOIN "user" u ON u.id = t.user_id
+         WHERE t.id = thread_id) AS requesterUsername,
+      (SELECT cli_session_id FROM agent_chat_thread t WHERE t.id = thread_id) AS sessionId
+  `);
+  const row = rows[0];
   if (!row) return null;
   await db.delete(agentChatEvent).where(eq(agentChatEvent.messageId, row.id));
   // A thread bound to a live session on the runner's machine needs neither the earlier
   // turns nor the system prompt again: that session already holds both, in fuller form
   // than the transcript here keeps them.
   const resumed = row.sessionId !== null;
-  const history = await readHistory(row.threadId, row.id, resumed);
+  const history = await readHistory(db, row.threadId, row.id, resumed);
   const question = history.pop()?.content ?? '';
   return {
     id: row.id,
@@ -528,6 +552,7 @@ async function claimMessage(agent: RunnerAgent): Promise<ClaimedChat | null> {
 // produced so the runner needs no separate lookup. The first report wins: a retry of the
 // same answer starts a new session, and rebinding would strand the one already recorded.
 export async function setThreadSession(
+  db: Db,
   agentId: number,
   messageId: number,
   sessionId: string,
@@ -553,6 +578,7 @@ export async function setThreadSession(
 // last of them is the message being answered. `questionOnly` takes just that one, for a
 // thread whose session already remembers everything before it.
 async function readHistory(
+  db: Db,
   threadId: string,
   beforeMessageId: number,
   questionOnly: boolean,
@@ -615,8 +641,8 @@ function frameChatPrompt(history: { role: string; content: string }[], prompt: s
 }
 
 // When a claimed answer falls back to the feed unless the runner reports again.
-function leaseUntil() {
-  return sql`now() + make_interval(secs => ${agentChatConfig.leaseSeconds()})`;
+function leaseUntil(now = Date.now()): Date {
+  return new Date(now + agentChatConfig.leaseSeconds() * 1000);
 }
 
 // The answer a runner call addresses: this agent's, and not finished yet.
@@ -630,7 +656,7 @@ function liveAnswer(agentId: number, messageId: number) {
 
 // Whether the answer a runner call addressed was stopped from the chat, as opposed to
 // not being this agent's or having ended some other way.
-async function wasCanceled(agentId: number, messageId: number): Promise<boolean> {
+async function wasCanceled(db: Db, agentId: number, messageId: number): Promise<boolean> {
   const rows = await db
     .select({ status: agentChatMessage.status })
     .from(agentChatMessage)
@@ -642,6 +668,7 @@ async function wasCanceled(agentId: number, messageId: number): Promise<boolean>
 // Records what the runner reported. Text deltas also grow the answer's own text, so the
 // transcript reads correctly even if the browser never watched the stream.
 export async function appendEvents(
+  db: Db,
   agentId: number,
   messageId: number,
   events: AgUiEventBody[],
@@ -649,13 +676,20 @@ export async function appendEvents(
   const claimed = await db
     .update(agentChatMessage)
     .set({
-      content: sql`left(${agentChatMessage.content} || ${textOf(events)}, ${ANSWER_LIMIT})`,
+      content: sql`substr(${agentChatMessage.content} || ${textOf(events)}, 1, ${ANSWER_LIMIT})`,
       nextAttemptAt: leaseUntil(),
     })
     .where(liveAnswer(agentId, messageId))
     .returning({ id: agentChatMessage.id });
-  if (!claimed[0]) return (await wasCanceled(agentId, messageId)) ? { canceled: true } : null;
-  await db.insert(agentChatEvent).values(events.map((event) => ({ messageId, payload: event })));
+  if (!claimed[0]) return (await wasCanceled(db, agentId, messageId)) ? { canceled: true } : null;
+  // D1 binds at most 100 parameters per statement: a row has two.
+  for (let i = 0; i < events.length; i += EVENT_INSERT_ROWS) {
+    await db
+      .insert(agentChatEvent)
+      .values(
+        events.slice(i, i + EVENT_INSERT_ROWS).map((event) => ({ messageId, payload: event })),
+      );
+  }
   return { canceled: false };
 }
 
@@ -664,17 +698,18 @@ function textOf(events: AgUiEventBody[]): string {
 }
 
 export async function heartbeatMessage(
+  db: Db,
   agentId: number,
   messageId: number,
 ): Promise<ChatAck | null> {
-  await touchRunner(agentId);
+  await touchRunner(db, agentId);
   const rows = await db
     .update(agentChatMessage)
     .set({ nextAttemptAt: leaseUntil() })
     .where(liveAnswer(agentId, messageId))
     .returning({ id: agentChatMessage.id });
   if (rows.length > 0) return { canceled: false };
-  return (await wasCanceled(agentId, messageId)) ? { canceled: true } : null;
+  return (await wasCanceled(db, agentId, messageId)) ? { canceled: true } : null;
 }
 
 // Stops the answer on the member's word. Terminal, like a failure: no claim, retry or
@@ -683,6 +718,7 @@ export async function heartbeatMessage(
 // the caller's, whether or not it was still running — pressing stop as it ends is not
 // an error.
 export async function cancelMessage(
+  db: Db,
   messageId: number,
   agentId: number,
   userId: string,
@@ -710,6 +746,7 @@ export async function cancelMessage(
 // Closes the answer. A failure is terminal: the runner ran the command and it failed,
 // so serving the same answer again would only repeat it.
 export async function finishMessage(
+  db: Db,
   agentId: number,
   messageId: number,
   result: {
@@ -718,7 +755,7 @@ export async function finishMessage(
     usage?: ContextUsage | null;
   },
 ): Promise<boolean> {
-  await touchRunner(agentId);
+  await touchRunner(db, agentId);
   const rows = await db
     .update(agentChatMessage)
     .set({
@@ -733,13 +770,13 @@ export async function finishMessage(
     // Undefined is a runner that said nothing about the context — an older one, or a
     // command that reports no counts at all — and the thread keeps the number it has.
     if (result.usage !== undefined) {
-      await recordContextUsage(rows[0].threadId, agentId, result.usage);
+      await recordContextUsage(db, rows[0].threadId, agentId, result.usage);
     }
     return true;
   }
   // Stopped from the chat while the command was ending: the answer is already closed,
   // so there is nothing to record and nothing wrong.
-  return wasCanceled(agentId, messageId);
+  return wasCanceled(db, agentId, messageId);
 }
 
 // What a runner is told on every report: whether the answer it is producing was stopped.
@@ -760,6 +797,7 @@ export interface ChatEventPage {
 // The answer's events after the given cursor, with the answer's own state so a reader
 // knows whether more are coming. Null when the answer is not the caller's.
 export async function readEvents(
+  db: Db,
   messageId: number,
   agentId: number,
   userId: string,

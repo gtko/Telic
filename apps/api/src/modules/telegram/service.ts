@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   userTelegramAccount,
   writeSecret,
   getInstanceBotConfig,
@@ -27,8 +27,8 @@ import { randomBytes } from 'node:crypto';
 // the button, short enough that an intercepted link is not useful later.
 const LINK_CODE_TTL_MINUTES = 15;
 
-export async function hasUsableInstanceBot(): Promise<boolean> {
-  return isInstanceBotUsable(await getInstanceBotConfig());
+export async function hasUsableInstanceBot(db: Db): Promise<boolean> {
+  return isInstanceBotUsable(await getInstanceBotConfig(db));
 }
 
 // The config as returned to the client: the token replaced by a boolean telling
@@ -54,8 +54,8 @@ function toBotDto(config: InstanceBotConfig): InstanceBotDto {
   };
 }
 
-export async function getInstanceBotSettings(): Promise<InstanceBotDto> {
-  return toBotDto(await getInstanceBotConfig());
+export async function getInstanceBotSettings(db: Db): Promise<InstanceBotDto> {
+  return toBotDto(await getInstanceBotConfig(db));
 }
 
 // Asks Telegram who the token belongs to. Doubles as validation: a bad token is
@@ -80,8 +80,11 @@ export async function fetchBotUsername(botToken: string): Promise<string> {
   return username;
 }
 
-export async function setInstanceBotSettings(patch: InstanceBotPatch): Promise<InstanceBotDto> {
-  const current = await getInstanceBotConfig();
+export async function setInstanceBotSettings(
+  db: Db,
+  patch: InstanceBotPatch,
+): Promise<InstanceBotDto> {
+  const current = await getInstanceBotConfig(db);
   const botToken = patch.botToken && patch.botToken.length > 0 ? patch.botToken : current.botToken;
   // Ask Telegram for the name only when there is something new to resolve: a token
   // that changed, or a stored one whose username was never recorded. An unchanged
@@ -95,7 +98,7 @@ export async function setInstanceBotSettings(patch: InstanceBotPatch): Promise<I
     botUsername: needsLookup ? await fetchBotUsername(botToken) : current.botUsername,
   };
   const redacted = toBotDto(next);
-  await writeSecret(TELEGRAM_BOT_SECRET_KEY, next, redacted);
+  await writeSecret(db, TELEGRAM_BOT_SECRET_KEY, next, redacted);
   return redacted;
 }
 
@@ -110,7 +113,7 @@ export interface TelegramLink {
   linkedAt: string;
 }
 
-export async function getTelegramLink(userId: string): Promise<TelegramLink | null> {
+export async function getTelegramLink(db: Db, userId: string): Promise<TelegramLink | null> {
   const rows = await db
     .select({
       chatId: userTelegramAccount.chatId,
@@ -132,7 +135,7 @@ export async function getTelegramLink(userId: string): Promise<TelegramLink | nu
 
 // The chat ids of several users at once, for the notification enqueue path. Users
 // with no completed link are absent from the map.
-export async function getTelegramChatIds(userIds: string[]): Promise<Map<string, string>> {
+export async function getTelegramChatIds(db: Db, userIds: string[]): Promise<Map<string, string>> {
   if (userIds.length === 0) return new Map();
   const rows = await db
     .select({ userId: userTelegramAccount.userId, chatId: userTelegramAccount.chatId })
@@ -149,6 +152,7 @@ export async function getTelegramChatIds(userIds: string[]): Promise<Map<string,
 // link is left in place until the new code is confirmed, so a failed re-link does not
 // leave the user with no Telegram at all.
 export async function startTelegramLink(
+  db: Db,
   userId: string,
 ): Promise<{ code: string; expiresAt: string }> {
   // base64url of 16 random bytes: 22 characters, all valid in a `/start` payload
@@ -165,6 +169,6 @@ export async function startTelegramLink(
   return { code, expiresAt: expiresAt.toISOString() };
 }
 
-export async function unlinkTelegram(userId: string): Promise<void> {
+export async function unlinkTelegram(db: Db, userId: string): Promise<void> {
   await db.delete(userTelegramAccount).where(eq(userTelegramAccount.userId, userId));
 }

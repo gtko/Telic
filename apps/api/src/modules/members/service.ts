@@ -1,5 +1,4 @@
 import {
-  db,
   project,
   projectMember,
   teamMember,
@@ -8,8 +7,9 @@ import {
   user,
   aiAgent,
   userPreference,
+  type Db,
 } from '@repo/db';
-import { and, desc, eq, ilike, isNotNull, isNull, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, like, isNotNull, isNull, notExists, or, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { DEFAULT_TIMEZONE } from '#modules/user-preferences/service';
 import {
@@ -84,6 +84,7 @@ export interface MemberContext {
 // Where a membership came from, or null when the user is not a member. Read by the
 // routes that edit a membership, which refuse to touch a row SCIM owns.
 export async function getMembershipSource(
+  db: Db,
   projectId: number,
   userId: string,
 ): Promise<MemberSource | null> {
@@ -95,7 +96,11 @@ export async function getMembershipSource(
 }
 
 // The current user's role in a project, or null when they are not a member.
-export async function getMembership(projectId: number, userId: string): Promise<MemberRole | null> {
+export async function getMembership(
+  db: Db,
+  projectId: number,
+  userId: string,
+): Promise<MemberRole | null> {
   const rows = await db
     .select({ role: projectMember.role })
     .from(projectMember)
@@ -116,6 +121,7 @@ export function toMemberContext(role: MemberRole, rolePermissions: unknown): Mem
 // The current user's role and resolved permission matrix in a project, or null
 // when they are not a member. This is the single lookup behind assertPermission.
 export async function getMemberContext(
+  db: Db,
   projectId: number,
   userId: string,
 ): Promise<MemberContext | null> {
@@ -133,6 +139,7 @@ export async function getMemberContext(
 
 // A user's resolved matrix in each project of the team they are a member of.
 export async function getProjectPermissions(
+  db: Db,
   teamId: number,
   userId: string,
 ): Promise<{ projectId: number; permissions: Permissions }[]> {
@@ -158,9 +165,13 @@ export async function getProjectPermissions(
 // team. Owning one of the projects carries the full matrix into the merge, which is
 // what lets a project owner manage the resources the team holds for all of them.
 // Someone who is a member of no project of the team gets an empty matrix.
-export async function getTeamPermissions(teamId: number, userId: string): Promise<Permissions> {
+export async function getTeamPermissions(
+  db: Db,
+  teamId: number,
+  userId: string,
+): Promise<Permissions> {
   const merged = emptyPermissions();
-  for (const { permissions } of await getProjectPermissions(teamId, userId)) {
+  for (const { permissions } of await getProjectPermissions(db, teamId, userId)) {
     for (const resource of PERMISSION_RESOURCES) {
       for (const action of PERMISSION_ACTIONS) {
         merged[resource][action] ||= permissions[resource][action];
@@ -173,7 +184,10 @@ export async function getTeamPermissions(teamId: number, userId: string): Promis
 // Every member's resolved access in the project, keyed by user id — getMemberContext
 // in bulk, for a caller that judges several people at once (agents included: their
 // bot user is a member like any other).
-export async function listMemberContexts(projectId: number): Promise<Map<string, MemberContext>> {
+export async function listMemberContexts(
+  db: Db,
+  projectId: number,
+): Promise<Map<string, MemberContext>> {
   const rows = await db
     .select({
       userId: projectMember.userId,
@@ -211,7 +225,10 @@ export interface AssigneeCandidate {
   canReadWorkItems: boolean;
 }
 
-export async function listAssigneeCandidates(projectId: number): Promise<AssigneeCandidate[]> {
+export async function listAssigneeCandidates(
+  db: Db,
+  projectId: number,
+): Promise<AssigneeCandidate[]> {
   const [memberRows, agentRows] = await Promise.all([
     db
       .select({
@@ -305,10 +322,10 @@ export function matchesFilters({ search, kind }: MemberFilters) {
   return and(
     term
       ? or(
-          ilike(user.name, `%${term}%`),
-          ilike(user.email, `%${term}%`),
-          ilike(user.username, `%${term}%`),
-          ilike(aiAgent.username, `%${term}%`),
+          like(user.name, `%${term}%`),
+          like(user.email, `%${term}%`),
+          like(user.username, `%${term}%`),
+          like(aiAgent.username, `%${term}%`),
         )
       : undefined,
     kind === 'human' ? isNull(aiAgent.id) : undefined,
@@ -317,9 +334,13 @@ export function matchesFilters({ search, kind }: MemberFilters) {
 }
 
 // How many members match, ignoring the page window, so the two agree.
-async function countMembers(projectId: number, filters: MemberFilters = {}): Promise<number> {
+async function countMembers(
+  db: Db,
+  projectId: number,
+  filters: MemberFilters = {},
+): Promise<number> {
   const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(projectMember)
     .innerJoin(user, eq(user.id, projectMember.userId))
     .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
@@ -338,7 +359,7 @@ function memberOrderBy(order: MemberOrder) {
   return order === 'owners' ? [desc(eq(projectMember.role, 'owner')), newest] : [newest];
 }
 
-function selectMembers(projectId: number, filters: MemberFilters, order: MemberOrder) {
+function selectMembers(db: Db, projectId: number, filters: MemberFilters, order: MemberOrder) {
   return db
     .select({
       userId: projectMember.userId,
@@ -389,27 +410,29 @@ function mapMembers(rows: SelectedMember[]): MemberRow[] {
 // taken beside the window, not from it: a page past the end still has to say how many
 // there are.
 export async function listMembersPage(
+  db: Db,
   projectId: number,
   options: MemberFilters & { limit: number; offset: number; order?: MemberOrder },
 ): Promise<{ items: MemberRow[]; total: number }> {
   const [rows, total] = await Promise.all([
-    selectMembers(projectId, options, options.order ?? 'newest')
+    selectMembers(db, projectId, options, options.order ?? 'newest')
       .limit(options.limit)
       .offset(options.offset),
-    countMembers(projectId, options),
+    countMembers(db, projectId, options),
   ]);
   return { items: mapMembers(rows), total };
 }
 
 // Every member of the project. Not exposed over HTTP — god mode's project detail
 // reads them all to pair each with the context it shows.
-export async function listAllMembers(projectId: number): Promise<MemberRow[]> {
-  return mapMembers(await selectMembers(projectId, {}, 'newest'));
+export async function listAllMembers(db: Db, projectId: number): Promise<MemberRow[]> {
+  return mapMembers(await selectMembers(db, projectId, {}, 'newest'));
 }
 
 // Sets a member's project description (what they do). Returns false when the user is
 // not a member of the project.
 export async function setMemberDescription(
+  db: Db,
   projectId: number,
   userId: string,
   description: string,
@@ -426,6 +449,7 @@ export async function setMemberDescription(
 // already in the project, which the route answers with a 409 rather than quietly
 // changing the role they are on.
 export async function addMember(
+  db: Db,
   projectId: number,
   userId: string,
   role: MemberRole,
@@ -442,6 +466,7 @@ export async function addMember(
 // The team's members who are not in the project yet: who can be added to it straight
 // away, without an invite.
 export async function listMemberCandidates(
+  db: Db,
   projectId: number,
   teamId: number,
 ): Promise<MemberCandidate[]> {
@@ -490,6 +515,7 @@ export async function listMemberCandidates(
 // a member keeps roleId (null falls back to the default role). Returns false when
 // the user is not a member of the project.
 export async function setMembership(
+  db: Db,
   projectId: number,
   userId: string,
   role: MemberRole,
@@ -503,25 +529,26 @@ export async function setMembership(
   return updated.length > 0;
 }
 
-export async function removeMember(projectId: number, userId: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
+export async function removeMember(db: Db, projectId: number, userId: string): Promise<void> {
+  // One atomic batch.
+  await db.batch([
+    db
       .delete(projectMember)
-      .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, userId)));
+      .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, userId))),
     // A column cannot keep assigning issues to someone who is no longer a member:
     // the same assignment sent as a patch would be refused.
-    await tx
+    db
       .update(projectColumn)
       .set({ autoAssignUserId: null })
       .where(
         and(eq(projectColumn.projectId, projectId), eq(projectColumn.autoAssignUserId, userId)),
-      );
-  });
+      ),
+  ]);
 }
 
-export async function countOwners(projectId: number): Promise<number> {
+export async function countOwners(db: Db, projectId: number): Promise<number> {
   const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(projectMember)
     .where(and(eq(projectMember.projectId, projectId), eq(projectMember.role, 'owner')));
   return rows[0]?.count ?? 0;

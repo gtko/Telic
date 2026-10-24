@@ -1,0 +1,72 @@
+{
+  // The API Worker (ODY-296). `wrangler dev --local` serves it from Miniflare (local D1, R2 and
+  // Queue, persisted under .wrangler/state): it never contacts Cloudflare. The D1 database, R2 bucket
+  // and queues below exist in the Gtux account (telic, telic-attachments, telic-agent-runs,
+  // telic-agent-runs-dlq).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telic-api",
+  "account_id": "4f2452fbc81b70c2549d6f7dd779b190",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-01",
+  // nodejs_compat: better-auth, Mastra and the MCP SDK use node:crypto, node:buffer and
+  // node:stream. It also exposes process.env, filled from the vars and secrets below.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "telic",
+      "database_id": "2f751597-4754-4e74-b4a7-3c07ccaeedc3",
+      // The single baseline of packages/db: `wrangler d1 migrations apply DB --local|--remote`.
+      "migrations_dir": "../../packages/db/drizzle-d1",
+    },
+  ],
+
+  // Attachments, avatars and large agent trace payloads.
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "telic-attachments" }],
+
+  // The agent run queue. This Worker both enqueues (RUN_QUEUE) and consumes (`queue()` in
+  // src/worker.ts). One message is one run, and a run is an LLM call of minutes, so a batch holds
+  // one message; a message that keeps failing lands on the dead-letter queue, where the cron
+  // catch-up still finds its run (the agent_run row is the source of truth).
+  "queues": {
+    "producers": [{ "binding": "RUN_QUEUE", "queue": "telic-agent-runs" }],
+    "consumers": [
+      {
+        "queue": "telic-agent-runs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "telic-agent-runs-dlq",
+      },
+    ],
+  },
+
+  // `scheduled()` tells the triggers apart by these exact expressions (CRON_* in src/scheduled.ts).
+  "triggers": {
+    "crons": [
+      "* * * * *", // run catch-up and external agent invocations
+      "0 * * * *", // issue auto-archive and trace retention
+    ],
+  },
+
+  // Public variables. APP_URL (the web origin, comma-separated for several) and API_URL (this
+  // Worker's public origin) differ per environment and have no usable localhost fallback, so they
+  // are passed on the deploy command line (--var APP_URL:https://... --var API_URL:https://...);
+  // locally they come from .dev.vars. The web and the API are on different sites on workers.dev,
+  // so use a custom domain pair, or set COOKIE_DOMAIN.
+  // Optional, see src/env.ts: COOKIE_DOMAIN, PASSKEY_RP_ID, PASSKEY_RP_NAME, CLIENT_IP_HEADER,
+  // TRUSTED_PROXIES, SSRF_ALLOWED_HOSTS, EMAIL_FROM, NOTIFICATIONS_EMAIL_FROM,
+  // GIT_WEBHOOK_BASE_URL. Never put a secret here.
+  "vars": {},
+
+  // Secrets, never in this file. Production: `wrangler secret put <NAME>`; local: copy
+  // .dev.vars.example to .dev.vars (git-ignored).
+  //   BETTER_AUTH_SECRET  required, signs sessions and tokens, 32+ random characters
+  //   APP_ENCRYPTION_KEY  required, 32 bytes base64, encrypts the stored credentials; the same
+  //                       value goes on telic-worker and telic-bot
+  // The Resend/SMTP and Telegram bot credentials are saved in the instance settings, encrypted
+  // with APP_ENCRYPTION_KEY, not set as Worker secrets. TELEGRAM_WEBHOOK_SECRET is a secret of
+  // telic-bot only.
+}

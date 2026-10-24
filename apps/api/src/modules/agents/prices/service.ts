@@ -1,4 +1,4 @@
-import { db, modelPrice } from '@repo/db';
+import { type Db, modelPrice } from '@repo/db';
 import { and, eq } from 'drizzle-orm';
 import { modelsCalled, workspaceScope } from '../core/runtime/analytics';
 import {
@@ -40,7 +40,7 @@ const ownColumns = {
   cacheWrite: modelPrice.cacheWrite,
 };
 
-async function ownPricesByKey(workspaceId: number): Promise<Map<string, OwnPrice>> {
+async function ownPricesByKey(db: Db, workspaceId: number): Promise<Map<string, OwnPrice>> {
   const rows = await db
     .select(ownColumns)
     .from(modelPrice)
@@ -53,12 +53,13 @@ async function ownPricesByKey(workspaceId: number): Promise<Map<string, OwnPrice
 // price for without calling them since. A model no price covers comes first, since its
 // calls are left out of the dashboard's cost; then the most called.
 export async function listUsedModelPrices(
+  db: Db,
   workspaceId: number,
 ): Promise<(ModelPriceRow & { calls: number })[]> {
   const from = new Date(Date.now() - USED_DAYS * 24 * 60 * 60 * 1000);
   const [called, own] = await Promise.all([
-    workspaceScope(workspaceId).then((scope) => modelsCalled(scope, from)),
-    ownPricesByKey(workspaceId),
+    workspaceScope(db, workspaceId).then((scope) => modelsCalled(db, scope, from)),
+    ownPricesByKey(db, workspaceId),
   ]);
   const shown = new Set<number>();
   const rows = called.map((row) => {
@@ -78,12 +79,13 @@ export async function listUsedModelPrices(
 // One window of the built-in table, each row with the workspace's own price for that
 // exact model when it set one.
 export async function listCatalogPrices(
+  db: Db,
   workspaceId: number,
   search: string | undefined,
   window: { limit: number; offset: number },
 ): Promise<{ items: ModelPriceRow[]; total: number }> {
   const { items, total } = listBuiltInPrices(search, window);
-  const own = await ownPricesByKey(workspaceId);
+  const own = await ownPricesByKey(db, workspaceId);
   return {
     items: items.map((row) => ({
       provider: row.provider,
@@ -98,6 +100,7 @@ export async function listCatalogPrices(
 // Sets the workspace's price for a model, replacing the one it had. The model is named
 // as the dashboard reports it or as the table lists it, in any case.
 export async function setModelPrice(
+  db: Db,
   workspaceId: number,
   input: {
     provider: string;
@@ -132,7 +135,7 @@ export async function setModelPrice(
 
 // Drops the workspace's price, so the model is costed at the built-in one again, or
 // not at all. False when the workspace has no such price.
-export async function deleteModelPrice(workspaceId: number, id: number): Promise<boolean> {
+export async function deleteModelPrice(db: Db, workspaceId: number, id: number): Promise<boolean> {
   const rows = await db
     .delete(modelPrice)
     .where(and(eq(modelPrice.id, id), eq(modelPrice.workspaceId, workspaceId)))

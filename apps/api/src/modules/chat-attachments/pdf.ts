@@ -1,4 +1,3 @@
-import { processPdfAsync } from '@firecrawl/pdf-inspector';
 import { HttpError } from '#shared/lib';
 
 // The images a PDF holds are not extracted, so the placeholders the converter
@@ -14,13 +13,31 @@ const NO_TEXT_LAYER =
   'This PDF has no text layer (it is a scan or a set of images). ' +
   'Attach a PDF with selectable text, or a .md/.txt file instead.';
 
-// processPdfAsync parses on the libuv thread pool, so a large document does not
-// block the event loop.
-export async function pdfToMarkdown(bytes: Buffer): Promise<string> {
-  let result;
+// What the PDF engine reports for a document: its kind and the Markdown it converts to.
+export interface PdfExtraction {
+  pdfType: string;
+  markdown?: string;
+}
+
+// unpdf bundles a serverless build of pdf.js (pure JS, no native addon), so it runs on Workers.
+// It reads the text layer only: a PDF without one is reported as Scanned.
+export async function extractPdfText(bytes: Uint8Array): Promise<PdfExtraction> {
+  const { getDocumentProxy, extractText } = await import('unpdf');
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+  const { text } = await extractText(pdf, { mergePages: false });
+  const markdown = text
+    .map((page) => page.trim())
+    .filter((page) => page !== '')
+    .join('\n\n');
+  return { pdfType: markdown === '' ? 'Scanned' : 'TextBased', markdown };
+}
+
+export async function pdfToMarkdown(bytes: Uint8Array): Promise<string> {
+  let result: PdfExtraction;
   try {
-    result = await processPdfAsync(bytes);
+    result = await extractPdfText(bytes);
   } catch (err) {
+    if (err instanceof HttpError) throw err;
     const reason = err instanceof Error ? err.message : err;
     throw new HttpError(400, `The file is not a readable PDF: ${reason}`);
   }

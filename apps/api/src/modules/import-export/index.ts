@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { guards, entityGuard, assertMcpAllowed, requiresPermission } from '#shared/guards';
 import { assertPermission, requireUser } from '#shared/access';
 import { HttpError } from '#shared/lib';
@@ -43,10 +44,11 @@ export const importExportRoutes = new Elysia({
   detail: { tags: ['Import/Export'] },
 })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
   .macro({
-    importJobEntity: entityGuard('import_export', 'Import job not found', (p) =>
-      getImportJobProjectId(Number(p.id)),
+    importJobEntity: entityGuard('import_export', 'Import job not found', (p, { db }) =>
+      getImportJobProjectId(db, Number(p.id)),
     ),
   })
 
@@ -115,23 +117,27 @@ export const importExportRoutes = new Elysia({
     },
   )
 
-  .get('/projects/:projectKey/import-jobs/export', ({ project }) => exportProject(project.id), {
-    permission: ['import_export', 'create'],
-    response: { 200: ProjectExportResponse, ...accessErrors },
-    detail: {
-      summary: "Export a project's data",
-      description:
-        "A self-contained snapshot of the project's states, labels, cycles, and issues " +
-        '(with their comments and relations), as portable JSON. Not a live sync to any ' +
-        'target — a download.',
+  .get(
+    '/projects/:projectKey/import-jobs/export',
+    ({ db, project }) => exportProject(db, project.id),
+    {
+      permission: ['import_export', 'create'],
+      response: { 200: ProjectExportResponse, ...accessErrors },
+      detail: {
+        summary: "Export a project's data",
+        description:
+          "A self-contained snapshot of the project's states, labels, cycles, and issues " +
+          '(with their comments and relations), as portable JSON. Not a live sync to any ' +
+          'target — a download.',
+      },
     },
-  })
+  )
 
   .post(
     '/projects/:projectKey/import-jobs',
-    ({ project, body, user, set }) => {
+    ({ db, project, body, user, set }) => {
       set.status = 201;
-      return createImportJob(project.id, requireUser(user).id, body);
+      return createImportJob(db, project.id, requireUser(user).id, body);
     },
     {
       permission: ['import_export', 'create'],
@@ -146,7 +152,7 @@ export const importExportRoutes = new Elysia({
     },
   )
 
-  .get('/projects/:projectKey/import-jobs', ({ project }) => listImportJobs(project.id), {
+  .get('/projects/:projectKey/import-jobs', ({ db, project }) => listImportJobs(db, project.id), {
     permission: ['import_export', 'read'],
     response: { 200: t.Array(ImportJobResponse), ...accessErrors },
     detail: { summary: "List a project's import jobs" },
@@ -156,11 +162,11 @@ export const importExportRoutes = new Elysia({
   // guard would resolve the project id with a second query this handler doesn't need.
   .get(
     '/import-jobs/:id',
-    async ({ params, user, request }) => {
-      const job = await getImportJobDto(params.id);
+    async ({ db, params, user, request }) => {
+      const job = await getImportJobDto(db, params.id);
       if (!job) throw new HttpError(404, 'Import job not found');
-      await assertPermission(job.projectId, user, 'import_export', 'read');
-      await assertMcpAllowed(job.projectId, request.headers);
+      await assertPermission(db, job.projectId, user, 'import_export', 'read');
+      await assertMcpAllowed(db, job.projectId, request.headers);
       return job;
     },
     {
@@ -174,21 +180,21 @@ export const importExportRoutes = new Elysia({
     },
   )
 
-  .post('/import-jobs/:id/pause', ({ params }) => pauseImportJob(params.id), {
+  .post('/import-jobs/:id/pause', ({ db, params }) => pauseImportJob(db, params.id), {
     params: importJobParams,
     importJobEntity: 'edit',
     response: { 200: ImportJobResponse, ...accessErrors, ...errors(409) },
     detail: { summary: 'Pause an import job' },
   })
 
-  .post('/import-jobs/:id/resume', ({ params }) => resumeImportJob(params.id), {
+  .post('/import-jobs/:id/resume', ({ db, params }) => resumeImportJob(db, params.id), {
     params: importJobParams,
     importJobEntity: 'edit',
     response: { 200: ImportJobResponse, ...accessErrors, ...errors(409) },
     detail: { summary: 'Resume a paused import job' },
   })
 
-  .post('/import-jobs/:id/cancel', ({ params }) => cancelImportJob(params.id), {
+  .post('/import-jobs/:id/cancel', ({ db, params }) => cancelImportJob(db, params.id), {
     params: importJobParams,
     importJobEntity: 'edit',
     response: { 200: ImportJobResponse, ...accessErrors, ...errors(409) },

@@ -1,6 +1,7 @@
 # api (Elysia)
 
-Elysia server on Bun, port 3000 (`API_PORT`). See root `AGENTS.md` for stack/env.
+Elysia app served by a Cloudflare Worker (`telic-api`, `wrangler dev` on port 8787). See root
+`AGENTS.md` for stack and configuration.
 Rules and invariants for this package below; read the code for the walkthrough.
 
 ## Structure
@@ -13,16 +14,20 @@ Rules and invariants for this package below; read the code for the walkthrough.
   agent itself and its runtime. A feature whose links to its neighbours run one way
   stays flat. A schema several of the nested features share sits in the parent's
   `model.ts` and is re-exported from each child's (`agentParams`).
-- `src/app.ts` assembles and exports the app (`export const app`, no `.listen()`);
-  `src/index.ts` binds the port and starts `src/background.ts`.
+- `src/app.ts` assembles and exports the app (`export const app`).
+  `src/worker.ts` is the Worker entry: `fetch` serves the app, `scheduled` runs the cron
+  jobs of `src/scheduled.ts`, `queue` consumes the agent run queue (`src/queue.ts`).
   `export type App = typeof app` types the Eden Treaty client (web + tests).
-- **Background jobs are started from `index.ts`, never assembled into the app**, so
-  importing the app in a test starts nothing. `background.ts` drains the `agent_run`
-  queue in one loop and runs the auto-archive sweep in a loop of its own, so neither
-  waits on the other. Several api replicas run them without overlapping: the queue is
-  claimed with `FOR UPDATE SKIP LOCKED`, and the sweep only touches rows it has not
-  archived yet. An agent run is built from the queue row alone — the project it works
-  in and the bot user it acts as are read there, never handed in.
+  Handlers read bindings (`DB`, `BUCKET`, `RUN_QUEUE`) and variables from the request
+  context (`shared/context.ts`, type `Env` in `src/env.ts`).
+- **Background work is driven by the platform, never assembled into the app**, so
+  importing the app in a test starts nothing. A Queue (`telic-agent-runs`) carries the
+  agent runs, and `src/scheduled.ts` holds the two Cron Triggers: every minute is the
+  catch-up for the queue and the external agents, every hour is the auto-archive sweep
+  and the trace retention. Runs are claimed with a lease, and the sweep only touches
+  rows it has not archived yet, so a repeated or concurrent trigger does no harm. An
+  agent run is built from the queue row alone — the project it works in and the bot user
+  it acts as are read there, never handed in.
 - `index.ts`: `new Elysia({ name: "<feature>", detail: { tags: ["<Tag>"] } })` —
   routes chained directly on it, each route sets `detail.summary`. Handlers only;
   the schemas they reference come from `model.ts`.
@@ -35,10 +40,8 @@ Rules and invariants for this package below; read the code for the walkthrough.
 - Imports inside a module are relative (`./model`); everything it reaches outside
   itself goes through the subpath aliases in `apps/api/package.json` — `#shared/*`,
   `#mcp/*`, `#modules/*`, `#tests/*`. They map to a `.ts` file (`"#shared/*":
-"./src/shared/*.ts"`), which is what makes both `tsc` and Bun resolve them, and they
-  resolve against the api's own `package.json`, so they hold in the Docker image where
-  the process starts from the repo root. A tsconfig `paths` alias would not: there is
-  no tsconfig.json at that root.
+"./src/shared/*.ts"`), which is what makes `tsc`, wrangler's bundler and vitest all
+  resolve them. A tsconfig `paths` alias would not.
 
 ## Adding a route
 
@@ -73,9 +76,8 @@ Rules and invariants for this package below; read the code for the walkthrough.
   already `'YYYY-MM-DD'`.
 - **jsonb** (view `filters`/`display`, action `condition`/`effect`) passes through as
   JS objects — never `JSON.stringify`; validate only as `t.Any()`.
-- **Sequence numbers** ("MKT-42") are issued under a row lock on `project` inside
-  the transaction of `createIssue` and of `moveIssue` (`issues/move.ts`) — keep the
-  lock so concurrent writes don't collide. A moved issue's old number goes to
+- **Sequence numbers** ("MKT-42") are issued atomically in `createIssue` and in `moveIssue` (`issues/move.ts`) — keep it
+  atomic so concurrent writes don't collide. A moved issue's old number goes to
   `issue_key_alias`, and `getIssueBySequence` resolves it to the issue in its new
   project. The counter never goes back, so an alias never collides with an issue.
 - **`position` is a sparse float** (`MAX(position) + 1000`); do not assume contiguous
@@ -462,31 +464,25 @@ nosniff`, forced download outside a strict media allowlist, locked-down CSP.
 
 ## Tests
 
-`bun test` with **Eden Treaty** driving the app in memory against a real test Postgres
-and real better-auth sessions — nothing is mocked. Import `app` via the helpers (from
-`src/app.ts`), never `src/index.ts` (it binds the port).
+`vitest run`, two projects (`vitest.config.ts`). Nothing is mocked: the app runs against a local
+D1 with the migrations applied and real better-auth sessions.
 
-**Setup.** `bun run setup` at the repo root creates the `*_test` database next to the dev
-one, writes `.env.test`, and migrates it. To do it by hand instead:
+- `workers` runs `tests/**/*.test.ts` inside `workerd` through `@cloudflare/vitest-pool-workers`.
+  `tests/entry.ts` is the Worker the tests call, `tests/setup.ts` applies the baseline per file and
+  empties every table before each test. `tests/porting-excluded.json` lists the files not yet
+  ported (`docs/PORTING_TESTS_TODO.md`).
+- `node` runs `src/**/*.vtest.ts` and `src/**/__tests__/d1/**/*.test.ts` in Node, with a Miniflare
+  D1 started by the test and the services called with a real `db`.
 
-```bash
-cp .env.test.example .env.test        # repo root; DATABASE_URL must name a *_test database
-bun run db:migrate:test               # migrate it (repo root)
-bun run test                          # from apps/api, or at root via turbo
-```
+No setup is needed: `bun run test` at the root, or `bunx vitest run <path>` in this folder.
 
-The `test` script loads `--env-file=../../.env.test`. The attachments test also needs
-RustFS + `S3_*` in `.env.test` (`docker compose -f docker-compose.dev.yml up -d` creates
-the bucket); the Docker test gate starts its own throwaway RustFS.
-
-**Layout.** Tests colocated under `__tests__/`, `integration/` (Treaty vs running app +
-test DB, one file per feature) or `unit/` (pure functions, no session/HTTP/DB — import
-directly). Helpers in `src/__tests__/helpers/`: `api` (anonymous client), `authedApi(cookie)`,
-`signUpTestUser()` → `{ cookie, userId, email }`, `resetDb()`.
+**Layout.** Worker-side tests live in `tests/` (helpers in `tests/helpers/`). Service-level tests
+are colocated under `src/**/__tests__/`; pure functions (no session/HTTP/DB) are tested directly.
 
 **Rules.**
 
-- `beforeEach(resetDb)`. Build every precondition through the API, not raw inserts.
+- The tables are emptied before each test by `tests/setup.ts`. Build every precondition through
+  the API, not raw inserts.
 - Assert through the API (status + DTO via `toMatchObject`, side effects via a
   follow-up read), never by reading rows.
 - Cover per route: happy path, one valid + one invalid per field rule, boundaries
@@ -524,7 +520,7 @@ directly). Helpers in `src/__tests__/helpers/`: `api` (anonymous client), `authe
   authenticated by api key or bearer token are not checked.
 - swagger `/docs` (planner) is separate from better-auth's `/api/auth/reference`; both
   stay reachable without a session.
-- Dev: `bun run dev`. Prod: the Dockerfile migrates, then starts the server; the compose files and the Helm chart run the migrations as a separate step and start only the server.
+- Dev: `bun run dev` (`wrangler dev --local`). Prod: `wrangler deploy` after `wrangler d1 migrations apply`, both run by `.github/workflows/deploy.yml`.
 
 ## Runner queue and execution state
 

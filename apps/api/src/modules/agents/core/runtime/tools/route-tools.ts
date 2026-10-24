@@ -3,18 +3,10 @@ import type { z } from 'zod';
 import type { ProjectRow } from '#modules/projects/service';
 import type { ActivityPage } from '#modules/analytics/service';
 import { routeTools, withoutFields, type McpInputSchema, type McpRouteTool } from '#mcp/generate';
-import type { Permission } from '#shared/guards';
 import { dispatchTool } from '#mcp/dispatch';
 import { getMcpApp } from '#mcp/app-ref';
 import { compactProjectActivity } from './activity-result';
-import {
-  AGENT_ACTIONS,
-  ALWAYS_ON_ACTIONS,
-  ALWAYS_ON_KEYS,
-  normalizeToolKeys,
-  toolMeta,
-  type ToolMeta,
-} from './catalog';
+import { ALWAYS_ON_KEYS, normalizeToolKeys, toolMeta } from './catalog';
 
 // The tools an internal agent uses to work in its project, built from the routes
 // tagged with mcpTool() — the same table the MCP endpoint serves. A tool call is
@@ -57,17 +49,6 @@ function parseBody(text: string): unknown {
   } catch {
     return text;
   }
-}
-
-// The catalog list_ai_agent_tools returns: each action with the permission its route
-// asserts, so a caller can tell which role an action needs. An action with no route
-// behind it, or one whose route asks only for project membership, has none.
-export function actionCatalog(): (ToolMeta & { permission?: Permission })[] {
-  const byName = new Map(routeTools(getMcpApp()).map((route) => [route.name, route]));
-  return [...AGENT_ACTIONS, ...ALWAYS_ON_ACTIONS].map((action) => ({
-    ...action,
-    permission: byName.get(action.key)?.permission,
-  }));
 }
 
 // Builds the route-backed tools for one agent, keyed by tool id. The read-only

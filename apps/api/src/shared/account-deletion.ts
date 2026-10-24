@@ -1,99 +1,62 @@
-import { db, documentAsset, projectDocument, user } from '@repo/db';
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { documentAsset, projectDocument, user, type Db } from '@repo/db';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { deleteObjects } from '@repo/storage';
 import { releaseOwnedWorkspaces } from '#modules/teams/service';
 
-const DOCUMENT_TREE_LOCK_NAMESPACE = 1_145_390_931;
-
-export async function deleteAccount(userId: string): Promise<boolean> {
+// Deletes the account in ONE atomic D1 batch. Postgres locked the user row and every
+// project's document tree before reading, then wrote; D1 has neither lock, so nothing is
+// read first and written after. Every statement selects its rows by predicate at the
+// moment the batch runs (one writer at a time), so a document created, moved or
+// uploaded a moment earlier is covered and one that lands later finds the owner gone:
+//
+//   1. read the object keys of the private pages' assets (same snapshot as the deletes);
+//   2. detach the surviving public pages (owner removed, private parent cut loose) and
+//      bump their `version`, so an editor holding the previous one is refused (409)
+//      rather than overwriting the detach;
+//   3. delete the private pages the account owns (assets and children follow by FK);
+//   4. delete the account; the number of rows this removes tells whether it existed.
+//
+// An upload racing the deletion either committed before the batch (its key is read in
+// 1) or targets a page that no longer exists and removes its own object on failure.
+export async function deleteAccount(db: Db, userId: string): Promise<boolean> {
   // Before the account goes, so a workspace it owned is not left without an owner.
-  await releaseOwnedWorkspaces(userId);
-  const result = await db.transaction(async (tx) => {
-    const locked = await tx.execute(sql`select id from "user" where id = ${userId} for update`);
-    if (locked.length === 0) return { deleted: false, assetKeys: [] as string[] };
+  await releaseOwnedWorkspaces(db, userId);
 
-    // Document writers take an actor lock before the project tree lock. Keep the
-    // same ordering here so account deletion cannot race an autosave or move.
-    const ownedDocuments = await tx
-      .select({ projectId: projectDocument.projectId })
-      .from(projectDocument)
-      .where(eq(projectDocument.ownerUserId, userId));
-    const projectIds = [...new Set(ownedDocuments.map((document) => document.projectId))].sort(
-      (left, right) => left - right,
-    );
-    for (const projectId of projectIds) {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(${DOCUMENT_TREE_LOCK_NAMESPACE}, ${projectId})`,
-      );
-    }
+  const privateOwned = db
+    .select({ id: projectDocument.id })
+    .from(projectDocument)
+    .where(and(eq(projectDocument.ownerUserId, userId), eq(projectDocument.isPrivate, true)));
 
-    // Lock the pages before reading their asset keys. An upload that started before
-    // account deletion either commits first and is included here, or observes the
-    // deleted page and removes the newly written object in its failure cleanup.
-    const privateDocuments = await tx
-      .select({ id: projectDocument.id })
-      .from(projectDocument)
-      .where(and(eq(projectDocument.ownerUserId, userId), eq(projectDocument.isPrivate, true)))
-      .for('update');
-    const assets =
-      privateDocuments.length === 0
-        ? []
-        : await tx
-            .select({ s3Key: documentAsset.s3Key })
-            .from(documentAsset)
-            .where(
-              inArray(
-                documentAsset.documentId,
-                privateDocuments.map((document) => document.id),
-              ),
-            );
-
-    // Detach surviving pages explicitly before FK cleanup. This creates a new
-    // optimistic version and immutable checkpoint instead of silently rewriting
-    // the latest revision when a private parent or owner disappears.
-    const privateDocumentIds = privateDocuments.map((document) => document.id);
-    const affectedPublicDocuments = await tx
-      .select({
-        id: projectDocument.id,
-        ownerUserId: projectDocument.ownerUserId,
-        parentId: projectDocument.parentId,
+  const [assets, , , deleted] = await db.batch([
+    db
+      .select({ s3Key: documentAsset.s3Key })
+      .from(documentAsset)
+      .where(inArray(documentAsset.documentId, privateOwned)),
+    db
+      .update(projectDocument)
+      .set({
+        ownerUserId: sql`case when ${projectDocument.ownerUserId} = ${userId} then null else ${projectDocument.ownerUserId} end`,
+        parentId: sql`case when ${projectDocument.parentId} in (${privateOwned}) then null else ${projectDocument.parentId} end`,
+        updatedByUserId: userId,
+        updatedAt: new Date(),
+        version: sql`${projectDocument.version} + 1`,
       })
-      .from(projectDocument)
       .where(
         and(
           eq(projectDocument.isPrivate, false),
-          privateDocumentIds.length > 0
-            ? or(
-                eq(projectDocument.ownerUserId, userId),
-                inArray(projectDocument.parentId, privateDocumentIds),
-              )
-            : eq(projectDocument.ownerUserId, userId),
+          or(
+            eq(projectDocument.ownerUserId, userId),
+            inArray(projectDocument.parentId, privateOwned),
+          ),
         ),
-      )
-      .orderBy(asc(projectDocument.id))
-      .for('update');
-    for (const document of affectedPublicDocuments) {
-      await tx
-        .update(projectDocument)
-        .set({
-          ...(document.ownerUserId === userId ? { ownerUserId: null } : {}),
-          ...(document.parentId !== null && privateDocumentIds.includes(document.parentId)
-            ? { parentId: null }
-            : {}),
-          updatedByUserId: userId,
-          updatedAt: sql`now()`,
-          version: sql`${projectDocument.version} + 1`,
-        })
-        .where(eq(projectDocument.id, document.id));
-    }
-
-    await tx
+      ),
+    db
       .delete(projectDocument)
-      .where(and(eq(projectDocument.ownerUserId, userId), eq(projectDocument.isPrivate, true)));
-    await tx.delete(user).where(eq(user.id, userId));
-    return { deleted: true, assetKeys: assets.map((asset) => asset.s3Key) };
-  });
+      .where(and(eq(projectDocument.ownerUserId, userId), eq(projectDocument.isPrivate, true))),
+    db.delete(user).where(eq(user.id, userId)).returning({ id: user.id }),
+  ]);
 
-  await deleteObjects(result.assetKeys);
-  return result.deleted;
+  if (deleted.length === 0) return false;
+  await deleteObjects(assets.map((asset) => asset.s3Key));
+  return true;
 }

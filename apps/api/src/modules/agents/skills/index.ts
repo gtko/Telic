@@ -63,7 +63,8 @@ export const agentSkillRoutes = new Elysia({
 
   .get(
     '/teams/:teamId/agent-skills',
-    ({ membership, query }) => paginate(query, (window) => listSkills(membership.teamId, window)),
+    ({ db, membership, query }) =>
+      paginate(query, (window) => listSkills(db, membership.teamId, window)),
     {
       params: teamParams,
       query: skillListQuery,
@@ -81,7 +82,7 @@ export const agentSkillRoutes = new Elysia({
 
   .get(
     '/teams/:teamId/agent-skills/options',
-    ({ membership }) => listSkillOptions(membership.teamId),
+    ({ db, membership }) => listSkillOptions(db, membership.teamId),
     {
       params: teamParams,
       teamPermission: ['agent_skills', 'read'],
@@ -98,8 +99,8 @@ export const agentSkillRoutes = new Elysia({
 
   .get(
     '/teams/:teamId/agent-skills/:skillId',
-    async ({ params, membership }) => {
-      const skill = await getSkill(params.skillId, membership.teamId);
+    async ({ db, params, membership }) => {
+      const skill = await getSkill(db, params.skillId, membership.teamId);
       if (!skill) throw new HttpError(404, 'Skill not found');
       return skill;
     },
@@ -119,8 +120,8 @@ export const agentSkillRoutes = new Elysia({
   // The full SKILL.md content, for the editor and to display the skill.
   .get(
     '/teams/:teamId/agent-skills/:skillId/markdown',
-    async ({ params, membership }) => {
-      const markdown = await getSkillMarkdown(params.skillId, membership.teamId);
+    async ({ db, params, membership }) => {
+      const markdown = await getSkillMarkdown(db, params.skillId, membership.teamId);
       return { markdown };
     },
     {
@@ -138,8 +139,8 @@ export const agentSkillRoutes = new Elysia({
   // The text content of one reference file, for the editor.
   .get(
     '/teams/:teamId/agent-skills/:skillId/references/content',
-    async ({ params, membership, query }) => {
-      const content = await getSkillRefContent(params.skillId, membership.teamId, query.path);
+    async ({ db, params, membership, query }) => {
+      const content = await getSkillRefContent(db, params.skillId, membership.teamId, query.path);
       return { content };
     },
     {
@@ -176,7 +177,7 @@ export const agentSkillRoutes = new Elysia({
 
   .post(
     '/teams/:teamId/agent-skills',
-    async ({ membership, body, set }) => {
+    async ({ db, membership, body, set }) => {
       if (body.source === 'github') {
         if (!body.sourceUrl)
           throw new HttpError(400, 'A GitHub URL is required for a github skill');
@@ -185,7 +186,7 @@ export const agentSkillRoutes = new Elysia({
           throw new HttpError(413, 'Skill markdown is too large');
         }
         set.status = 201;
-        return createSkillFromFiles(membership.teamId, {
+        return createSkillFromFiles(db, membership.teamId, {
           name: body.name ?? null,
           description: body.description ?? null,
           markdown: imported.markdown,
@@ -200,7 +201,7 @@ export const agentSkillRoutes = new Elysia({
       if (markdown.length > MAX_SKILL_BYTES)
         throw new HttpError(413, 'Skill markdown is too large');
       set.status = 201;
-      return createSkill(membership.teamId, {
+      return createSkill(db, membership.teamId, {
         name: body.name ?? null,
         description: body.description ?? null,
         markdown,
@@ -224,11 +225,11 @@ export const agentSkillRoutes = new Elysia({
 
   .patch(
     '/teams/:teamId/agent-skills/:skillId',
-    async ({ params, membership, body }) => {
+    async ({ db, params, membership, body }) => {
       if (body.markdown !== undefined && body.markdown.length > MAX_SKILL_BYTES) {
         throw new HttpError(413, 'Skill markdown is too large');
       }
-      const skill = await updateSkill(params.skillId, membership.teamId, body);
+      const skill = await updateSkill(db, params.skillId, membership.teamId, body);
       if (!skill) throw new HttpError(404, 'Skill not found');
       return skill;
     },
@@ -247,8 +248,8 @@ export const agentSkillRoutes = new Elysia({
 
   .delete(
     '/teams/:teamId/agent-skills/:skillId',
-    async ({ params, membership }) => {
-      const ok = await deleteSkill(params.skillId, membership.teamId);
+    async ({ db, params, membership }) => {
+      const ok = await deleteSkill(db, params.skillId, membership.teamId);
       if (!ok) throw new HttpError(404, 'Skill not found');
       return noContent();
     },
@@ -268,13 +269,14 @@ export const agentSkillRoutes = new Elysia({
   // rejected — a skill carries knowledge, not runnable scripts.
   .post(
     '/teams/:teamId/agent-skills/:skillId/references',
-    async ({ params, membership, body }) => {
+    async ({ db, params, membership, body }) => {
       const file = body.file;
       if (!(file instanceof File)) throw new HttpError(400, 'No file uploaded (form field "file")');
       if (file.size === 0) throw new HttpError(400, 'Uploaded file is empty');
       if (file.size > MAX_REF_BYTES) throw new HttpError(413, 'Reference file is too large');
       const bytes = Buffer.from(await file.arrayBuffer());
       const skill = await addReference(
+        db,
         params.skillId,
         membership.teamId,
         file.name || 'file',
@@ -299,10 +301,11 @@ export const agentSkillRoutes = new Elysia({
   // The editor's save of a reference file.
   .patch(
     '/teams/:teamId/agent-skills/:skillId/references/content',
-    async ({ params, membership, body }) => {
+    async ({ db, params, membership, body }) => {
       const bytes = Buffer.from(body.content, 'utf8');
       if (bytes.length > MAX_REF_BYTES) throw new HttpError(413, 'Reference file is too large');
       const skill = await updateReference(
+        db,
         params.skillId,
         membership.teamId,
         body.path,
@@ -327,8 +330,8 @@ export const agentSkillRoutes = new Elysia({
 
   .delete(
     '/teams/:teamId/agent-skills/:skillId/references',
-    async ({ params, membership, query }) => {
-      const skill = await deleteReference(params.skillId, membership.teamId, query.path);
+    async ({ db, params, membership, query }) => {
+      const skill = await deleteReference(db, params.skillId, membership.teamId, query.path);
       if (!skill) throw new HttpError(404, 'Skill not found');
       return skill;
     },
@@ -347,11 +350,11 @@ export const agentSkillRoutes = new Elysia({
 
   .get(
     '/teams/:teamId/ai-agents/:agentId/skills',
-    async ({ params, membership }) => {
-      if (!(await agentInTeam(params.agentId, membership.teamId, agentScopeOf(membership)))) {
+    async ({ db, params, membership }) => {
+      if (!(await agentInTeam(db, params.agentId, membership.teamId, agentScopeOf(membership)))) {
         throw new HttpError(404, 'Agent not found');
       }
-      return listAgentSkills(params.agentId);
+      return listAgentSkills(db, params.agentId);
     },
     {
       params: agentParams,
@@ -367,13 +370,13 @@ export const agentSkillRoutes = new Elysia({
 
   .put(
     '/teams/:teamId/ai-agents/:agentId/skills',
-    async ({ params, membership, body }) => {
-      if (!(await agentInTeam(params.agentId, membership.teamId, agentScopeOf(membership)))) {
+    async ({ db, params, membership, body }) => {
+      if (!(await agentInTeam(db, params.agentId, membership.teamId, agentScopeOf(membership)))) {
         throw new HttpError(404, 'Agent not found');
       }
-      await assertFullAgentAccess(membership, params.agentId);
-      await setAgentSkills(params.agentId, membership.teamId, body.skillIds);
-      return listAgentSkills(params.agentId);
+      await assertFullAgentAccess(db, membership, params.agentId);
+      await setAgentSkills(db, params.agentId, membership.teamId, body.skillIds);
+      return listAgentSkills(db, params.agentId);
     },
     {
       body: setAgentSkillsBody,

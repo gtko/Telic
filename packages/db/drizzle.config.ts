@@ -1,17 +1,12 @@
-import { config } from 'dotenv';
 import { defineConfig } from 'drizzle-kit';
 
-// Load environment variables from the monorepo root .env. `quiet` drops the banner
-// dotenv prints on every load.
-config({ path: '../../.env', quiet: true });
-
+// One dialect: sqlite, for Cloudflare D1. Migrations go to drizzle-d1/ and are applied by
+// `wrangler d1 migrations apply` (see wrangler.jsonc). The Postgres-era migrations live in
+// legacy-pg/ and are never run: they only document the data the migration script has to move.
 export default defineConfig({
   schema: './src/schema/index.ts',
-  out: './drizzle',
-  dialect: 'postgresql',
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
+  out: './drizzle-d1',
+  dialect: 'sqlite',
   verbose: true,
   strict: true,
 });

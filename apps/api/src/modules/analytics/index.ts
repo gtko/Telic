@@ -60,8 +60,8 @@ export const analyticsRoutes = new Elysia({
   .use(guards)
   .get(
     '/projects/:projectKey/analytics/stats',
-    async ({ project }) => {
-      return getStats(project.id);
+    async ({ db, project }) => {
+      return getStats(db, project.id);
     },
     {
       permission: ['dashboards', 'read'],
@@ -76,8 +76,8 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/breakdown',
-    async ({ project, query }) => {
-      return getBreakdown(project.id, query.by);
+    async ({ db, project, query }) => {
+      return getBreakdown(db, project.id, query.by);
     },
     {
       query: breakdownQuery,
@@ -93,11 +93,12 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/pulse',
-    async ({ project, query, user }) => {
+    async ({ db, project, query, user }) => {
       const unit = query.unit ?? 'day';
       const columns =
         query.columns != null ? Math.min(Math.max(query.columns, 1), MAX_PULSE_COLUMNS[unit]) : 26;
       return getPulse(
+        db,
         project.id,
         unit,
         columns,
@@ -119,9 +120,9 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/throughput',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const weeks = query.weeks != null ? Math.min(Math.max(query.weeks, 1), 52) : 12;
-      return getThroughput(project.id, weeks);
+      return getThroughput(db, project.id, weeks);
     },
     {
       query: throughputQuery,
@@ -137,11 +138,11 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/burnup',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const days = query.days != null ? Math.min(Math.max(query.days, 7), 730) : 90;
       const forecastWeeks =
         query.forecastWeeks != null ? Math.min(Math.max(query.forecastWeeks, 1), 12) : 4;
-      return getBurnup(project.id, {
+      return getBurnup(db, project.id, {
         days,
         initiativeId: query.initiativeId ?? null,
         forecastWeeks,
@@ -162,7 +163,7 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/activity',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const limit = query.limit ?? 25;
       let before: ActivityCursor | null = null;
       if (query.cursor) {
@@ -179,7 +180,7 @@ export const analyticsRoutes = new Elysia({
               .map(Number)
               .filter((n) => Number.isInteger(n))
           : null;
-      return listActivity(project.id, {
+      return listActivity(db, project.id, {
         before,
         limit,
         actorUserId: query.actorUserId ?? null,
@@ -204,9 +205,9 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/agent-runs',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const limit = query.limit ?? 20;
-      return listAgentRunFeed(project.id, { status: query.status ?? null, limit });
+      return listAgentRunFeed(db, project.id, { status: query.status ?? null, limit });
     },
     {
       query: agentRunFeedQuery,
@@ -222,9 +223,9 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/agent-run-stats',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const days = query.days != null ? Math.min(Math.max(query.days, 1), 90) : 30;
-      return getAgentRunStats(project.id, days);
+      return getAgentRunStats(db, project.id, days);
     },
     {
       query: daysQuery,
@@ -240,9 +241,9 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/webhook-stats',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const days = query.days != null ? Math.min(Math.max(query.days, 1), 90) : 30;
-      return getWebhookStats(project.id, days);
+      return getWebhookStats(db, project.id, days);
     },
     {
       query: daysQuery,
@@ -258,8 +259,8 @@ export const analyticsRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/analytics/agent-workload',
-    async ({ project }) => {
-      return getAgentWorkload(project.id);
+    async ({ db, project }) => {
+      return getAgentWorkload(db, project.id);
     },
     {
       permission: ['dashboards', 'read'],

@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { requireUser } from '#shared/access';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { noContent } from '#shared/http';
 import { HttpError } from '#shared/lib';
 import { getMcpOAuthToken } from '#shared/mcp-request';
@@ -28,11 +29,12 @@ export const connectedAppRoutes = new Elysia({
   detail: { tags: ['Settings'] },
 })
   .use(authContext)
+  .use(dbContext)
   .onBeforeHandle(({ request }) => {
     requireBrowserSession(request);
   })
 
-  .get('/account/connected-apps', ({ user }) => listConnectedApps(requireUser(user).id), {
+  .get('/account/connected-apps', ({ db, user }) => listConnectedApps(db, requireUser(user).id), {
     response: { 200: t.Array(ConnectedApp), ...errors(401, 403) },
     detail: {
       summary: 'List connected applications',
@@ -43,8 +45,8 @@ export const connectedAppRoutes = new Elysia({
 
   .delete(
     '/account/connected-apps/:clientId',
-    async ({ user, params }) => {
-      if (!(await revokeConnectedApp(requireUser(user).id, params.clientId))) {
+    async ({ db, user, params }) => {
+      if (!(await revokeConnectedApp(db, requireUser(user).id, params.clientId))) {
         throw new HttpError(404, 'Application not connected');
       }
       return noContent();

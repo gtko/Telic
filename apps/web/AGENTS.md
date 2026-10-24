@@ -209,10 +209,11 @@ next-intl, language from the `NEXT_LOCALE` cookie — no `[locale]` route segmen
   `chart.tsx` passes `debounce` to recharts' `ResponsiveContainer`, without which a chart in a
   container that resizes itself loops until React reports "Maximum update depth exceeded".
 - Tailwind v4: no `tailwind.config`; tokens live in `src/app/globals.css` (`@theme`, CSS vars).
-- Nothing per-instance may reach the bundle: the image is published once and serves every
-  instance. New config of that kind belongs in `utils/runtimeEnv`.
-- Don't remove `output: "standalone"` + `outputFileTracingRoot` from `next.config` — the Docker
-  image depends on them.
+- Nothing per-deployment may reach the bundle: the build is shared by every environment. New
+  config of that kind belongs in `utils/runtimeEnv`, read from the Worker environment.
+- The app runs on a Cloudflare Worker through `@opennextjs/cloudflare` (`open-next.config.ts`,
+  `wrangler.jsonc`). Don't use Node-only APIs in server code; `bun run preview` in this folder
+  runs the Worker build locally.
 - When touching `localStorage`/`window` in a render path (e.g. a `useState` initializer), guard
   with `typeof window === 'undefined'` — client components still server-render.
 

@@ -1,21 +1,18 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from './schema';
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error(
-    'DATABASE_URL is not set. Check your .env (see .env.example at the monorepo root).',
-  );
+// D1 is reached through a binding that exists only inside a request (or a Durable Object),
+// so there is no module-level connection: each entry point builds its client from the
+// binding it was handed, `createDb(env.DB)`, and passes it down.
+export function createDb(binding: D1Database) {
+  return drizzle(binding, { schema });
 }
 
-// One connection per process. postgres-js manages the pool internally.
-const queryClient = postgres(connectionString, { prepare: false });
+// `$client` is the D1 binding the driver was built on; drizzle sets it at runtime, and it is
+// what `.batch()` of raw prepared statements needs.
+export type Db = DrizzleD1Database<typeof schema> & { $client: D1Database };
 
-export const db = drizzle(queryClient, { schema });
-
-// Either the plain db or a transaction, for a function whose caller may need to
-// share one transaction across several reads/writes that must observe the same
-// snapshot (a lock taken, then a read, then a write, all inside one db.transaction).
-export type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+// What a function that reads or writes takes. D1 has no interactive transactions: several
+// writes that must land together go through `db.batch([...])`, which D1 runs atomically,
+// and a read-then-write that must not interleave has to be one statement.
+export type DbExecutor = Db;

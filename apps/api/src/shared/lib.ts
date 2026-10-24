@@ -51,7 +51,8 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-// The Postgres SQLSTATE of a driver error. Drizzle wraps the driver error in a
+// The Postgres SQLSTATE of a driver error; a D1 (SQLite) constraint failure is mapped to
+// the equivalent SQLSTATE from its message. Drizzle wraps the driver error in a
 // DrizzleQueryError with the original as `.cause`, so the code may be one level
 // down; unwrap the cause chain to find it.
 export function pgErrorCode(err: unknown): string | undefined {
@@ -59,6 +60,11 @@ export function pgErrorCode(err: unknown): string | undefined {
   for (let depth = 0; current && typeof current === 'object' && depth < 5; depth++) {
     const code = (current as { code?: unknown }).code;
     if (typeof code === 'string') return code;
+    const message = (current as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      if (message.includes('UNIQUE constraint failed')) return '23505';
+      if (message.includes('FOREIGN KEY constraint failed')) return '23503';
+    }
     current = (current as { cause?: unknown }).cause;
   }
   return undefined;

@@ -1,3 +1,4 @@
+import { agentRuntime, runQueueOf } from '../core/runtime/bindings';
 import { Elysia, t } from 'elysia';
 import { authContext } from '#shared/auth-context';
 import { guards } from '#shared/guards';
@@ -43,8 +44,8 @@ export const agentScheduleRoutes = new Elysia({
   .use(guards)
   .get(
     '/projects/:projectKey/agent-schedules',
-    ({ project, user, query }) =>
-      paginate(query, (window) => listAgentSchedules(project.id, requireUser(user).id, window)),
+    ({ db, project, user, query }) =>
+      paginate(query, (window) => listAgentSchedules(db, project.id, requireUser(user).id, window)),
     {
       permission: ['ai_agents', 'read'],
       query: agentSchedulePageQuery,
@@ -60,10 +61,10 @@ export const agentScheduleRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/agent-schedules',
-    async ({ project, body, set, user }) => {
+    async ({ db, project, body, set, user }) => {
       const type = body.type ?? 'cron';
       if (!isScheduleType(type)) throw new HttpError(400, 'Unknown schedule type');
-      const trigger = await newScheduleTrigger(project, type, body);
+      const trigger = await newScheduleTrigger(db, project, type, body);
       const options = await checkScheduleOptions({
         type,
         options: body.options ?? {},
@@ -71,7 +72,7 @@ export const agentScheduleRoutes = new Elysia({
       });
       let row;
       try {
-        row = await createAgentSchedule({
+        row = await createAgentSchedule(db, {
           projectId: project.id,
           agentId: body.agentId,
           actorUserId: requireUser(user).id,
@@ -104,8 +105,13 @@ export const agentScheduleRoutes = new Elysia({
   )
   .patch(
     '/projects/:projectKey/agent-schedules/:scheduleId',
-    async ({ project, params, body, user }) => {
-      const current = await getAgentSchedule(project.id, params.scheduleId, requireUser(user).id);
+    async ({ db, project, params, body, user }) => {
+      const current = await getAgentSchedule(
+        db,
+        project.id,
+        params.scheduleId,
+        requireUser(user).id,
+      );
       if (!current) throw new HttpError(404, 'Schedule not found');
       if (!current.supported) {
         throw new HttpError(
@@ -113,7 +119,7 @@ export const agentScheduleRoutes = new Elysia({
           'This schedule was set up with Cloud or Pro and does not run here; it can only be deleted',
         );
       }
-      const trigger = await scheduleTriggerFields(project, current.type, body);
+      const trigger = await scheduleTriggerFields(db, project, current.type, body);
       // A resumed cron schedule runs next from now, not from when it was paused.
       const resuming = body.status === 'active' && current.status === 'paused';
       if (resuming && trigger.nextRunAt === undefined && current.cron !== null) {
@@ -130,6 +136,7 @@ export const agentScheduleRoutes = new Elysia({
       let row;
       try {
         row = await updateAgentSchedule(
+          db,
           project.id,
           params.scheduleId,
           {
@@ -163,8 +170,15 @@ export const agentScheduleRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/agent-schedules/:scheduleId',
-    async ({ project, params, user }) => {
-      if (!(await deleteAgentSchedule(project.id, params.scheduleId, requireUser(user).id))) {
+    async ({ env, auth, project, params, user }) => {
+      if (
+        !(await deleteAgentSchedule(
+          agentRuntime(env, auth),
+          project.id,
+          params.scheduleId,
+          requireUser(user).id,
+        ))
+      ) {
         throw new HttpError(404, 'Schedule not found');
       }
       return noContent();
@@ -182,11 +196,13 @@ export const agentScheduleRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/agent-schedules/:scheduleId/run',
-    async ({ project, params, set, user }) => {
+    async ({ env, db, project, params, set, user }) => {
       const runId = await enqueueManualScheduleRun(
+        db,
         project.id,
         params.scheduleId,
         requireUser(user).id,
+        runQueueOf(env),
       );
       if (runId == null) throw new HttpError(404, 'Schedule not found');
       set.status = 202;
@@ -208,8 +224,9 @@ export const agentScheduleRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/agent-schedules/:scheduleId/runs/cancel',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const canceled = await cancelPendingScheduleRuns(
+        db,
         project.id,
         params.scheduleId,
         requireUser(user).id,
@@ -232,8 +249,9 @@ export const agentScheduleRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/agent-schedules/:scheduleId/runs/:runId/cancel',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const canceled = await cancelPendingScheduleRuns(
+        db,
         project.id,
         params.scheduleId,
         requireUser(user).id,
@@ -256,8 +274,8 @@ export const agentScheduleRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/agent-schedules/:scheduleId/runs',
-    async ({ project, params, user }) => {
-      const rows = await listScheduleRuns(project.id, params.scheduleId, requireUser(user).id);
+    async ({ db, project, params, user }) => {
+      const rows = await listScheduleRuns(db, project.id, params.scheduleId, requireUser(user).id);
       if (!rows) throw new HttpError(404, 'Schedule not found');
       return rows;
     },

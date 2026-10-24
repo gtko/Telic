@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --env-file=../../.env run --watch src/index.ts",
-    "start": "bun run src/index.ts",
+    "dev": "wrangler dev",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --env-file=../../.env.test"
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@repo/db": "workspace:*",
@@ -16,9 +16,13 @@
     "grammy": "^1.46.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
     "@repo/eslint-config": "workspace:*",
-    "@types/bun": "latest",
+    "@types/node": "^26.6.5",
     "eslint": "^9.39.0",
-    "typescript": "^6.0.3"
+    "miniflare": "^4.20260730.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
+    "wrangler": "4.152.0"
   }
 }

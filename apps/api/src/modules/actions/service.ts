@@ -1,4 +1,4 @@
-import { db, projectAction } from '@repo/db';
+import { batchAll, projectAction, type Db } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { iso, num } from '#shared/lib';
 
@@ -31,7 +31,7 @@ function mapAction(row: typeof projectAction.$inferSelect): ActionRow {
   };
 }
 
-export async function listActions(projectId: number): Promise<ActionRow[]> {
+export async function listActions(db: Db, projectId: number): Promise<ActionRow[]> {
   const rows = await db
     .select()
     .from(projectAction)
@@ -42,13 +42,16 @@ export async function listActions(projectId: number): Promise<ActionRow[]> {
 
 // New actions go to the end of the list (max position + 1). condition/effect are
 // stored verbatim in the jsonb columns.
-export async function createAction(input: {
-  projectId: number;
-  name: string;
-  icon?: string;
-  condition?: unknown;
-  effect?: unknown;
-}): Promise<ActionRow> {
+export async function createAction(
+  db: Db,
+  input: {
+    projectId: number;
+    name: string;
+    icon?: string;
+    condition?: unknown;
+    effect?: unknown;
+  },
+): Promise<ActionRow> {
   const [{ pos }] = await db
     .select({ pos: sql<number>`COALESCE(MAX(${projectAction.position}) + 1, 0)` })
     .from(projectAction)
@@ -67,7 +70,7 @@ export async function createAction(input: {
   return mapAction(row);
 }
 
-export async function getAction(id: number): Promise<ActionRow | null> {
+export async function getAction(db: Db, id: number): Promise<ActionRow | null> {
   const rows = await db.select().from(projectAction).where(eq(projectAction.id, id));
   return rows[0] ? mapAction(rows[0]) : null;
 }
@@ -75,6 +78,7 @@ export async function getAction(id: number): Promise<ActionRow | null> {
 // Updates only the provided fields. condition/effect are replaced wholesale (not
 // merged), since the UI always sends the full blob.
 export async function updateAction(
+  db: Db,
   id: number,
   patch: { name?: string; icon?: string; condition?: unknown; effect?: unknown },
 ): Promise<ActionRow | null> {
@@ -83,28 +87,30 @@ export async function updateAction(
   if (patch.icon !== undefined) set.icon = patch.icon;
   if (patch.condition !== undefined) set.condition = patch.condition;
   if (patch.effect !== undefined) set.effect = patch.effect;
-  if (Object.keys(set).length === 0) return getAction(id);
+  if (Object.keys(set).length === 0) return getAction(db, id);
   const [row] = await db.update(projectAction).set(set).where(eq(projectAction.id, id)).returning();
   return row ? mapAction(row) : null;
 }
 
-export async function deleteAction(id: number): Promise<void> {
+export async function deleteAction(db: Db, id: number): Promise<void> {
   await db.delete(projectAction).where(eq(projectAction.id, id));
 }
 
-// Sets each action's position to its index in orderedIds, in one transaction, so
+// Sets each action's position to its index in orderedIds, in one atomic batch, so
 // the order the UI sends is stored exactly. Ids not on the project are ignored.
 export async function reorderActions(
+  db: Db,
   projectId: number,
   orderedIds: number[],
 ): Promise<ActionRow[]> {
-  await db.transaction(async (tx) => {
-    for (const [position, id] of orderedIds.entries()) {
-      await tx
+  await batchAll(
+    db,
+    orderedIds.map((id, position) =>
+      db
         .update(projectAction)
         .set({ position })
-        .where(and(eq(projectAction.id, id), eq(projectAction.projectId, projectId)));
-    }
-  });
-  return listActions(projectId);
+        .where(and(eq(projectAction.id, id), eq(projectAction.projectId, projectId))),
+    ),
+  );
+  return listActions(db, projectId);
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type RequestListener } from 'node:http';
 import {
   assertPublicHttpUrl,
@@ -8,16 +8,15 @@ import {
 } from '../index';
 
 describe('public-only URL policy', () => {
-  const environment = process.env.NODE_ENV;
   const allowedHosts = process.env.SSRF_ALLOWED_HOSTS;
   afterEach(() => {
-    process.env.NODE_ENV = environment;
+    delete process.env.SSRF_DEV_RELAXED;
     if (allowedHosts === undefined) delete process.env.SSRF_ALLOWED_HOSTS;
     else process.env.SSRF_ALLOWED_HOSTS = allowedHosts;
   });
 
   it('rejects private, reserved and local addresses even in development with an allowlist', async () => {
-    process.env.NODE_ENV = 'development';
+    process.env.SSRF_DEV_RELAXED = '1';
     process.env.SSRF_ALLOWED_HOSTS = '127.0.0.1,localhost';
     for (const host of [
       '127.0.0.1',
@@ -53,7 +52,7 @@ describe('public-only URL policy', () => {
   });
 
   it('refuses a hostname resolving privately despite its allowlist entry', async () => {
-    process.env.NODE_ENV = 'development';
+    process.env.SSRF_DEV_RELAXED = '1';
     process.env.SSRF_ALLOWED_HOSTS = 'localtest.me';
     await expect(
       assertPublicHttpUrl('https://localtest.me/', { publicOnly: true }),
@@ -68,9 +67,8 @@ describe('public-only URL policy', () => {
 });
 
 describe('bounded pinned fetch', () => {
-  const environment = process.env.NODE_ENV;
   afterEach(() => {
-    process.env.NODE_ENV = environment;
+    delete process.env.SSRF_DEV_RELAXED;
   });
 
   async function withServer(handler: RequestListener, run: (url: string) => Promise<void>) {
@@ -78,7 +76,7 @@ describe('bounded pinned fetch', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test port');
-    process.env.NODE_ENV = 'development';
+    process.env.SSRF_DEV_RELAXED = '1';
     try {
       await run(`http://127.0.0.1:${address.port}`);
     } finally {

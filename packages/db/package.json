@@ -9,24 +9,32 @@
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "auth:generate": "auth generate --config ./auth.cli.ts --adapter drizzle --dialect sqlite --output ./src/schema/auth.ts --yes",
     "lint": "eslint .",
-    "test": "bun test --env-file=../../.env.test",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@repo/crypto": "workspace:*",
     "@repo/mailer": "workspace:*",
-    "drizzle-orm": "^0.45.4",
-    "postgres": "^3.4.9"
+    "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {
+    "@better-auth/api-key": "1.7.11",
+    "@better-auth/mcp": "1.7.11",
+    "@better-auth/oauth-provider": "1.7.11",
+    "@better-auth/passkey": "1.7.11",
+    "@cloudflare/workers-types": "^5.20261023.1",
     "@repo/eslint-config": "workspace:*",
-    "@types/bun": "latest",
-    "dotenv": "^18.0.7",
+    "@types/node": "^26.6.5",
+    "auth": "1.7.11",
+    "better-auth": "1.7.11",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9.39.0",
-    "typescript": "^6.0.3"
+    "miniflare": "^4.20260730.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
+    "wrangler": "4.152.0"
   }
 }

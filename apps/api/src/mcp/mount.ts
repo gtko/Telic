@@ -1,6 +1,8 @@
 import { t } from 'elysia';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { auth, isAccountDeactivated, mcpUnauthorized, verifyMcpAccessToken } from '@repo/auth';
+import { isAccountDeactivated, type Auth, mcpUnauthorized, verifyMcpAccessToken } from '@repo/auth';
+import type { Db } from '@repo/db';
+import type { Env } from '../env';
 import { buildMcpServer } from './server';
 import type { McpApp } from './types';
 import type { McpCredential } from './credential';
@@ -29,9 +31,21 @@ export function mountMcp(app: any): void {
   const mcpApp = app as McpApp;
   app.post(
     '/mcp',
-    async ({ request, body }: { request: Request; body: unknown }) => {
+    async ({
+      request,
+      body,
+      db,
+      env,
+      auth,
+    }: {
+      request: Request;
+      body: unknown;
+      db: Db;
+      env: Env;
+      auth: Auth;
+    }) => {
       const serve = async (credential: McpCredential, userId: string) => {
-        const server = await buildMcpServer(mcpApp, credential, userId);
+        const server = await buildMcpServer(db, mcpApp, credential, userId);
         const transport = new WebStandardStreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
         });
@@ -55,9 +69,9 @@ export function mountMcp(app: any): void {
           // Not an API key: it may be an OAuth access token, checked below.
         }
       }
-      const userId = apiKey ? await verifyMcpAccessToken(apiKey) : null;
+      const userId = apiKey ? await verifyMcpAccessToken(env, db, apiKey) : null;
       if (apiKey && userId) return serve({ kind: 'oauth', accessToken: apiKey }, userId);
-      return mcpUnauthorized();
+      return mcpUnauthorized(env);
     },
     {
       body: t.Any(),

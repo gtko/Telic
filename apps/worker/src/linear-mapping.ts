@@ -1,3 +1,4 @@
+import { mimeTypeForFilename } from './mime';
 import type {
   CanonicalAttachment,
   CanonicalComment,
@@ -329,7 +330,7 @@ export function linearUploadUrl(issueSourceId: string, attachmentSourceId: strin
 }
 
 export function contentTypeForFilename(filename: string): string {
-  return Bun.file(filename).type.split(';')[0]!;
+  return mimeTypeForFilename(filename);
 }
 
 function lastPathSegment(url: string): string {

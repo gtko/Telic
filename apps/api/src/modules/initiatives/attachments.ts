@@ -1,9 +1,8 @@
-import { db, initiative, initiativeAttachment } from '@repo/db';
-import { eq, sql } from 'drizzle-orm';
+import { type Db, initiative, initiativeAttachment } from '@repo/db';
+import { eq } from 'drizzle-orm';
 import { iso, num } from '#shared/lib';
 import {
   assertAttachmentStorageCapacity,
-  lockAttachmentStorage,
   stripAttachmentEmbeds,
 } from '#modules/attachments/storage';
 
@@ -32,18 +31,22 @@ function mapRow(row: typeof initiativeAttachment.$inferSelect): InitiativeAttach
   };
 }
 
-export async function createInitiativeAttachment(input: {
-  projectId: number;
-  initiativeId: number;
-  s3Key: string;
-  filename: string;
-  contentType: string;
-  sizeBytes: number;
-}): Promise<InitiativeAttachmentRow> {
-  return db.transaction(async (tx) => {
-    await lockAttachmentStorage(tx, input.projectId);
-    await assertAttachmentStorageCapacity(input.projectId, input.sizeBytes, 0, tx);
-    const [row] = await tx
+export async function createInitiativeAttachment(
+  db: Db,
+  input: {
+    projectId: number;
+    initiativeId: number;
+    s3Key: string;
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+  },
+): Promise<InitiativeAttachmentRow> {
+  // D1 has no advisory lock: the quota check is advisory (the attachments lot may move it
+  // into the INSERT itself), the row is one statement.
+  {
+    await assertAttachmentStorageCapacity(db, input.projectId, input.sizeBytes, 0);
+    const [row] = await db
       .insert(initiativeAttachment)
       .values({
         initiativeId: input.initiativeId,
@@ -54,10 +57,11 @@ export async function createInitiativeAttachment(input: {
       })
       .returning();
     return mapRow(row);
-  });
+  }
 }
 
 export async function listInitiativeAttachments(
+  db: Db,
   initiativeId: number,
 ): Promise<InitiativeAttachmentRow[]> {
   const rows = await db
@@ -69,6 +73,7 @@ export async function listInitiativeAttachments(
 }
 
 export async function getInitiativeAttachment(
+  db: Db,
   publicId: string,
 ): Promise<InitiativeAttachmentRow | null> {
   const rows = await db
@@ -79,7 +84,10 @@ export async function getInitiativeAttachment(
 }
 
 // The project an attachment belongs to, for the route guard.
-export async function getInitiativeAttachmentProjectId(publicId: string): Promise<number | null> {
+export async function getInitiativeAttachmentProjectId(
+  db: Db,
+  publicId: string,
+): Promise<number | null> {
   const rows = await db
     .select({ projectId: initiative.projectId })
     .from(initiativeAttachment)
@@ -91,6 +99,7 @@ export async function getInitiativeAttachmentProjectId(publicId: string): Promis
 // Deletes the row and returns it, so the caller can remove the object it names
 // from the store.
 export async function deleteInitiativeAttachment(
+  db: Db,
   publicId: string,
 ): Promise<InitiativeAttachmentRow | null> {
   const rows = await db
@@ -102,6 +111,7 @@ export async function deleteInitiativeAttachment(
 
 // Called on delete so a removed attachment leaves no broken image behind.
 export async function removeInitiativeAttachmentEmbeds(
+  db: Db,
   initiativeId: number,
   publicId: string,
 ): Promise<void> {
@@ -114,13 +124,13 @@ export async function removeInitiativeAttachmentEmbeds(
   if (next === row.description) return;
   await db
     .update(initiative)
-    .set({ description: next, updatedAt: sql`now()` })
+    .set({ description: next, updatedAt: new Date() })
     .where(eq(initiative.id, initiativeId));
 }
 
 // Every stored object of one initiative, read before the initiative is deleted so
 // the caller can drop the bytes the cascade leaves behind.
-export async function initiativeAttachmentKeys(initiativeId: number): Promise<string[]> {
+export async function initiativeAttachmentKeys(db: Db, initiativeId: number): Promise<string[]> {
   const rows = await db
     .select({ s3Key: initiativeAttachment.s3Key })
     .from(initiativeAttachment)

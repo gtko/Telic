@@ -19,7 +19,7 @@ export const syncRoutes = new Elysia({ name: 'sync', detail: { tags: ['Sync'] } 
 
   .get(
     '/sync/rev',
-    async ({ user, query, request }) => {
+    async ({ db, user, query, request }) => {
       const userId = requireUser(user).id;
       const requested = query.scopes
         .split(',')
@@ -44,12 +44,16 @@ export const syncRoutes = new Elysia({ name: 'sync', detail: { tags: ['Sync'] } 
         reads.set(scope, { key: spec.key(id, userId), resource: spec.resource });
       }
 
-      const found = await readRevs([...reads.values()], userId);
+      const found = await readRevs(db, [...reads.values()], userId);
       const revs = Object.fromEntries(
         [...reads].map(([scope, read]) => [scope, found[read.key] ?? NO_REV]),
       );
       if (requested.includes('runnerQueue:1')) {
-        revs['runnerQueue:1'] = await runnerQueueRevision(userId, isMcpRequest(request.headers));
+        revs['runnerQueue:1'] = await runnerQueueRevision(
+          db,
+          userId,
+          isMcpRequest(request.headers),
+        );
       }
       return { revs };
     },

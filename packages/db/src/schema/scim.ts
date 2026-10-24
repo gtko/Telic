@@ -5,19 +5,15 @@
 // one god mode sets up. A NULL takes no part in a unique constraint, so the instance's
 // rows are kept unique by a partial index of their own.
 import {
-  boolean,
   check,
   index,
   integer,
-  pgTable,
   primaryKey,
-  serial,
+  sqliteTable,
   text,
-  timestamp,
   unique,
   uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth';
 import { project, teamRole, workspace } from './app';
@@ -27,7 +23,7 @@ import { project, teamRole, workspace } from './app';
 // workspace, not who has an account: `active` false means the person was taken out of
 // the workspace's teams and its groups grant them nothing. Every provider keeps its own
 // row for the same person.
-export const scimUser = pgTable(
+export const scimUser = sqliteTable(
   'scim_user',
   {
     workspaceId: integer('workspace_id').references(() => workspace.id, { onDelete: 'cascade' }),
@@ -36,8 +32,10 @@ export const scimUser = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     // The provider's own id for the person, sent as `externalId`.
     externalId: text('external_id'),
-    active: boolean('active').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.workspaceId, t.userId),
@@ -50,17 +48,23 @@ export const scimUser = pgTable(
 
 // A group as one identity provider sees it. Written only over SCIM: the group list and
 // its members are the provider's, and the settings show them read-only.
-export const scimGroup = pgTable(
+export const scimGroup = sqliteTable(
   'scim_group',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     workspaceId: integer('workspace_id').references(() => workspace.id, { onDelete: 'cascade' }),
     displayName: text('display_name').notNull(),
     // The provider's own id for the group, sent as `externalId` and used to find a
     // group again after it is renamed.
     externalId: text('external_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.workspaceId, t.displayName),
@@ -70,10 +74,10 @@ export const scimGroup = pgTable(
   ],
 );
 
-export const scimGroupMember = pgTable(
+export const scimGroupMember = sqliteTable(
   'scim_group_member',
   {
-    groupId: uuid('group_id')
+    groupId: text('group_id')
       .notNull()
       .references(() => scimGroup.id, { onDelete: 'cascade' }),
     userId: text('user_id')
@@ -93,11 +97,11 @@ export const scimGroupMember = pgTable(
 // most one mapping per pair.
 // `role_id` names the team_role a "member" joins on, and is NULL for an owner (an
 // owner bypasses the permission matrix) or when the team's default role applies.
-export const scimGroupMapping = pgTable(
+export const scimGroupMapping = sqliteTable(
   'scim_group_mapping',
   {
-    id: serial('id').primaryKey(),
-    groupId: uuid('group_id')
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    groupId: text('group_id')
       .notNull()
       .references(() => scimGroup.id, { onDelete: 'cascade' }),
     projectId: integer('project_id')
@@ -105,7 +109,9 @@ export const scimGroupMapping = pgTable(
       .references(() => project.id, { onDelete: 'cascade' }),
     role: text('role').notNull().default('member'),
     roleId: integer('role_id').references(() => teamRole.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.groupId, t.projectId),

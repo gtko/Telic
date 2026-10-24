@@ -1,4 +1,4 @@
-import { db, issueChecklist, issueChecklistItem } from '@repo/db';
+import { type Db, batchAll, issueChecklist, issueChecklistItem } from '@repo/db';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
 import { recordActivity, recordActivityEntries, rowSide } from './activity';
@@ -42,7 +42,10 @@ const itemColumns = {
 
 // The issue a checklist belongs to and its title, which the activity entries for
 // its items carry as their subject. Throws when there is no such checklist.
-async function checklistContext(checklistId: number): Promise<{ issueId: number; title: string }> {
+async function checklistContext(
+  db: Db,
+  checklistId: number,
+): Promise<{ issueId: number; title: string }> {
   const rows = await db
     .select({ issueId: issueChecklist.issueId, title: issueChecklist.title })
     .from(issueChecklist)
@@ -52,7 +55,7 @@ async function checklistContext(checklistId: number): Promise<{ issueId: number;
 }
 
 // The issue a checklist hangs on, for the route guard that resolves it to a project.
-export async function getChecklistIssueId(checklistId: number): Promise<number | null> {
+export async function getChecklistIssueId(db: Db, checklistId: number): Promise<number | null> {
   const rows = await db
     .select({ issueId: issueChecklist.issueId })
     .from(issueChecklist)
@@ -61,7 +64,7 @@ export async function getChecklistIssueId(checklistId: number): Promise<number |
 }
 
 // The issue an item hangs on, through its checklist.
-export async function getChecklistItemIssueId(itemId: number): Promise<number | null> {
+export async function getChecklistItemIssueId(db: Db, itemId: number): Promise<number | null> {
   const rows = await db
     .select({ issueId: issueChecklist.issueId })
     .from(issueChecklistItem)
@@ -73,7 +76,7 @@ export async function getChecklistItemIssueId(itemId: number): Promise<number | 
 // Every checklist of an issue with its items, both in display order. Two reads
 // joined in memory rather than one row-multiplying join, so a checklist with no
 // items still comes back.
-export async function listChecklists(issueId: number): Promise<ChecklistRow[]> {
+export async function listChecklists(db: Db, issueId: number): Promise<ChecklistRow[]> {
   const lists = await db
     .select(checklistColumns)
     .from(issueChecklist)
@@ -108,6 +111,7 @@ export async function listChecklists(issueId: number): Promise<ChecklistRow[]> {
 }
 
 export async function createChecklist(
+  db: Db,
   issueId: number,
   title: string,
   actorUserId?: string | null,
@@ -123,6 +127,7 @@ export async function createChecklist(
     .returning(checklistColumns);
 
   await recordActivity(
+    db,
     issueId,
     [{ action: 'checklist_add', to: rowSide(title, row.id) }],
     actorUserId,
@@ -131,11 +136,12 @@ export async function createChecklist(
 }
 
 export async function renameChecklist(
+  db: Db,
   checklistId: number,
   title: string,
   actorUserId?: string | null,
 ): Promise<ChecklistRow> {
-  const previous = await checklistContext(checklistId);
+  const previous = await checklistContext(db, checklistId);
   const [row] = await db
     .update(issueChecklist)
     .set({ title })
@@ -145,6 +151,7 @@ export async function renameChecklist(
   // Renaming to the title it already has is not a change worth a feed entry.
   if (previous.title !== title) {
     await recordActivity(
+      db,
       previous.issueId,
       [
         {
@@ -156,12 +163,13 @@ export async function renameChecklist(
       actorUserId,
     );
   }
-  return { ...row, items: await listItems(checklistId) };
+  return { ...row, items: await listItems(db, checklistId) };
 }
 
 // Deletes a checklist; its items go with it through the FK cascade. Returns false
 // when there is no such checklist.
 export async function deleteChecklist(
+  db: Db,
   checklistId: number,
   actorUserId?: string | null,
 ): Promise<boolean> {
@@ -172,6 +180,7 @@ export async function deleteChecklist(
   if (!removed) return false;
 
   await recordActivity(
+    db,
     removed.issueId,
     [{ action: 'checklist_remove', from: rowSide(removed.title, checklistId) }],
     actorUserId,
@@ -183,21 +192,23 @@ export async function deleteChecklist(
 // issue are not matched by the update, so they cannot be moved through it; ids the
 // caller left out keep their position and sort after the ones it listed.
 export async function reorderChecklists(
+  db: Db,
   issueId: number,
   orderedIds: number[],
 ): Promise<ChecklistRow[]> {
-  await db.transaction(async (tx) => {
-    for (const [position, id] of orderedIds.entries()) {
-      await tx
+  await batchAll(
+    db,
+    orderedIds.map((id, position) =>
+      db
         .update(issueChecklist)
         .set({ position })
-        .where(and(eq(issueChecklist.id, id), eq(issueChecklist.issueId, issueId)));
-    }
-  });
-  return listChecklists(issueId);
+        .where(and(eq(issueChecklist.id, id), eq(issueChecklist.issueId, issueId))),
+    ),
+  );
+  return listChecklists(db, issueId);
 }
 
-async function listItems(checklistId: number): Promise<ChecklistItemRow[]> {
+async function listItems(db: Db, checklistId: number): Promise<ChecklistItemRow[]> {
   return db
     .select(itemColumns)
     .from(issueChecklistItem)
@@ -206,61 +217,68 @@ async function listItems(checklistId: number): Promise<ChecklistItemRow[]> {
 }
 
 export async function createChecklistItem(
+  db: Db,
   checklistId: number,
   content: string,
   actorUserId?: string | null,
 ): Promise<ChecklistItemRow> {
-  const [row] = await createChecklistItems(checklistId, [{ content }], actorUserId);
+  const [row] = await createChecklistItems(db, checklistId, [{ content }], actorUserId);
   return row;
 }
 
 export async function createChecklistItems(
+  db: Db,
   checklistId: number,
   items: { content: string }[],
   actorUserId?: string | null,
 ): Promise<ChecklistItemRow[]> {
-  return db.transaction(async (tx) => {
-    // Serialize appends so concurrent batches occupy separate ordered ranges.
-    const [checklist] = await tx
-      .select({ issueId: issueChecklist.issueId, title: issueChecklist.title })
-      .from(issueChecklist)
-      .where(eq(issueChecklist.id, checklistId))
-      .for('update');
-    if (!checklist) throw new HttpError(404, 'Checklist not found');
+  const [checklist] = await db
+    .select({ issueId: issueChecklist.issueId, title: issueChecklist.title })
+    .from(issueChecklist)
+    .where(eq(issueChecklist.id, checklistId));
+  if (!checklist) throw new HttpError(404, 'Checklist not found');
 
-    const [last] = await tx
-      .select({ position: sql<number>`coalesce(max(${issueChecklistItem.position}), 0)` })
-      .from(issueChecklistItem)
-      .where(eq(issueChecklistItem.checklistId, checklistId));
-    const rows = await tx
-      .insert(issueChecklistItem)
-      .values(
-        items.map(({ content }, index) => ({
-          checklistId,
-          content,
-          position: last.position + (index + 1) * 1000,
-        })),
-      )
-      .returning(itemColumns);
-
-    rows.sort((a, b) => a.position - b.position);
-    await recordActivityEntries(
-      rows.map((row) => ({
-        issueId: checklist.issueId,
-        event: {
-          action: 'checklist_item_add',
-          subject: rowSide(checklist.title, checklistId),
-          to: rowSide(row.content, row.id),
-        },
-      })),
-      actorUserId,
-      tx,
+  // One INSERT per item, all in one atomic D1 batch. The position is computed by the
+  // statement itself (the highest position of the checklist + 1000) and D1 runs one
+  // write batch at a time, so concurrent appends occupy separate ordered ranges and the
+  // items of one call stay in the order given. A checklist deleted in between makes the
+  // foreign key fail the whole batch: nothing is inserted.
+  const nextPosition = sql<number>`(select coalesce(max(${issueChecklistItem.position}), 0) + 1000 from ${issueChecklistItem} where ${eq(issueChecklistItem.checklistId, checklistId)})`;
+  let results: unknown[];
+  try {
+    results = await batchAll(
+      db,
+      items.map(({ content }) =>
+        db
+          .insert(issueChecklistItem)
+          .values({ checklistId, content, position: nextPosition })
+          .returning(itemColumns),
+      ),
     );
-    return rows;
-  });
+  } catch (error) {
+    if (/FOREIGN KEY/i.test(String(error) + String((error as Error)?.cause ?? '')))
+      throw new HttpError(404, 'Checklist not found');
+    throw error;
+  }
+  const rows = (results as ChecklistItemRow[][]).flat();
+  rows.sort((a, b) => a.position - b.position);
+  await recordActivityEntries(
+    db,
+    rows.map((row) => ({
+      issueId: checklist.issueId,
+      event: {
+        action: 'checklist_item_add',
+        subject: rowSide(checklist.title, checklistId),
+        to: rowSide(row.content, row.id),
+      },
+    })),
+    actorUserId,
+  );
+  return rows;
 }
 
 export async function updateChecklistItem(
+  db: Db,
   itemId: number,
   patch: { content?: string; done?: boolean },
 ): Promise<ChecklistItemRow> {
@@ -285,6 +303,7 @@ export async function updateChecklistItem(
 }
 
 export async function deleteChecklistItem(
+  db: Db,
   itemId: number,
   actorUserId?: string | null,
 ): Promise<boolean> {
@@ -297,8 +316,9 @@ export async function deleteChecklistItem(
     });
   if (!removed) return false;
 
-  const checklist = await checklistContext(removed.checklistId);
+  const checklist = await checklistContext(db, removed.checklistId);
   await recordActivity(
+    db,
     checklist.issueId,
     [
       {
@@ -315,16 +335,18 @@ export async function deleteChecklistItem(
 // Sets the order of a checklist's items, scoped to that checklist the same way
 // reorderChecklists is scoped to its issue.
 export async function reorderChecklistItems(
+  db: Db,
   checklistId: number,
   orderedIds: number[],
 ): Promise<ChecklistItemRow[]> {
-  await db.transaction(async (tx) => {
-    for (const [position, id] of orderedIds.entries()) {
-      await tx
+  await batchAll(
+    db,
+    orderedIds.map((id, position) =>
+      db
         .update(issueChecklistItem)
         .set({ position })
-        .where(and(eq(issueChecklistItem.id, id), eq(issueChecklistItem.checklistId, checklistId)));
-    }
-  });
-  return listItems(checklistId);
+        .where(and(eq(issueChecklistItem.id, id), eq(issueChecklistItem.checklistId, checklistId))),
+    ),
+  );
+  return listItems(db, checklistId);
 }

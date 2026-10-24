@@ -1,4 +1,4 @@
-import DOMPurify from 'isomorphic-dompurify';
+import { browserPurify } from '@/lib/sanitize';
 import type { ClipboardEvent } from 'react';
 import { previewUrl } from './linkPresentation';
 import type { LinkPreviewItem } from './LinkPreviewDialog';
@@ -6,7 +6,10 @@ import type { LinkPreviewItem } from './LinkPreviewDialog';
 export type StaticLinkBlock = { html: string; links: LinkPreviewItem[]; bare: boolean };
 
 export function staticLinkBlocks(html: string, bareUrls: ReadonlySet<string>, origin: string) {
-  const fragment = DOMPurify.sanitize(html, { RETURN_DOM_FRAGMENT: true, ADD_ATTR: ['target'] });
+  // Runs on the reader's own DOM only (the caller reads window.location).
+  const purify = browserPurify();
+  if (!purify) throw new Error('staticLinkBlocks needs a DOM');
+  const fragment = purify.sanitize(html, { RETURN_DOM_FRAGMENT: true, ADD_ATTR: ['target'] });
   return Array.from(fragment.childNodes).map((node): StaticLinkBlock => {
     if (node.nodeType !== 1) {
       const wrapper = fragment.ownerDocument.createElement('span');

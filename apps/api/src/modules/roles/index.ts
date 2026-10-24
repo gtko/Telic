@@ -1,3 +1,4 @@
+import { dbContext } from '#shared/db-context';
 import { Elysia, t } from 'elysia';
 import { mcpTool } from '#mcp/generate';
 import { noContent } from '#shared/http';
@@ -35,6 +36,7 @@ import {
 // role. An owner or a manager creates and edits; deleting stays with the owner,
 // since a deletion moves every member, agent and invite on the role to another one.
 export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] } })
+  .use(dbContext)
   .use(guards)
 
   // Static; any authenticated user may read it to render a role editor.
@@ -61,9 +63,9 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
   // One page of the roles of a team, read by any of its members.
   .get(
     '/teams/:teamId/roles',
-    ({ membership, query }) =>
+    ({ db, membership, query }) =>
       paginate(query, (window) =>
-        listRolesPage(membership.teamId, { search: query.search, ...window }),
+        listRolesPage(db, membership.teamId, { search: query.search, ...window }),
       ),
     {
       params: teamParams,
@@ -83,7 +85,7 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
   // The projects assign from this one list, so a member list, an add-member dialog
   // and an agent's role picker all name their options from it. The matrices come
   // along: the roles are exported to the clipboard from here as well.
-  .get('/teams/:teamId/roles/options', ({ membership }) => listRoles(membership.teamId), {
+  .get('/teams/:teamId/roles/options', ({ db, membership }) => listRoles(db, membership.teamId), {
     params: teamParams,
     teamMember: true,
     response: { 200: t.Array(RoleResponse), ...accessErrors },
@@ -98,10 +100,10 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
 
   .post(
     '/teams/:teamId/roles',
-    async ({ membership, body, set }) => {
+    async ({ db, membership, body, set }) => {
       try {
         set.status = 201;
-        return await createRole(membership.teamId, body);
+        return await createRole(db, membership.teamId, body);
       } catch (err) {
         rethrowDuplicate(err, 'role');
       }
@@ -117,10 +119,10 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
 
   .patch(
     '/teams/:teamId/roles/:roleId',
-    async ({ membership, params, body }) => {
+    async ({ db, membership, params, body }) => {
       let role;
       try {
-        role = await updateRole(membership.teamId, params.roleId, body);
+        role = await updateRole(db, membership.teamId, params.roleId, body);
       } catch (err) {
         rethrowDuplicate(err, 'role');
       }
@@ -144,10 +146,10 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
   // it before asking for the deletion.
   .get(
     '/teams/:teamId/roles/:roleId/usage',
-    async ({ membership, params }) => {
-      const role = await getRole(membership.teamId, params.roleId);
+    async ({ db, membership, params }) => {
+      const role = await getRole(db, membership.teamId, params.roleId);
       if (!role) throw new HttpError(404, 'Role not found');
-      return getRoleUsage(params.roleId);
+      return getRoleUsage(db, params.roleId);
     },
     {
       params: roleParams,
@@ -167,13 +169,13 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
   // together with targetRoleId, the role they are all moved to.
   .delete(
     '/teams/:teamId/roles/:roleId',
-    async ({ membership, params, query }) => {
-      const role = await getRole(membership.teamId, params.roleId);
+    async ({ db, membership, params, query }) => {
+      const role = await getRole(db, membership.teamId, params.roleId);
       if (!role) throw new HttpError(404, 'Role not found');
       if (role.isDefault) throw new HttpError(400, 'The default role cannot be deleted');
 
       let targetRoleId: number | null = null;
-      if (isRoleInUse(await getRoleUsage(params.roleId))) {
+      if (isRoleInUse(await getRoleUsage(db, params.roleId))) {
         if (query.targetRoleId === undefined) {
           throw new HttpError(
             400,
@@ -183,12 +185,12 @@ export const roleRoutes = new Elysia({ name: 'roles', detail: { tags: ['Roles'] 
         if (query.targetRoleId === params.roleId) {
           throw new HttpError(400, 'Move to a role other than the one being deleted');
         }
-        const target = await getRole(membership.teamId, query.targetRoleId);
+        const target = await getRole(db, membership.teamId, query.targetRoleId);
         if (!target) throw new HttpError(404, 'Target role not found');
         targetRoleId = target.id;
       }
 
-      await deleteRole(membership.teamId, params.roleId, targetRoleId);
+      await deleteRole(db, membership.teamId, params.roleId, targetRoleId);
       return noContent();
     },
     {

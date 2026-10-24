@@ -1,4 +1,4 @@
-import { db, issueStatus, projectColumn } from '@repo/db';
+import { type Db, batchAll, chunk, issueStatus, projectColumn } from '@repo/db';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 
@@ -13,6 +13,7 @@ import { iso } from '#shared/lib';
 // `enteredAt` to set that instant — a creation starts its first stretch when the
 // issue itself starts.
 export async function recordStatusChange(
+  db: Db,
   issueIds: number[],
   columnId: number,
   enteredAt?: Date,
@@ -22,22 +23,28 @@ export async function recordStatusChange(
     .select({ name: projectColumn.name, stateType: projectColumn.stateType })
     .from(projectColumn)
     .where(eq(projectColumn.id, columnId));
-  const at = enteredAt ?? sql`now()`;
-  await db.transaction(async (tx) => {
-    await tx
-      .update(issueStatus)
-      .set({ leftAt: at })
-      .where(and(inArray(issueStatus.issueId, issueIds), isNull(issueStatus.leftAt)));
-    await tx.insert(issueStatus).values(
-      issueIds.map((issueId) => ({
-        issueId,
-        columnId,
-        columnName: column.name,
-        stateType: column.stateType,
-        enteredAt: at,
-      })),
-    );
-  });
+  const at = enteredAt ?? new Date();
+  // One atomic batch: the open stretches are closed and the new ones opened at the same
+  // instant. Ids and rows are cut to stay under the 100 bound parameters of a statement.
+  await batchAll(db, [
+    ...chunk(issueIds, 90).map((ids) =>
+      db
+        .update(issueStatus)
+        .set({ leftAt: at })
+        .where(and(inArray(issueStatus.issueId, ids), isNull(issueStatus.leftAt))),
+    ),
+    ...chunk(issueIds, 15).map((ids) =>
+      db.insert(issueStatus).values(
+        ids.map((issueId) => ({
+          issueId,
+          columnId,
+          columnName: column.name,
+          stateType: column.stateType,
+          enteredAt: at,
+        })),
+      ),
+    ),
+  ]);
 }
 
 // --- Status timeline --------------------------------------------------------------
@@ -58,7 +65,7 @@ export interface TimelineSegment {
 
 // Every stretch the issue spent in one column, oldest first. A deleted column falls
 // back to the name it had at the time, so the stretches spent in it are still named.
-export async function listStatusTimeline(issueId: number): Promise<TimelineSegment[]> {
+export async function listStatusTimeline(db: Db, issueId: number): Promise<TimelineSegment[]> {
   const rows = await db
     .select({
       status: sql<string | null>`coalesce(${projectColumn.name}, ${issueStatus.columnName})`,

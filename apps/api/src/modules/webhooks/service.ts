@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import { db, webhook, webhookDelivery } from '@repo/db';
+import { webhook, webhookDelivery, type Db } from '@repo/db';
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 
@@ -60,10 +59,11 @@ function mapWebhook(row: typeof webhook.$inferSelect): WebhookRow {
 // A signing secret for a new subscription. The server generates it, and never derives
 // it from user input.
 export function generateSecret(): string {
-  return `whsec_${randomBytes(24).toString('hex')}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return `whsec_${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-export async function listWebhooks(projectId: number): Promise<WebhookRow[]> {
+export async function listWebhooks(db: Db, projectId: number): Promise<WebhookRow[]> {
   const rows = await db
     .select()
     .from(webhook)
@@ -72,12 +72,15 @@ export async function listWebhooks(projectId: number): Promise<WebhookRow[]> {
   return rows.map(mapWebhook);
 }
 
-export async function createWebhook(input: {
-  projectId: number;
-  url: string;
-  events: WebhookEventType[];
-  isActive?: boolean;
-}): Promise<WebhookRow> {
+export async function createWebhook(
+  db: Db,
+  input: {
+    projectId: number;
+    url: string;
+    events: WebhookEventType[];
+    isActive?: boolean;
+  },
+): Promise<WebhookRow> {
   const [row] = await db
     .insert(webhook)
     .values({
@@ -91,13 +94,14 @@ export async function createWebhook(input: {
   return mapWebhook(row);
 }
 
-export async function getWebhook(id: number): Promise<WebhookRow | null> {
+export async function getWebhook(db: Db, id: number): Promise<WebhookRow | null> {
   const rows = await db.select().from(webhook).where(eq(webhook.id, id));
   return rows[0] ? mapWebhook(rows[0]) : null;
 }
 
 // Updates only the fields the patch provides. A caller cannot change the secret.
 export async function updateWebhook(
+  db: Db,
   id: number,
   patch: { url?: string; events?: WebhookEventType[]; isActive?: boolean },
 ): Promise<WebhookRow | null> {
@@ -110,12 +114,12 @@ export async function updateWebhook(
   // webhook switched back on therefore starts at the threshold, and its next failed
   // attempt disables it again, so turning it on clears the counter with it.
   if (patch.isActive === true) set.consecutiveFailures = 0;
-  if (Object.keys(set).length === 0) return getWebhook(id);
+  if (Object.keys(set).length === 0) return getWebhook(db, id);
   const [row] = await db.update(webhook).set(set).where(eq(webhook.id, id)).returning();
   return row ? mapWebhook(row) : null;
 }
 
-export async function deleteWebhook(id: number): Promise<void> {
+export async function deleteWebhook(db: Db, id: number): Promise<void> {
   await db.delete(webhook).where(eq(webhook.id, id));
 }
 
@@ -162,6 +166,7 @@ function mapDelivery(row: typeof webhookDelivery.$inferSelect): WebhookDeliveryR
 // works because delivery ids only grow: pass the previous page's nextCursor as
 // `before` to get the next page. This clamps limit to 1..50.
 export async function listWebhookDeliveries(
+  db: Db,
   webhookId: number,
   opts: { before?: number; limit?: number } = {},
 ): Promise<WebhookDeliveryPage> {

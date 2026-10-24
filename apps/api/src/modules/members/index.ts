@@ -1,3 +1,5 @@
+import { dbContext } from '#shared/db-context';
+import type { Db } from '@repo/db';
 import { Elysia, t } from 'elysia';
 import { mcpTool } from '#mcp/generate';
 import { paginate } from '#shared/pagination';
@@ -40,16 +42,16 @@ import {
 // A membership the SCIM group reconciliation owns is rewritten on every sync, so
 // editing it here would be undone without trace. The identity provider is where it
 // changes.
-async function assertNotProvisioned(projectId: number, userId: string): Promise<void> {
-  if ((await getMembershipSource(projectId, userId)) === 'scim') {
+async function assertNotProvisioned(db: Db, projectId: number, userId: string): Promise<void> {
+  if ((await getMembershipSource(db, projectId, userId)) === 'scim') {
     throw new HttpError(409, 'This membership is managed by SCIM');
   }
 }
 
 // An owner bypasses the permission matrix, so the standing is kept for people: an
 // agent works under a role, which is what caps what its key and its tools may do.
-async function assertAgentNotOwner(userId: string, role: string): Promise<void> {
-  if (role === 'owner' && (await isAgentUser(userId))) {
+async function assertAgentNotOwner(db: Db, userId: string, role: string): Promise<void> {
+  if (role === 'owner' && (await isAgentUser(db, userId))) {
     throw new HttpError(400, 'An AI agent cannot be a project owner');
   }
 }
@@ -59,24 +61,26 @@ async function assertAgentNotOwner(userId: string, role: string): Promise<void> 
 // bypasses the matrix and could hand it back. Only an owner of the project, or an
 // owner or manager of the team that owns it, grants it.
 async function assertMayGrantOwner(
+  db: Db,
   project: ProjectRow,
   role: string,
   user: AuthUser | undefined | null,
 ): Promise<void> {
   if (role !== 'owner') return;
-  await assertProjectAdmin(project, user);
+  await assertProjectAdmin(db, project, user);
 }
 
 export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Members'] } })
+  .use(dbContext)
   .use(authContext)
   .use(guards)
   .get(
     '/projects/:projectKey/members',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const filters = { search: query.search, kind: query.kind };
       const [page, ownerCount] = await Promise.all([
-        paginate(query, (window) => listMembersPage(project.id, { ...filters, ...window })),
-        countOwners(project.id),
+        paginate(query, (window) => listMembersPage(db, project.id, { ...filters, ...window })),
+        countOwners(db, project.id),
       ]);
       return { ...page, ownerCount };
     },
@@ -99,8 +103,8 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
   // not in it yet.
   .get(
     '/projects/:projectKey/members/candidates',
-    async ({ project }) => {
-      return listMemberCandidates(project.id, project.teamId);
+    async ({ db, project }) => {
+      return listMemberCandidates(db, project.id, project.teamId);
     },
     {
       memberAdmin: ['members_manage', 'create'],
@@ -119,26 +123,26 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
   // an invite, which puts them in the team first.
   .post(
     '/projects/:projectKey/members',
-    async ({ project, body, user }) => {
-      if (!(await getTeamMembership(project.teamId, body.userId))) {
+    async ({ db, project, body, user }) => {
+      if (!(await getTeamMembership(db, project.teamId, body.userId))) {
         throw new HttpError(400, "This user is not a member of the project's team");
       }
-      await assertMayGrantOwner(project, body.role, user);
-      await assertAgentNotOwner(body.userId, body.role);
+      await assertMayGrantOwner(db, project, body.role, user);
+      await assertAgentNotOwner(db, body.userId, body.role);
       // An explicit roleId must name a role of this project's team; omitting it
       // joins the member on the team's default role, as accepting an invite does.
       let roleId: number | null = null;
       if (body.role === 'member') {
         if (body.roleId != null) {
-          const role = await getRole(project.teamId, body.roleId);
+          const role = await getRole(db, project.teamId, body.roleId);
           if (!role) throw new HttpError(400, "roleId does not belong to this project's team");
-          await assertGrantablePermissions(project, user, role.permissions);
+          await assertGrantablePermissions(db, project, user, role.permissions);
           roleId = role.id;
         } else {
-          roleId = await getDefaultRoleId(project.teamId);
+          roleId = await getDefaultRoleId(db, project.teamId);
         }
       }
-      if (!(await addMember(project.id, body.userId, body.role, roleId))) {
+      if (!(await addMember(db, project.id, body.userId, body.role, roleId))) {
         throw new HttpError(
           409,
           'This user is already a member of the project',
@@ -164,37 +168,37 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
 
   .patch(
     '/projects/:projectKey/members/:userId',
-    async ({ project, params, body, user }) => {
+    async ({ db, project, params, body, user }) => {
       // An owner cannot change their own role — leaving owner is done by removing
       // the membership, and it keeps the last-owner guard from being bypassed.
       if (params.userId === requireUser(user).id) {
         throw new HttpError(400, 'You cannot change your own role');
       }
-      const target = await getMembership(project.id, params.userId);
+      const target = await getMembership(db, project.id, params.userId);
       if (!target) throw new HttpError(404, 'Member not found');
-      await assertNotProvisioned(project.id, params.userId);
-      await assertMayGrantOwner(project, body.role, user);
-      await assertAgentNotOwner(params.userId, body.role);
+      await assertNotProvisioned(db, project.id, params.userId);
+      await assertMayGrantOwner(db, project, body.role, user);
+      await assertAgentNotOwner(db, params.userId, body.role);
       // Changing an owner's role (demoting them) is owner business: the member
       // permission that edits roles must not let a non-owner unseat an owner.
-      if (target === 'owner') await assertProjectAdmin(project, user);
+      if (target === 'owner') await assertProjectAdmin(db, project, user);
 
       if (body.role === 'owner') {
-        await setMembership(project.id, params.userId, 'owner', null);
+        await setMembership(db, project.id, params.userId, 'owner', null);
         return noContent();
       }
 
       const roleId = body.roleId ?? null;
       if (roleId != null) {
-        const role = await getRole(project.teamId, roleId);
+        const role = await getRole(db, project.teamId, roleId);
         if (!role) throw new HttpError(400, "roleId does not belong to this project's team");
-        await assertGrantablePermissions(project, user, role.permissions);
+        await assertGrantablePermissions(db, project, user, role.permissions);
       }
       // Demoting an owner to a member must keep at least one owner on the project.
-      if (target === 'owner' && (await countOwners(project.id)) === 1) {
+      if (target === 'owner' && (await countOwners(db, project.id)) === 1) {
         throw new HttpError(400, 'A project must have at least one owner');
       }
-      await setMembership(project.id, params.userId, 'member', roleId);
+      await setMembership(db, project.id, params.userId, 'member', roleId);
       return noContent();
     },
     {
@@ -218,8 +222,8 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
   // pick who to tag on an unassigned issue.
   .patch(
     '/projects/:projectKey/members/:userId/description',
-    async ({ project, params, body }) => {
-      const ok = await setMemberDescription(project.id, params.userId, body.description);
+    async ({ db, project, params, body }) => {
+      const ok = await setMemberDescription(db, project.id, params.userId, body.description);
       if (!ok) throw new HttpError(404, 'Member not found');
       return noContent();
     },
@@ -239,17 +243,17 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
 
   .delete(
     '/projects/:projectKey/members/:userId',
-    async ({ project, params, user }) => {
-      const target = await getMembership(project.id, params.userId);
+    async ({ db, project, params, user }) => {
+      const target = await getMembership(db, project.id, params.userId);
       if (!target) throw new HttpError(404, 'Member not found');
-      await assertNotProvisioned(project.id, params.userId);
+      await assertNotProvisioned(db, project.id, params.userId);
       // Removing an owner is owner business (leaving yourself still works: an owner
       // passes this check). A non-owner cannot expel an owner.
-      if (target === 'owner') await assertProjectAdmin(project, user);
-      if (target === 'owner' && (await countOwners(project.id)) === 1) {
+      if (target === 'owner') await assertProjectAdmin(db, project, user);
+      if (target === 'owner' && (await countOwners(db, project.id)) === 1) {
         throw new HttpError(400, 'A project must have at least one owner');
       }
-      await removeMember(project.id, params.userId);
+      await removeMember(db, project.id, params.userId);
       return noContent();
     },
     {

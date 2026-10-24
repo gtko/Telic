@@ -1,4 +1,4 @@
-import { db, integrationCredential } from '@repo/db';
+import { type Db, integrationCredential } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 import {
   coerceConfig,
@@ -71,6 +71,7 @@ function coerce(fields: ConfigField[], input: unknown): ToolConfig {
 // One page of the team's credentials, by integration key, with how many it holds in
 // total.
 export async function listCredentials(
+  db: Db,
   teamId: number,
   window: { limit: number; offset: number },
 ): Promise<{ items: CredentialRow[]; total: number }> {
@@ -84,7 +85,7 @@ export async function listCredentials(
       .limit(window.limit)
       .offset(window.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(integrationCredential)
       .where(where),
   ]);
@@ -93,7 +94,7 @@ export async function listCredentials(
 
 // Every credential of the team, by integration key. What the options route narrows
 // into picker entries.
-export async function listAllCredentials(teamId: number): Promise<CredentialRow[]> {
+export async function listAllCredentials(db: Db, teamId: number): Promise<CredentialRow[]> {
   const rows = await db
     .select(dtoColumns)
     .from(integrationCredential)
@@ -102,7 +103,11 @@ export async function listAllCredentials(teamId: number): Promise<CredentialRow[
   return rows.map(mapRow);
 }
 
-export async function getCredentialById(id: number, teamId: number): Promise<CredentialRow | null> {
+export async function getCredentialById(
+  db: Db,
+  id: number,
+  teamId: number,
+): Promise<CredentialRow | null> {
   const rows = await db
     .select(dtoColumns)
     .from(integrationCredential)
@@ -110,7 +115,7 @@ export async function getCredentialById(id: number, teamId: number): Promise<Cre
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
-async function decrypt(id: number, teamId: number): Promise<ToolConfig | null> {
+async function decrypt(db: Db, id: number, teamId: number): Promise<ToolConfig | null> {
   const rows = await db
     .select({
       ciphertext: integrationCredential.ciphertext,
@@ -131,6 +136,7 @@ export interface NewCredentialInput {
 }
 
 export async function createCredential(
+  db: Db,
   teamId: number,
   input: NewCredentialInput,
 ): Promise<CredentialRow> {
@@ -184,11 +190,12 @@ function assertSecretsResent(
 }
 
 export async function updateCredential(
+  db: Db,
   id: number,
   teamId: number,
   patch: CredentialPatch,
 ): Promise<CredentialRow | null> {
-  const existing = await getCredentialById(id, teamId);
+  const existing = await getCredentialById(db, id, teamId);
   if (!existing) return null;
   const schema = credentialSchemaFor(existing.integrationKey);
   if (!schema) throw new HttpError(400, `Unknown integration: ${existing.integrationKey}`);
@@ -199,7 +206,7 @@ export async function updateCredential(
   if (patch.credential !== undefined) {
     // Merge the submitted fields over the stored credential so unchanged secrets (left
     // out by the form) are preserved, then re-validate the whole credential.
-    const current = (await decrypt(id, teamId)) ?? {};
+    const current = (await decrypt(db, id, teamId)) ?? {};
     assertSecretsResent(schema, current, patch.credential);
     const merged = coerce(schema, { ...current, ...patch.credential });
     const enc = encryptSecret(JSON.stringify(merged));
@@ -215,11 +222,11 @@ export async function updateCredential(
       .set(set)
       .where(and(eq(integrationCredential.id, id), eq(integrationCredential.teamId, teamId)));
   }
-  return getCredentialById(id, teamId);
+  return getCredentialById(db, id, teamId);
 }
 
-export async function deleteCredential(id: number, teamId: number): Promise<boolean> {
-  const existing = await getCredentialById(id, teamId);
+export async function deleteCredential(db: Db, id: number, teamId: number): Promise<boolean> {
+  const existing = await getCredentialById(db, id, teamId);
   if (!existing) return false;
   await db
     .delete(integrationCredential)
@@ -230,11 +237,12 @@ export async function deleteCredential(id: number, teamId: number): Promise<bool
 // The decrypted credential for the runtime: its integration key and config. Not
 // exposed over HTTP. Returns null when the credential does not exist in the team.
 export async function getCredentialSecret(
+  db: Db,
   id: number,
   teamId: number,
 ): Promise<{ integrationKey: string; config: ToolConfig } | null> {
-  const existing = await getCredentialById(id, teamId);
+  const existing = await getCredentialById(db, id, teamId);
   if (!existing) return null;
-  const config = (await decrypt(id, teamId)) ?? {};
+  const config = (await decrypt(db, id, teamId)) ?? {};
   return { integrationKey: existing.integrationKey, config };
 }

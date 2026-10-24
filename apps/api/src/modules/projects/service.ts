@@ -1,5 +1,6 @@
+import { likeText } from '#modules/issues/sql-helpers';
 import {
-  db,
+  type Db,
   aiAgent,
   chatAttachment,
   documentAsset,
@@ -17,14 +18,14 @@ import {
   projectSetting,
   team,
   teamMember,
-  type DbExecutor,
+  batchAll,
+  chunk,
 } from '@repo/db';
 import {
   and,
   desc,
   eq,
   getTableColumns,
-  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -42,13 +43,13 @@ import { projectAccess, type AccessVia } from '#shared/workspace-roles';
 import { toMemberContext, type MemberRole } from '#modules/members/service';
 import { workspaceGrants } from '#modules/workspaces/service';
 import { assertSeatFree } from '#modules/teams/service';
+import type { AgentRuntime } from '#modules/agents/core/runtime/bindings';
 import { deleteThreadsWhere } from '#modules/agents/core/runtime/memory';
 import { getProjectDefaults } from '#modules/settings/service';
 import { getDefaultRoleId } from '#modules/roles/service';
 import { dropUnusedTeamMembership } from '#modules/scim/reconcile';
 import { projectRef, teamRef } from '#modules/teams/ref';
 import { deleteObjects } from '@repo/storage';
-import { lockAttachmentStorage } from '#modules/attachments/storage';
 
 // Data access for projects: the top-level container that groups its own columns,
 // issue types, labels, assignees, custom fields, issues, saved views, and
@@ -132,8 +133,8 @@ const projectWithTeam = {
 // A blocked section reads as off whatever the project has stored, so masking here is
 // what turns a feature off everywhere: the web app reads the flags off this DTO, and
 // the route guards read them off the project the guard resolved.
-export async function mapProject(row: ProjectWithTeam): Promise<ProjectRow> {
-  const { blockedFeatures } = await getTeamLimits(row.teamId);
+export async function mapProject(db: Db, row: ProjectWithTeam): Promise<ProjectRow> {
+  const { blockedFeatures } = await getTeamLimits(db, row.teamId);
   const on = (feature: ProjectFeature, stored: boolean) =>
     stored && !blockedFeatures.includes(feature);
   return {
@@ -178,18 +179,20 @@ interface ProjectListOptions {
 }
 
 export async function listProjects(
+  db: Db,
   userId: string,
   opts: ProjectListOptions = {},
 ): Promise<ProjectListItem[]> {
-  return (await readProjects(userId, opts)).items;
+  return (await readProjects(db, userId, opts)).items;
 }
 
 export function searchProjects(
+  db: Db,
   userId: string,
   opts: Omit<ProjectListOptions, 'mcpOnly' | 'withPermissions' | 'favoritesFirst'>,
   window: { limit: number; offset: number },
 ): Promise<{ items: ProjectListItem[]; total: number }> {
-  return readProjects(userId, { ...opts, favoritesFirst: true }, window);
+  return readProjects(db, userId, { ...opts, favoritesFirst: true }, window);
 }
 
 // A project reached through the workspace has no membership row, so its preference
@@ -203,11 +206,12 @@ function preference(
 }
 
 async function readProjects(
+  db: Db,
   userId: string,
   opts: ProjectListOptions,
   window?: { limit: number; offset: number },
 ): Promise<{ items: ProjectListItem[]; total: number }> {
-  const grants = await workspaceGrants(userId);
+  const grants = await workspaceGrants(db, userId);
   const grantedTeams = [...grants.keys()];
   const term = opts.q?.trim().replace(/[\\%_]/g, '\\$&');
   const callerMember = and(
@@ -228,9 +232,9 @@ async function readProjects(
     preference(projectMember.isHidden, opts.hidden),
     term
       ? or(
-          ilike(project.key, `%${term}%`),
-          ilike(project.name, `%${term}%`),
-          ilike(project.description, `%${term}%`),
+          likeText(project.key, `%${term}%`),
+          likeText(project.name, `%${term}%`),
+          likeText(project.description, `%${term}%`),
         )
       : undefined,
   );
@@ -238,9 +242,11 @@ async function readProjects(
     .filter(([, grant]) => grant === 'owner' || grant.work_items.read)
     .map(([teamId]) => teamId);
   const latestActivity = db
-    .selectDistinctOn([issue.projectId], {
+    .select({
       projectId: issue.projectId,
-      createdAt: issueActivity.createdAt,
+      createdAt: sql<Date>`max(${issueActivity.createdAt})`
+        .mapWith(issueActivity.createdAt)
+        .as('last_activity_at'),
     })
     .from(issueActivity)
     .innerJoin(issue, eq(issue.id, issueActivity.issueId))
@@ -257,14 +263,14 @@ async function readProjects(
             or(
               eq(projectMember.role, 'owner'),
               isNull(teamRole.permissions),
-              sql`${teamRole.permissions} -> 'work_items' -> 'read' = 'true'::jsonb`,
+              sql`json_extract(${teamRole.permissions}, '$.work_items.read') = 1`,
             ),
           ),
           readingTeams.length > 0 ? inArray(project.teamId, readingTeams) : undefined,
         ),
       ),
     )
-    .orderBy(issue.projectId, desc(issueActivity.createdAt))
+    .groupBy(issue.projectId)
     .as('latest_activity');
   const order: SQL[] = [];
   if (opts.favoritesFirst) order.push(sql`${projectMember.isFavorite} is true desc`);
@@ -292,7 +298,7 @@ async function readProjects(
     window ? query.limit(window.limit).offset(window.offset) : query,
     window
       ? db
-          .select({ count: sql<number>`count(*)::int` })
+          .select({ count: sql<number>`count(*)` })
           .from(project)
           .innerJoin(team, eq(team.id, project.teamId))
           .leftJoin(projectMember, callerMember)
@@ -307,7 +313,7 @@ async function readProjects(
           : null;
         const access = projectAccess(member, grants.get(row.teamId) ?? null)!;
         const item: ProjectListItem = {
-          ...(await mapProject(row)),
+          ...(await mapProject(db, row)),
           role: access.role,
           via: access.via,
           lastActivityAt: lastActivityAt ? iso(lastActivityAt) : null,
@@ -327,7 +333,11 @@ async function readProjects(
 // A bare key is what every URL carried while keys were unique on the instance: it
 // still names a project as long as only one project with that key is in the
 // caller's teams, and is refused with 409 once there are several.
-export async function getProjectByRef(ref: string, userId: string): Promise<ProjectRow | null> {
+export async function getProjectByRef(
+  db: Db,
+  ref: string,
+  userId: string,
+): Promise<ProjectRow | null> {
   const dot = ref.indexOf('.');
   if (dot >= 0) {
     const teamPart = ref.slice(0, dot);
@@ -339,7 +349,7 @@ export async function getProjectByRef(ref: string, userId: string): Promise<Proj
       .from(project)
       .innerJoin(team, eq(team.id, project.teamId))
       .where(and(byTeam, eq(project.key, ref.slice(dot + 1))));
-    return row ? mapProject(row) : null;
+    return row ? mapProject(db, row) : null;
   }
 
   const rows = await db
@@ -347,7 +357,7 @@ export async function getProjectByRef(ref: string, userId: string): Promise<Proj
     .from(project)
     .innerJoin(team, eq(team.id, project.teamId))
     .where(eq(project.key, ref));
-  if (rows.length <= 1) return rows[0] ? mapProject(rows[0]) : null;
+  if (rows.length <= 1) return rows[0] ? mapProject(db, rows[0]) : null;
 
   const [teamIds, grants] = await Promise.all([
     db
@@ -362,7 +372,7 @@ export async function getProjectByRef(ref: string, userId: string): Promise<Proj
           ),
         ),
       ),
-    workspaceGrants(userId),
+    workspaceGrants(db, userId),
   ]);
   const mine = rows.filter(
     (r) => teamIds.some((m) => m.teamId === r.teamId) || grants.has(r.teamId),
@@ -374,22 +384,22 @@ export async function getProjectByRef(ref: string, userId: string): Promise<Proj
       `Several of your teams have a project '${ref}'. Name it with its team, as '<team>.${ref}'.`,
     );
   }
-  return mapProject(mine[0]);
+  return mapProject(db, mine[0]);
 }
 
-export async function getProjectById(id: number): Promise<ProjectRow | null> {
+export async function getProjectById(db: Db, id: number): Promise<ProjectRow | null> {
   const rows = await db
     .select(projectWithTeam)
     .from(project)
     .innerJoin(team, eq(team.id, project.teamId))
     .where(eq(project.id, id));
-  return rows[0] ? mapProject(rows[0]) : null;
+  return rows[0] ? mapProject(db, rows[0]) : null;
 }
 
 // The team that owns a project, for the resources the team holds on behalf of all of
 // them (integration credentials, notification providers). Throws 404 for an unknown
 // project.
-export async function getProjectTeamId(projectId: number): Promise<number> {
+export async function getProjectTeamId(db: Db, projectId: number): Promise<number> {
   const rows = await db
     .select({ teamId: project.teamId })
     .from(project)
@@ -399,7 +409,7 @@ export async function getProjectTeamId(projectId: number): Promise<number> {
 }
 
 // The team a new project belongs to. The caller's rank in it is checked by the route.
-export async function targetTeam(userId: string, teamId: number): Promise<TargetTeam> {
+export async function targetTeam(db: Db, userId: string, teamId: number): Promise<TargetTeam> {
   const [row] = await db
     .select({
       id: team.id,
@@ -412,18 +422,19 @@ export async function targetTeam(userId: string, teamId: number): Promise<Target
     .where(eq(team.id, teamId));
   if (!row) throw new HttpError(404, 'Team not found');
   // The creator joins the team with the project (joinTeamAsCreator).
-  await assertSeatFree(row.id, userId);
+  await assertSeatFree(db, row.id, userId);
   return row;
 }
 
 // A project membership stands on a team one. The workspace owner runs every team of the
 // workspace without being in it, so a project they create there makes them a member.
-export async function joinTeamAsCreator(
-  tx: DbExecutor,
-  teamId: number,
-  userId: string,
-): Promise<void> {
-  await tx.insert(teamMember).values({ teamId, userId, role: 'member' }).onConflictDoNothing();
+export async function joinTeamAsCreator(db: Db, teamId: number, userId: string): Promise<void> {
+  await joinTeamAsCreatorStatement(db, teamId, userId);
+}
+
+// The same insert as a statement not yet run, for a caller's own `db.batch`.
+export function joinTeamAsCreatorStatement(db: Db, teamId: number, userId: string) {
+  return db.insert(teamMember).values({ teamId, userId, role: 'member' }).onConflictDoNothing();
 }
 
 // The team a project is created in, with what mapProject needs from it.
@@ -515,6 +526,7 @@ export const ISSUE_TYPE_PRESET_KEYS = Object.keys(ISSUE_TYPE_PRESETS);
 export type IssueTypePreset = keyof typeof ISSUE_TYPE_PRESETS;
 
 export async function createProject(
+  db: Db,
   input: {
     key: string;
     name: string;
@@ -524,10 +536,10 @@ export async function createProject(
   ownerId: string,
   teamId: number,
 ): Promise<ProjectRow> {
-  const ownerTeam = await targetTeam(ownerId, teamId);
-  // What a new project starts with, set instance-wide in god mode. Read before the
-  // transaction opens so the settings lookup is not part of it.
-  const defaults = await getProjectDefaults();
+  const ownerTeam = await targetTeam(db, ownerId, teamId);
+  // What a new project starts with, set instance-wide in god mode. Read before
+  // any write starts.
+  const defaults = await getProjectDefaults(db);
   const defaultAgents = ownerTeam.defaultAgentIds.length
     ? await db
         .select({ userId: aiAgent.userId })
@@ -536,9 +548,14 @@ export async function createProject(
           and(eq(aiAgent.teamId, ownerTeam.id), inArray(aiAgent.id, ownerTeam.defaultAgentIds)),
         )
     : [];
-  const defaultRoleId = defaultAgents.length ? await getDefaultRoleId(ownerTeam.id) : null;
-  return db.transaction(async (tx) => {
-    const [row] = await tx
+  const defaultRoleId = defaultAgents.length ? await getDefaultRoleId(db, ownerTeam.id) : null;
+  // One atomic D1 batch. The project id the later statements need is read back by
+  // sub-select on the unique (team, key) the first insert just wrote.
+  const projectId = sql<number>`(select ${project.id} from ${project} where ${project.teamId} = ${ownerTeam.id} and ${project.key} = ${input.key} order by ${project.id} desc limit 1)`;
+  const types = ISSUE_TYPE_PRESETS[input.preset ?? 'general'] ?? ISSUE_TYPE_PRESETS.general;
+  const results = await batchAll(db, [
+    joinTeamAsCreatorStatement(db, ownerTeam.id, ownerId),
+    db
       .insert(project)
       .values({
         teamId: ownerTeam.id,
@@ -547,59 +564,59 @@ export async function createProject(
         description: input.description ?? '',
         mcpEnabled: defaults.mcpEnabled,
       })
-      .returning();
-    await joinTeamAsCreator(tx, ownerTeam.id, ownerId);
-    await tx.insert(projectMember).values({ projectId: row.id, userId: ownerId, role: 'owner' });
-    if (defaultAgents.length) {
-      await tx.insert(projectMember).values(
-        defaultAgents.map((agent) => ({
-          projectId: row.id,
+      .returning(),
+    db.insert(projectMember).values({ projectId, userId: ownerId, role: 'owner' }),
+    ...chunk(defaultAgents, 15).map((agents) =>
+      db.insert(projectMember).values(
+        agents.map((agent) => ({
+          projectId,
           userId: agent.userId,
           role: 'member',
           roleId: defaultRoleId,
         })),
-      );
-    }
-    for (const [position, column] of DEFAULT_COLUMNS.entries()) {
-      await tx.insert(projectColumn).values({
-        projectId: row.id,
+      ),
+    ),
+    ...DEFAULT_COLUMNS.map((column, position) =>
+      db.insert(projectColumn).values({
+        projectId,
         name: column.name,
         stateType: column.stateType,
         color: column.color,
         position,
-      });
-    }
-    const types = ISSUE_TYPE_PRESETS[input.preset ?? 'general'] ?? ISSUE_TYPE_PRESETS.general;
-    for (const [position, type] of types.entries()) {
-      await tx.insert(issueType).values({
-        projectId: row.id,
+      }),
+    ),
+    ...types.map((type, position) =>
+      db.insert(issueType).values({
+        projectId,
         name: type.name,
         color: type.color,
         isDefault: position === 0,
         position,
-      });
-    }
-    await tx
+      }),
+    ),
+    db
       .insert(projectSetting)
-      .values({ projectId: row.id, key: AUTO_ARCHIVE_KEY, value: DEFAULT_AUTO_ARCHIVE });
-    return mapProject({
-      ...row,
-      teamName: ownerTeam.name,
-      teamSlug: ownerTeam.slug,
-      teamMcpEnabled: ownerTeam.mcpEnabled,
-    });
+      .values({ projectId, key: AUTO_ARCHIVE_KEY, value: DEFAULT_AUTO_ARCHIVE }),
+  ]);
+  const [row] = results[1] as (typeof project.$inferSelect)[];
+  return mapProject(db, {
+    ...row,
+    teamName: ownerTeam.name,
+    teamSlug: ownerTeam.slug,
+    teamMcpEnabled: ownerTeam.mcpEnabled,
   });
 }
 
 // A key stored before PROJECT_KEY_PATTERN existed (e.g. "7XTR") cannot form an issue
 // identifier, so it may be replaced once. A valid key does not change.
 export async function updateProject(
+  db: Db,
   projectId: number,
   patch: { key?: string; name?: string; description?: string },
 ): Promise<ProjectRow | null> {
   const values: Partial<typeof project.$inferInsert> = {};
   if (patch.key !== undefined) {
-    const current = await getProjectById(projectId);
+    const current = await getProjectById(db, projectId);
     if (!current) return null;
     if (patch.key !== current.key) {
       if (new RegExp(PROJECT_KEY_PATTERN).test(current.key)) {
@@ -610,12 +627,13 @@ export async function updateProject(
   }
   if (patch.name !== undefined) values.name = patch.name;
   if (patch.description !== undefined) values.description = patch.description;
-  if (Object.keys(values).length === 0) return getProjectById(projectId);
+  if (Object.keys(values).length === 0) return getProjectById(db, projectId);
   await db.update(project).set(values).where(eq(project.id, projectId));
-  return getProjectById(projectId);
+  return getProjectById(db, projectId);
 }
 
 export async function setProjectArchived(
+  db: Db,
   projectId: number,
   archived: boolean,
 ): Promise<ProjectRow | null> {
@@ -623,7 +641,7 @@ export async function setProjectArchived(
     .update(project)
     .set({ archivedAt: archived ? new Date() : null })
     .where(eq(project.id, projectId));
-  return getProjectById(projectId);
+  return getProjectById(db, projectId);
 }
 
 // The project's feature toggles, read from the project row.
@@ -643,10 +661,11 @@ export function projectFeatures(row: ProjectRow): ProjectFeatures {
 // Turns the optional sections on or off. Only the supplied ones change; a section
 // that is turned off keeps its rows and shows again when it is turned back on.
 export async function setProjectFeatures(
+  db: Db,
   projectId: number,
   patch: Partial<ProjectFeatures>,
 ): Promise<ProjectRow | null> {
-  const { blockedFeatures } = await getTeamLimits(await getProjectTeamId(projectId));
+  const { blockedFeatures } = await getTeamLimits(db, await getProjectTeamId(db, projectId));
   const blocked = blockedFeatures.find((feature) => patch[feature]);
   if (blocked) {
     throw new HttpError(400, `${featureLabel(blocked)} are not available for this team`);
@@ -660,9 +679,9 @@ export async function setProjectFeatures(
   if (patch.subtasks !== undefined) values.subtasksEnabled = patch.subtasks;
   if (patch.checklists !== undefined) values.checklistsEnabled = patch.checklists;
   if (patch.issueStats !== undefined) values.issueStatsEnabled = patch.issueStats;
-  if (Object.keys(values).length === 0) return getProjectById(projectId);
+  if (Object.keys(values).length === 0) return getProjectById(db, projectId);
   await db.update(project).set(values).where(eq(project.id, projectId));
-  return getProjectById(projectId);
+  return getProjectById(db, projectId);
 }
 
 // Which estimate kinds the project's issues carry, and whether its members log the
@@ -679,6 +698,7 @@ export interface EstimateSettings {
 // Turns them on or off. One turned off keeps what the issues already carry — the
 // estimates, the logged entries — which show again when it is turned back on.
 export async function setEstimateSettings(
+  db: Db,
   projectId: number,
   input: EstimateSettings,
 ): Promise<EstimateSettings | null> {
@@ -725,8 +745,15 @@ function normalizeDays(value: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export async function getAutoArchiveSettings(projectId: number): Promise<AutoArchiveSettings> {
-  const stored = await getProjectSetting<Partial<AutoArchiveSettings>>(projectId, AUTO_ARCHIVE_KEY);
+export async function getAutoArchiveSettings(
+  db: Db,
+  projectId: number,
+): Promise<AutoArchiveSettings> {
+  const stored = await getProjectSetting<Partial<AutoArchiveSettings>>(
+    db,
+    projectId,
+    AUTO_ARCHIVE_KEY,
+  );
   return {
     completedDays: normalizeDays(stored?.completedDays),
     canceledDays: normalizeDays(stored?.canceledDays),
@@ -734,6 +761,7 @@ export async function getAutoArchiveSettings(projectId: number): Promise<AutoArc
 }
 
 export async function setAutoArchiveSettings(
+  db: Db,
   projectId: number,
   input: { completedDays?: number | null; canceledDays?: number | null },
 ): Promise<AutoArchiveSettings> {
@@ -741,7 +769,7 @@ export async function setAutoArchiveSettings(
     completedDays: normalizeDays(input.completedDays),
     canceledDays: normalizeDays(input.canceledDays),
   };
-  await setProjectSetting(projectId, AUTO_ARCHIVE_KEY, next);
+  await setProjectSetting(db, projectId, AUTO_ARCHIVE_KEY, next);
   return next;
 }
 
@@ -758,9 +786,11 @@ export interface SubtaskAutomationSettings {
 }
 
 export async function getSubtaskAutomationSettings(
+  db: Db,
   projectId: number,
 ): Promise<SubtaskAutomationSettings> {
   const stored = await getProjectSetting<Partial<SubtaskAutomationSettings>>(
+    db,
     projectId,
     SUBTASK_AUTOMATION_KEY,
   );
@@ -771,6 +801,7 @@ export async function getSubtaskAutomationSettings(
 }
 
 export async function setSubtaskAutomationSettings(
+  db: Db,
   projectId: number,
   input: SubtaskAutomationSettings,
 ): Promise<SubtaskAutomationSettings> {
@@ -778,7 +809,7 @@ export async function setSubtaskAutomationSettings(
     completeParent: input.completeParent,
     closeSubtasks: input.closeSubtasks,
   };
-  await setProjectSetting(projectId, SUBTASK_AUTOMATION_KEY, next);
+  await setProjectSetting(db, projectId, SUBTASK_AUTOMATION_KEY, next);
   return next;
 }
 
@@ -791,8 +822,9 @@ export async function setSubtaskAutomationSettings(
 // issues and their columns are deleted by the same cascade, so it is satisfied. The
 // conversation threads of the project's agents are deleted first, since they live
 // outside those cascades.
-export async function deleteProject(projectId: number): Promise<void> {
-  await deleteThreadsWhere({ projectId });
+export async function deleteProject(rt: AgentRuntime, projectId: number): Promise<void> {
+  const { db } = rt;
+  await deleteThreadsWhere(rt, { projectId });
   // A team membership the SCIM reconciliation granted stands on the project
   // memberships it granted with it, and no group change follows the delete to re-check
   // it, so the members are read while they still exist and re-checked afterwards.
@@ -801,36 +833,35 @@ export async function deleteProject(projectId: number): Promise<void> {
     .from(projectMember)
     .innerJoin(project, eq(project.id, projectMember.projectId))
     .where(and(eq(projectMember.projectId, projectId), eq(projectMember.source, 'scim')));
-  const assetKeys = await db.transaction(async (tx) => {
-    // Serialize with the final upload quota check. A concurrent upload either
-    // commits before these reads or loses its FK race and cleans its S3 object.
-    await lockAttachmentStorage(tx, projectId);
-    const issueAssets = await tx
+  // The asset keys are read and the project deleted in one atomic batch, so a file added
+  // meanwhile either is listed here or loses its foreign key and cleans itself up.
+  const [issueAssets, chatAssets, documentAssets, initiativeAssets] = await db.batch([
+    db
       .select({ s3Key: issueAttachment.s3Key })
       .from(issueAttachment)
       .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
-      .where(eq(issue.projectId, projectId));
-    const chatAssets = await tx
+      .where(eq(issue.projectId, projectId)),
+    db
       .select({ s3Key: chatAttachment.s3Key })
       .from(chatAttachment)
-      .where(eq(chatAttachment.projectId, projectId));
-    const documentAssets = await tx
+      .where(eq(chatAttachment.projectId, projectId)),
+    db
       .select({ s3Key: documentAsset.s3Key })
       .from(documentAsset)
       .innerJoin(projectDocument, eq(projectDocument.id, documentAsset.documentId))
-      .where(eq(projectDocument.projectId, projectId));
-    const initiativeAssets = await tx
+      .where(eq(projectDocument.projectId, projectId)),
+    db
       .select({ s3Key: initiativeAttachment.s3Key })
       .from(initiativeAttachment)
       .innerJoin(initiative, eq(initiative.id, initiativeAttachment.initiativeId))
-      .where(eq(initiative.projectId, projectId));
-    await tx.delete(project).where(eq(project.id, projectId));
-    return [...issueAssets, ...chatAssets, ...documentAssets, ...initiativeAssets].map(
-      (asset) => asset.s3Key,
-    );
-  });
+      .where(eq(initiative.projectId, projectId)),
+    db.delete(project).where(eq(project.id, projectId)),
+  ]);
+  const assetKeys = [...issueAssets, ...chatAssets, ...documentAssets, ...initiativeAssets].map(
+    (asset) => asset.s3Key,
+  );
   await deleteObjects(assetKeys);
   for (const { teamId, userId } of provisioned) {
-    await dropUnusedTeamMembership(teamId, userId);
+    await dropUnusedTeamMembership(db, teamId, userId);
   }
 }

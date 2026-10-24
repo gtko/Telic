@@ -1,19 +1,21 @@
 import {
-  auth,
   oauthAuthorizationServerMetadata,
   oauthProtectedResourceMetadata,
   openIdConfiguration,
   OIDC_PROVIDER_ID,
-  trustedOrigins,
+  trustedOriginsOf,
   getAuthSettings,
   hasConfiguredGoogle,
   hasConfiguredOidc,
   getOidcLabel,
 } from '@repo/auth';
-import { db, hasConfiguredEmailProvider, user } from '@repo/db';
+import { hasConfiguredEmailProvider, user } from '@repo/db';
 import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
 import { Elysia } from 'elysia';
+import { CloudflareAdapter } from 'elysia/adapter/cloudflare-worker';
+import { apiUrlOf, appUrlOf, getEnv, type Env } from './env';
+import { requestContext } from './shared/context';
 import { planner } from './planner';
 import { mountMcp } from './mcp/mount';
 import { setMcpApp } from './mcp/app-ref';
@@ -25,11 +27,10 @@ import { normalizeOpenApiResponse } from './openapi';
 import { requestTracking } from './shared/request-tracker';
 import pkg from '../../../package.json';
 
-const apiUrl = (process.env.API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
-const appUrl = (process.env.APP_URL?.split(',')[0]?.trim() || 'http://localhost:3001').replace(
-  /\/+$/,
-  '',
-);
+// The public URLs the OpenAPI document quotes. The document is built once per isolate, so this
+// reads the Worker's variables from the module scope (`cloudflare:workers`), not from a request.
+const apiUrl = apiUrlOf(getEnv());
+const appUrl = appUrlOf(getEnv());
 const apiDescription = `REST API for projects, work items, AI agents, Git integrations, analytics, and instance administration.
 
 ## Quick start
@@ -61,29 +62,72 @@ const OIDC_CALLBACK = `/api/auth/callback/${OIDC_PROVIDER_ID}`;
 // server-side calls the web makes carry neither Origin nor Sec-Fetch-Site.
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // The api's own origin counts too: the /docs page sends its "Try it" requests from it.
-const csrfTrustedOrigins = [...trustedOrigins, new URL(apiUrl).origin];
+function csrfTrustedOrigins(env: Env): string[] {
+  return [...trustedOriginsOf(env), new URL(apiUrlOf(env)).origin];
+}
 
-function isCrossSiteCookieRequest(request: Request): boolean {
+function isCrossSiteCookieRequest(request: Request, env: Env): boolean {
   if (CSRF_SAFE_METHODS.has(request.method)) return false;
   if (new URL(request.url).pathname.startsWith('/api/auth/')) return false;
   const cookie = request.headers.get('cookie');
   if (!cookie || !cookie.includes('session_token')) return false;
   if (request.headers.get('authorization') || request.headers.get('x-api-key')) return false;
   const origin = request.headers.get('origin');
-  if (origin !== null) return !csrfTrustedOrigins.includes(origin);
+  if (origin !== null) return !csrfTrustedOrigins(env).includes(origin);
   // No Origin: trust Sec-Fetch-Site when the browser sent it, allow its absence
   // (non-browser clients that happen to carry a cookie are not page-driven).
   const site = request.headers.get('sec-fetch-site');
   return site !== null && site !== 'same-origin' && site !== 'none';
 }
 
-// The assembled Elysia app, without `.listen()`. `index.ts` imports this and
-// binds the port; tests import it and pass it to Eden Treaty to drive routes in
-// memory (no network). Keep the chain unbroken so `type App` stays accurate.
-export const app = new Elysia()
+// workerd refuses `new Response(<body>)` while the module loads, and @elysiajs/swagger builds its
+// docs page that way. Inside `build`, the page becomes a handler that builds the response per request.
+function lazyPageResponse<A extends unknown[], R>(build: (...args: A) => R): (...args: A) => R {
+  return (...args) => {
+    const Native = globalThis.Response;
+    globalThis.Response = function (body?: BodyInit | null, init?: ResponseInit) {
+      return () => new Native(body, init);
+    } as unknown as typeof Response;
+    try {
+      return build(...args);
+    } finally {
+      globalThis.Response = Native;
+    }
+  };
+}
+
+// Routes run through Elysia's dynamic handler: the ahead-of-time composer (one `new Function` per route)
+// costs more CPU than the Worker may spend while its module loads. The adapter's own beforeCompile
+// precompiles every route for that composer, so it is dropped.
+const dynamicAdapter = { ...CloudflareAdapter, beforeCompile: undefined };
+
+// Two things the composed handler does that the dynamic one does not. A JSON request with an empty body
+// (a bodiless POST from a client that sends a JSON content type) is read as an empty object instead of
+// failing. And `parse: 'none'` is not honoured, so the body of /api/auth/* is left unread here for
+// better-auth.
+async function readJsonBody({ request, contentType }: { request: Request; contentType: string }) {
+  if (new URL(request.url).pathname.startsWith('/api/auth/')) return true;
+  if (contentType !== 'application/json') return undefined;
+  const text = await request.text();
+  return text ? (JSON.parse(text) as unknown) : {};
+}
+
+// The assembled Elysia app. `worker.ts` serves it from the Worker's fetch handler; tests import
+// it and pass it to Eden Treaty to drive routes in memory (no network). It is compiled ahead of
+// time (see the end of the file), which is how Elysia runs where `new Function` is not allowed.
+// Keep the chain unbroken so `type App` stays accurate.
+export const app = new Elysia({ adapter: dynamicAdapter, aot: false })
+  // First, so every route (the ones mounted after the chain included) reads ctx.env, ctx.db
+  // and ctx.auth instead of a module-level global.
+  .use(requestContext)
+  .onParse(readJsonBody)
   .use(
     cors({
-      origin: trustedOrigins,
+      // The allowed origins follow the Worker's APP_URL, read per request.
+      origin: (request) => {
+        const origin = request.headers.get('origin');
+        return origin !== null && trustedOriginsOf(getEnv()).includes(origin);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
@@ -92,7 +136,7 @@ export const app = new Elysia()
   // Before the routes: a hook applies only to the routes registered after it.
   .use(requestTracking)
   .onRequest(({ request, set }) => {
-    if (isCrossSiteCookieRequest(request)) {
+    if (isCrossSiteCookieRequest(request, getEnv())) {
       set.status = 403;
       return { error: 'Cross-site request refused', code: 'CSRF_ORIGIN_REJECTED' };
     }
@@ -104,7 +148,7 @@ export const app = new Elysia()
   // so the UI at /docs and the spec at /docs/json are reachable without a
   // session. The spec is generated from the `t` schemas on every route.
   .use(
-    swagger({
+    lazyPageResponse(swagger)({
       path: '/docs',
       // Render with Scalar's own "default" theme to match the better-auth reference
       // at /api/auth/reference. `customCss: ""` drops the gradient theme that
@@ -272,30 +316,42 @@ export const app = new Elysia()
   // An issuer with a path is looked up with the path after the well-known segment
   // (RFC 8414 §3), and some clients fall back to OpenID discovery, so each document
   // answers under any suffix; the proxy decides which of these paths reach the api.
-  .get('/.well-known/oauth-authorization-server', ({ request }) =>
-    oauthAuthorizationServerMetadata(request),
+  .get('/.well-known/oauth-authorization-server', ({ env, db, request }) =>
+    oauthAuthorizationServerMetadata(env, db, request),
   )
-  .get('/.well-known/oauth-authorization-server/*', ({ request }) =>
-    oauthAuthorizationServerMetadata(request),
+  .get('/.well-known/oauth-authorization-server/*', ({ env, db, request }) =>
+    oauthAuthorizationServerMetadata(env, db, request),
   )
-  .get('/.well-known/openid-configuration', ({ request }) => openIdConfiguration(request))
-  .get('/.well-known/openid-configuration/*', ({ request }) => openIdConfiguration(request))
-  .get('/.well-known/oauth-protected-resource', () => oauthProtectedResourceMetadata())
-  .get('/.well-known/oauth-protected-resource/*', () => oauthProtectedResourceMetadata())
+  .get('/.well-known/openid-configuration', ({ env, db, request }) =>
+    openIdConfiguration(env, db, request),
+  )
+  .get('/.well-known/openid-configuration/*', ({ env, db, request }) =>
+    openIdConfiguration(env, db, request),
+  )
+  .get('/.well-known/oauth-protected-resource', ({ env, db }) =>
+    oauthProtectedResourceMetadata(env, db),
+  )
+  .get('/.well-known/oauth-protected-resource/*', ({ env, db }) =>
+    oauthProtectedResourceMetadata(env, db),
+  )
   // better-auth: forward every /api/auth/* request to its handler. The OIDC
   // callback gets one extra step afterwards: folding the provider's `groups` claim
   // into the SCIM group tables, so a group mapped to a project in god mode grants
   // access on an OIDC-only instance too, not just one that also runs a SCIM sync.
-  .all('/api/auth/*', async ({ request }) => {
-    const url = new URL(request.url);
-    if (url.pathname === LEGACY_OIDC_CALLBACK) {
-      url.pathname = OIDC_CALLBACK;
-      request = new Request(url.href, request);
-    }
-    const response = await auth.handler(request);
-    if (url.pathname === OIDC_CALLBACK) await syncOidcGroupsAfterCallback(response);
-    return response;
-  })
+  .all(
+    '/api/auth/*',
+    async ({ request, db, auth }) => {
+      const url = new URL(request.url);
+      if (url.pathname === LEGACY_OIDC_CALLBACK) {
+        url.pathname = OIDC_CALLBACK;
+        request = new Request(url.href, request);
+      }
+      const response = await auth.handler(request);
+      if (url.pathname === OIDC_CALLBACK) await syncOidcGroupsAfterCallback(db, auth, response);
+      return response;
+    },
+    { parse: 'none' },
+  )
   .use(currentUserRoutes)
   // What the sign-in and sign-up screens need before there is a session: whether
   // registration is open, invite-only, or closed, and which sign-in methods are
@@ -303,9 +359,9 @@ export const app = new Elysia()
   // credentials, only the instance's own policy.
   .get(
     '/auth-config',
-    async () => {
-      const settings = await getAuthSettings();
-      const emailEnabled = await hasConfiguredEmailProvider();
+    async ({ db }) => {
+      const settings = await getAuthSettings(db);
+      const emailEnabled = await hasConfiguredEmailProvider(db);
       return {
         registration: settings.registration,
         // Only usable when the instance can actually send mail.
@@ -317,11 +373,11 @@ export const app = new Elysia()
         // Whether the email/password form is offered at all. The api refuses to turn
         // it off while no provider below is usable, so this is never false alone.
         emailPassword: settings.emailPassword,
-        google: await hasConfiguredGoogle(),
-        oidc: await hasConfiguredOidc(),
+        google: await hasConfiguredGoogle(db),
+        oidc: await hasConfiguredOidc(db),
         // Names the operator's own identity provider, so the button shows it as
         // given. Empty falls back to a translated default.
-        oidcLabel: await getOidcLabel(),
+        oidcLabel: await getOidcLabel(db),
         hasUsers: (await db.$count(user)) > 0,
       };
     },
@@ -335,12 +391,20 @@ export const app = new Elysia()
       },
     },
   )
-  // Root doubles as the liveness/health endpoint.
+  // Root and /health are the liveness endpoints: they touch no binding, so a probe says
+  // whether the Worker is up, not whether D1 is.
   .get('/', () => ({ name: "It's a Plan api", status: 'ok' }), {
     detail: {
       tags: ['System'],
       summary: 'Check that the api is up',
       description: 'Liveness probe: returns the api name and `status: "ok"`.',
+    },
+  })
+  .get('/health', () => ({ name: "It's a Plan api", status: 'ok' }), {
+    detail: {
+      tags: ['System'],
+      summary: 'Check that the api is up',
+      description: 'Liveness probe, same answer as `/`.',
     },
   })
   // Inbound repository webhook receiver (authenticated by its per-project secret).
@@ -362,6 +426,52 @@ mountMcp(app);
 // tools from the same mcpTool() routes and dispatches them in process. It cannot
 // import this module without a cycle, so the reference is passed here.
 setMcpApp(app);
+
+// Two differences between the composed handler and the dynamic one, patched on each route's body
+// validator on first lookup. The dynamic one runs Check/Decode on an absent optional body and rejects
+// it, and it does not strip properties the schema lacks before validating. It also reads the Decode
+// result as `decoded?.value ?? decoded`, so a body with a `value` property (a custom field value)
+// would be replaced by that property alone.
+type BodyValidator = {
+  isOptional?: boolean;
+  Check(v: unknown): boolean;
+  Clean?(v: unknown): unknown;
+  Decode?(v: unknown): unknown;
+};
+type DynamicRoute = { store: { validator?: { createBody?: () => BodyValidator | undefined } } };
+const dynamicRouter = (
+  app.router as unknown as { dynamic: { find(method: string, path: string): DynamicRoute | null } }
+).dynamic;
+const findRoute = dynamicRouter.find.bind(dynamicRouter);
+const patchedValidators = new WeakSet<object>();
+dynamicRouter.find = (method, path) => {
+  const route = findRoute(method, path);
+  const validator = route?.store.validator;
+  if (validator && !patchedValidators.has(validator)) {
+    patchedValidators.add(validator);
+    const body = validator.createBody?.();
+    if (body) {
+      const { Check, Clean, Decode, isOptional } = body;
+      body.Check = (v) => {
+        if (v === undefined) return !!isOptional || Check.call(body, v);
+        return Check.call(body, Clean ? Clean.call(body, v) : v);
+      };
+      if (Decode) {
+        body.Decode = (v) => {
+          if (v === undefined) return v;
+          const decoded = Decode.call(body, Clean ? Clean.call(body, v) : v);
+          return decoded === undefined || decoded === null ? decoded : { value: decoded };
+        };
+      }
+    }
+  }
+  return route;
+};
+
+// Elysia's Cloudflare adapter does not compile on the first request (no `new Function` in a
+// Worker), so the routes, the MCP endpoint included, are compiled here, once the chain is
+// complete.
+app.compile();
 
 // App type — useful for Eden Treaty (type-safe client) on the frontend and in tests.
 export type App = typeof app;

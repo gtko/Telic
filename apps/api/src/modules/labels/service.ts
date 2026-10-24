@@ -1,4 +1,4 @@
-import { db, label, labelGroup } from '@repo/db';
+import { label, labelGroup, type Db } from '@repo/db';
 import { and, eq } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
 
@@ -27,7 +27,7 @@ function mapLabel(row: typeof label.$inferSelect): LabelRow {
   };
 }
 
-export async function listLabels(projectId: number): Promise<LabelRow[]> {
+export async function listLabels(db: Db, projectId: number): Promise<LabelRow[]> {
   const rows = await db
     .select()
     .from(label)
@@ -38,7 +38,7 @@ export async function listLabels(projectId: number): Promise<LabelRow[]> {
 
 // Enforces that the group belongs to the label's project — the label.group_id
 // foreign key only requires the group to exist somewhere. Throws 400 otherwise.
-async function assertLabelGroup(projectId: number, groupId?: number | null): Promise<void> {
+async function assertLabelGroup(db: Db, projectId: number, groupId?: number | null): Promise<void> {
   if (groupId == null) return;
   const rows = await db
     .select({ id: labelGroup.id })
@@ -47,13 +47,16 @@ async function assertLabelGroup(projectId: number, groupId?: number | null): Pro
   if (rows.length === 0) throw new HttpError(400, 'Label group must belong to this project');
 }
 
-export async function createLabel(input: {
-  projectId: number;
-  name: string;
-  color?: string;
-  groupId?: number | null;
-}): Promise<LabelRow> {
-  await assertLabelGroup(input.projectId, input.groupId);
+export async function createLabel(
+  db: Db,
+  input: {
+    projectId: number;
+    name: string;
+    color?: string;
+    groupId?: number | null;
+  },
+): Promise<LabelRow> {
+  await assertLabelGroup(db, input.projectId, input.groupId);
   const [row] = await db
     .insert(label)
     .values({
@@ -69,11 +72,12 @@ export async function createLabel(input: {
 // Scoped to projectId so an id from another project resolves to null (a 404 at
 // the route), never a cross-project edit.
 export async function updateLabel(
+  db: Db,
   id: number,
   projectId: number,
   patch: { name?: string; color?: string; groupId?: number | null },
 ): Promise<LabelRow | null> {
-  await assertLabelGroup(projectId, patch.groupId);
+  await assertLabelGroup(db, projectId, patch.groupId);
   const scope = and(eq(label.id, id), eq(label.projectId, projectId));
   const set: Partial<typeof label.$inferInsert> = {};
   if (patch.name !== undefined) set.name = patch.name;
@@ -88,7 +92,7 @@ export async function updateLabel(
 }
 
 // Scoped to projectId: an id outside the project deletes nothing.
-export async function deleteLabel(id: number, projectId: number): Promise<void> {
+export async function deleteLabel(db: Db, id: number, projectId: number): Promise<void> {
   await db.delete(label).where(and(eq(label.id, id), eq(label.projectId, projectId)));
 }
 
@@ -105,7 +109,7 @@ function mapLabelGroup(row: typeof labelGroup.$inferSelect): LabelGroupRow {
   return { id: row.id, projectId: row.projectId, name: row.name, color: row.color };
 }
 
-export async function listLabelGroups(projectId: number): Promise<LabelGroupRow[]> {
+export async function listLabelGroups(db: Db, projectId: number): Promise<LabelGroupRow[]> {
   const rows = await db
     .select()
     .from(labelGroup)
@@ -114,11 +118,14 @@ export async function listLabelGroups(projectId: number): Promise<LabelGroupRow[
   return rows.map(mapLabelGroup);
 }
 
-export async function createLabelGroup(input: {
-  projectId: number;
-  name: string;
-  color?: string;
-}): Promise<LabelGroupRow> {
+export async function createLabelGroup(
+  db: Db,
+  input: {
+    projectId: number;
+    name: string;
+    color?: string;
+  },
+): Promise<LabelGroupRow> {
   const [row] = await db
     .insert(labelGroup)
     .values({ projectId: input.projectId, name: input.name, color: input.color ?? '#6b7280' })
@@ -129,6 +136,7 @@ export async function createLabelGroup(input: {
 // Scoped to projectId so an id from another project resolves to null (a 404 at
 // the route), never a cross-project edit.
 export async function updateLabelGroup(
+  db: Db,
   id: number,
   projectId: number,
   patch: { name?: string; color?: string },
@@ -146,7 +154,7 @@ export async function updateLabelGroup(
 }
 
 // Scoped to projectId: an id outside the project deletes nothing.
-export async function deleteLabelGroup(id: number, projectId: number): Promise<void> {
+export async function deleteLabelGroup(db: Db, id: number, projectId: number): Promise<void> {
   await db
     .delete(labelGroup)
     .where(and(eq(labelGroup.id, id), eq(labelGroup.projectId, projectId)));

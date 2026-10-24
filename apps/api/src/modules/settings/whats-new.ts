@@ -1,5 +1,5 @@
-import { db, appSetting, userPreference } from '@repo/db';
-import { eq, sql } from 'drizzle-orm';
+import { appSetting, userPreference, type Db } from '@repo/db';
+import { eq } from 'drizzle-orm';
 import type { AuthUser } from '#shared/access';
 import { getAppVersion, releasesSince, type Release } from './updates';
 
@@ -47,7 +47,7 @@ export interface WhatsNew {
   migration: TeamsMigrationReport | null;
 }
 
-async function readSetting<T>(key: string): Promise<T | null> {
+async function readSetting<T>(db: Db, key: string): Promise<T | null> {
   const [row] = await db
     .select({ value: appSetting.value })
     .from(appSetting)
@@ -55,7 +55,7 @@ async function readSetting<T>(key: string): Promise<T | null> {
   return row ? (row.value as T) : null;
 }
 
-export async function getWhatsNew(user: AuthUser): Promise<WhatsNew> {
+export async function getWhatsNew(db: Db, user: AuthUser): Promise<WhatsNew> {
   const version = getAppVersion();
   const [preference] = await db
     .select({ seenVersion: userPreference.seenVersion })
@@ -65,15 +65,15 @@ export async function getWhatsNew(user: AuthUser): Promise<WhatsNew> {
   const releases = await releasesSince(preference?.seenVersion ?? null);
   const [backup, applied] = admin
     ? await Promise.all([
-        readSetting<BackupInfo>(BACKUP_KEY),
-        readSetting<{ migrations: string[] }>(MIGRATION_RUN_KEY),
+        readSetting<BackupInfo>(db, BACKUP_KEY),
+        readSetting<{ migrations: string[] }>(db, MIGRATION_RUN_KEY),
       ])
     : [null, null];
   // The report belongs to the upgrade that applied its migration. A later release,
   // and a fresh install where the migration ran over an empty database, leave it out:
   // the row it wrote stays for an operator reading app_setting by hand.
   const migration = applied?.migrations.some((tag) => tag.endsWith(MIGRATION_TAG_SUFFIX))
-    ? await readSetting<TeamsMigrationReport>(MIGRATION_REPORT_KEY)
+    ? await readSetting<TeamsMigrationReport>(db, MIGRATION_REPORT_KEY)
     : null;
   return {
     version,
@@ -86,12 +86,12 @@ export async function getWhatsNew(user: AuthUser): Promise<WhatsNew> {
 
 // Closes the screen for this user, for the version they saw. A row is written even
 // when they have no preferences yet, so the screen does not come back.
-export async function markWhatsNewSeen(userId: string): Promise<void> {
+export async function markWhatsNewSeen(db: Db, userId: string): Promise<void> {
   await db
     .insert(userPreference)
     .values({ userId, seenVersion: getAppVersion() })
     .onConflictDoUpdate({
       target: userPreference.userId,
-      set: { seenVersion: getAppVersion(), updatedAt: sql`now()` },
+      set: { seenVersion: getAppVersion(), updatedAt: new Date() },
     });
 }

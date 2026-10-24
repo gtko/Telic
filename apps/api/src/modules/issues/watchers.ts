@@ -1,4 +1,4 @@
-import { aiAgent, db, issueWatcher, projectMember, user, userPreference } from '@repo/db';
+import { type Db, aiAgent, issueWatcher, projectMember, user, userPreference } from '@repo/db';
 import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { getMemberContext, listMemberContexts, type MemberContext } from '#modules/members/service';
 import { hasPermission } from '#shared/permissions';
@@ -28,6 +28,7 @@ function canReadWorkItems(context: MemberContext | null | undefined): boolean {
 // The issue's watchers, by name. A watcher who has left the project is left out;
 // their row survives, so rejoining puts them back on the list.
 export async function listIssueWatchers(
+  db: Db,
   projectId: number,
   issueId: number,
 ): Promise<IssueWatcherRow[]> {
@@ -44,19 +45,27 @@ export async function listIssueWatchers(
       and(eq(issueWatcher.issueId, issueId), eq(issueWatcher.subscribed, true), isNull(aiAgent.id)),
     )
     .orderBy(asc(user.name));
-  const contexts = await listMemberContexts(projectId);
+  const contexts = await listMemberContexts(db, projectId);
   return rows.filter((row) => canReadWorkItems(contexts.get(row.userId)));
 }
 
-export async function watcherUserIds(projectId: number, issueId: number): Promise<Set<string>> {
-  const rows = await listIssueWatchers(projectId, issueId);
+export async function watcherUserIds(
+  db: Db,
+  projectId: number,
+  issueId: number,
+): Promise<Set<string>> {
+  const rows = await listIssueWatchers(db, projectId, issueId);
   return new Set(rows.map((r) => r.userId));
 }
 
 // Watchers represent people who receive the project's human notifications. An AI
 // agent also has a project_member row, so checking that table alone would make it
 // look like a valid target; the anti-join keeps the management endpoint human-only.
-export async function isEligibleIssueWatcher(projectId: number, userId: string): Promise<boolean> {
+export async function isEligibleIssueWatcher(
+  db: Db,
+  projectId: number,
+  userId: string,
+): Promise<boolean> {
   const rows = await db
     .select({ userId: projectMember.userId })
     .from(projectMember)
@@ -70,12 +79,13 @@ export async function isEligibleIssueWatcher(projectId: number, userId: string):
     )
     .limit(1);
   if (rows.length === 0) return false;
-  return canReadWorkItems(await getMemberContext(projectId, userId));
+  return canReadWorkItems(await getMemberContext(db, projectId, userId));
 }
 
 // Subscribes or unsubscribes one member by hand. Both states are stored, so an
 // unsubscription survives the auto-subscribe rules.
 export async function setIssueWatching(
+  db: Db,
   issueId: number,
   userId: string,
   subscribed: boolean,
@@ -95,6 +105,7 @@ export async function setIssueWatching(
 // or that turned auto-subscribe off is skipped. `on conflict do nothing` is what makes an
 // unsubscription stick: the row is there with subscribed = false and stays.
 export async function autoWatchIssue(
+  db: Db,
   projectId: number,
   issueId: number,
   userIds: (string | null | undefined)[],
@@ -116,7 +127,7 @@ export async function autoWatchIssue(
       ),
     );
   if (rows.length === 0) return;
-  const contexts = await listMemberContexts(projectId);
+  const contexts = await listMemberContexts(db, projectId);
   const eligible = rows.filter((row) => canReadWorkItems(contexts.get(row.userId)));
   if (eligible.length === 0) return;
   await db

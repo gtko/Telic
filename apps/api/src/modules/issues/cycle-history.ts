@@ -1,4 +1,4 @@
-import { db, cycle, issueCycle } from '@repo/db';
+import { type Db, cycle, issueCycle } from '@repo/db';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { cycleStatus, type CycleStatus } from '#modules/cycles/service';
@@ -22,6 +22,7 @@ export interface IssueCycleRow {
 // Call this from every write that changes issue.cycle_id. A cycle delete needs no
 // call — its records go with it.
 export async function recordCycleChange(
+  db: Db,
   issueId: number,
   before: number | null,
   after: number | null,
@@ -30,7 +31,7 @@ export async function recordCycleChange(
   if (before !== null) {
     await db
       .update(issueCycle)
-      .set({ leftAt: sql`now()` })
+      .set({ leftAt: new Date() })
       .where(
         and(
           eq(issueCycle.issueId, issueId),
@@ -51,7 +52,7 @@ export async function recordCycleChange(
 // before the cycle ended says nothing about where the work happened, so it is
 // dropped here. A cycle appears once: an issue that was planned into the same cycle
 // twice has its stretches folded into the first entry and the last exit.
-export async function listIssueCycles(issueId: number): Promise<IssueCycleRow[]> {
+export async function listIssueCycles(db: Db, issueId: number): Promise<IssueCycleRow[]> {
   const rows = await db
     .select({
       cycleId: cycle.id,
@@ -72,7 +73,7 @@ export async function listIssueCycles(issueId: number): Promise<IssueCycleRow[]>
         // finished early, which ended it at that moment.
         or(
           isNull(issueCycle.leftAt),
-          sql`${issueCycle.leftAt} >= coalesce(${cycle.completedAt}, (${cycle.endDate} + interval '1 day') at time zone 'utc')`,
+          sql`${issueCycle.leftAt} >= coalesce(${cycle.completedAt}, unixepoch(${cycle.endDate}, '+1 day') * 1000)`,
         ),
       ),
     )

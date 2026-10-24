@@ -1,4 +1,4 @@
-import { db, teamWorkspaceId, type DbExecutor } from '@repo/db';
+import { teamWorkspaceId, type Db } from '@repo/db';
 import type { ProjectFeature } from './features';
 
 // Ceilings on what one workspace may use across its teams, and the sections they may
@@ -37,18 +37,20 @@ export const NO_LIMITS: Limits = {
   blockedFeatures: [],
 };
 
-let provider: (workspaceId: number) => Promise<Limits> = async () => NO_LIMITS;
+type LimitsProvider = (db: Db, workspaceId: number) => Promise<Limits>;
 
-export function setLimitsProvider(next: (workspaceId: number) => Promise<Limits>): void {
+let provider: LimitsProvider = async () => NO_LIMITS;
+
+export function setLimitsProvider(next: LimitsProvider): void {
   provider = next;
 }
 
-export function getLimits(workspaceId: number): Promise<Limits> {
-  return provider(workspaceId);
+export function getLimits(db: Db, workspaceId: number): Promise<Limits> {
+  return provider(db, workspaceId);
 }
 
-export async function getTeamLimits(teamId: number, executor: DbExecutor = db): Promise<Limits> {
-  return provider(await teamWorkspaceId(teamId, executor));
+export async function getTeamLimits(db: Db, teamId: number): Promise<Limits> {
+  return provider(db, await teamWorkspaceId(teamId, db));
 }
 
 // How many workspaces one person may own. A self-hosted instance gives each person one;

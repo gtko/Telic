@@ -1,6 +1,4 @@
-import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import pricingData from './pricing-data.json';
 
 // What a model call costs, in USD, from the token counts its span reports.
 //
@@ -12,9 +10,9 @@ import path from 'node:path';
 // instead. The provider ids are the same registry our AI_PROVIDERS list comes from, so a
 // credential's integration key matches the table directly.
 //
-// The file is not in the package's exports map, so a release that moves it leaves the
-// table empty rather than failing the request: an unpriced call reports no cost, and
-// the dashboard shows its tokens without one.
+// The table is a copy of that file (`./pricing-data.json`, from @mastra/observability
+// 1.20.1), imported statically: a Worker has no file system to read it from at runtime.
+// A newer @mastra/observability means copying its file again.
 
 // A model's prices in the models.dev shape, USD per million tokens. `tiers` holds the
 // prices of long inputs, each from `tier.size` input tokens of one call.
@@ -72,11 +70,6 @@ interface Table {
 
 let table: Table | null = null;
 
-function pricingPath(): string {
-  const packageJson = createRequire(import.meta.url).resolve('@mastra/observability/package.json');
-  return path.join(path.dirname(packageJson), 'dist', 'metrics', 'pricing-data.json');
-}
-
 export function priceKey(provider: string, model: string): string {
   return `${provider.trim().toLowerCase()}::${model.trim().toLowerCase()}`;
 }
@@ -109,20 +102,15 @@ function pricedOf(cost: Cost): Priced | null {
 
 function load(): Table {
   const loaded: Table = { byKey: new Map(), listed: [] };
-  try {
-    const data = JSON.parse(readFileSync(pricingPath(), 'utf-8')) as PricingData;
-    for (const [provider, { models }] of Object.entries(data)) {
-      for (const [model, { cost }] of Object.entries(models)) {
-        const priced = pricedOf(cost);
-        if (!priced) continue;
-        // Keyed with dots as dashes, the spelling modelVariants looks up for either one.
-        const key = priceKey(provider, model.replace(/\./g, '-'));
-        if (!loaded.byKey.has(key)) loaded.byKey.set(key, priced);
-        loaded.listed.push({ provider, model, price: priced.base });
-      }
+  for (const [provider, { models }] of Object.entries(pricingData as PricingData)) {
+    for (const [model, { cost }] of Object.entries(models)) {
+      const priced = pricedOf(cost);
+      if (!priced) continue;
+      // Keyed with dots as dashes, the spelling modelVariants looks up for either one.
+      const key = priceKey(provider, model.replace(/\./g, '-'));
+      if (!loaded.byKey.has(key)) loaded.byKey.set(key, priced);
+      loaded.listed.push({ provider, model, price: priced.base });
     }
-  } catch (error) {
-    console.error('[agent-analytics] model prices unavailable:', error);
   }
   loaded.listed.sort(
     (a, b) => a.provider.localeCompare(b.provider) || a.model.localeCompare(b.model),

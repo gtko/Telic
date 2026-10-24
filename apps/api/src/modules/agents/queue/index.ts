@@ -20,12 +20,12 @@ export const runnerQueueRoutes = new Elysia({
     runTrace(_enabled: boolean) {
       return {
         detail: requiresPermission(['ai_agents', 'read']) as DocumentDecoration,
-        async resolve({ params, user, request }) {
-          const projectId = await runProjectId(Number((params as { runId: string }).runId));
+        async resolve({ db, params, user, request }) {
+          const projectId = await runProjectId(db, Number((params as { runId: string }).runId));
           if (projectId == null) throw new HttpError(404, 'Run not found');
-          await assertPermission(projectId, user, 'work_items', 'read');
-          await assertPermission(projectId, user, 'ai_agents', 'read');
-          await assertMcpAllowed(projectId, request.headers);
+          await assertPermission(db, projectId, user, 'work_items', 'read');
+          await assertPermission(db, projectId, user, 'ai_agents', 'read');
+          await assertMcpAllowed(db, projectId, request.headers);
           return { projectId };
         },
       };
@@ -33,8 +33,8 @@ export const runnerQueueRoutes = new Elysia({
   })
   .get(
     '/agent-runs/:runId/trace',
-    async ({ params, query, projectId }) => {
-      const trace = await readRunTrace(projectId, params.runId, query.attempt);
+    async ({ db, params, query, projectId }) => {
+      const trace = await readRunTrace(db, projectId, params.runId, query.attempt);
       if (trace === undefined) throw new HttpError(404, 'Run attempt not found');
       return Response.json(trace);
     },
@@ -52,10 +52,11 @@ export const runnerQueueRoutes = new Elysia({
   )
   .get(
     '/agent-runs/queue',
-    async ({ user, query, request }) => {
+    async ({ db, user, query, request }) => {
       let counts = { queued: 0, running: 0 };
       const page = await paginate(query, async (window) => {
         const result = await listRunnerQueue(
+          db,
           requireUser(user).id,
           window,
           isMcpRequest(request.headers),

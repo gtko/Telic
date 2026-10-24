@@ -1,14 +1,11 @@
-import { db, issue, issueAttachment, issueFieldValue } from '@repo/db';
+import { issue, issueAttachment, issueFieldValue, type Db } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
-import { iso, num } from '#shared/lib';
-import {
-  assertAttachmentStorageCapacity,
-  lockAttachmentStorage,
-  stripAttachmentEmbeds,
-} from './storage';
+import { HttpError, iso, num } from '#shared/lib';
+import { d1Of, stmt } from '#modules/documents/tree';
+import { attachmentQuotaCondition, quotaExceeded, stripAttachmentEmbeds } from './storage';
 
 // Data access for issue attachments. File bytes live in the S3-compatible object
-// store (@repo/storage); these rows hold the metadata and the object key. publicId is
+// store (R2); these rows hold the metadata and the object key. publicId is
 // the unguessable id used in the public download URL.
 
 export interface AttachmentRow {
@@ -35,32 +32,42 @@ export function mapAttachment(row: typeof issueAttachment.$inferSelect): Attachm
   };
 }
 
-export async function createAttachment(input: {
-  projectId: number;
-  issueId: number;
-  s3Key: string;
-  filename: string;
-  contentType: string;
-  sizeBytes: number;
-}): Promise<AttachmentRow> {
-  return db.transaction(async (tx) => {
-    await lockAttachmentStorage(tx, input.projectId);
-    await assertAttachmentStorageCapacity(input.projectId, input.sizeBytes, 0, tx);
-    const [row] = await tx
-      .insert(issueAttachment)
-      .values({
-        issueId: input.issueId,
-        s3Key: input.s3Key,
-        filename: input.filename,
-        contentType: input.contentType,
-        sizeBytes: input.sizeBytes,
-      })
-      .returning();
-    return mapAttachment(row);
-  });
+// The quota is checked INSIDE the insert (INSERT ... SELECT ... WHERE <fits>): D1 runs one
+// statement atomically, so two parallel uploads cannot both take the last free bytes.
+export async function createAttachment(
+  db: Db,
+  input: {
+    projectId: number;
+    issueId: number;
+    s3Key: string;
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+  },
+): Promise<AttachmentRow> {
+  const quota = await attachmentQuotaCondition(db, input.projectId, input.sizeBytes);
+  const publicId = crypto.randomUUID();
+  const { sql: text, params } =
+    stmt`INSERT INTO issue_attachment (public_id, issue_id, s3_key, filename, content_type, size_bytes)
+    SELECT ${publicId}, ${input.issueId}, ${input.s3Key}, ${input.filename}, ${input.contentType}, ${input.sizeBytes}
+    WHERE ${quota}
+    RETURNING id`;
+  // meta.changes also counts the rows the revision triggers write, so RETURNING tells whether
+  // the insert happened.
+  const inserted = await d1Of(db)
+    .prepare(text)
+    .bind(...params)
+    .all();
+  if (inserted.results.length !== 1)
+    throw await quotaExceeded(db, input.projectId, input.sizeBytes);
+  const [row] = await db
+    .select()
+    .from(issueAttachment)
+    .where(eq(issueAttachment.publicId, publicId));
+  return mapAttachment(row!);
 }
 
-export async function listAttachments(issueId: number): Promise<AttachmentRow[]> {
+export async function listAttachments(db: Db, issueId: number): Promise<AttachmentRow[]> {
   const rows = await db
     .select()
     .from(issueAttachment)
@@ -71,16 +78,19 @@ export async function listAttachments(issueId: number): Promise<AttachmentRow[]>
 
 // Bytes currently stored for a project, across every issue in it. Read before an
 // upload to enforce the instance project quota.
-export async function getProjectAttachmentBytes(projectId: number): Promise<number> {
+export async function getProjectAttachmentBytes(db: Db, projectId: number): Promise<number> {
   const rows = await db
-    .select({ total: sql<string>`coalesce(sum(${issueAttachment.sizeBytes}), 0)` })
+    .select({ total: sql<number>`coalesce(sum(${issueAttachment.sizeBytes}), 0)` })
     .from(issueAttachment)
     .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
     .where(eq(issue.projectId, projectId));
   return num(rows[0]?.total ?? 0);
 }
 
-export async function getAttachmentByPublicId(publicId: string): Promise<AttachmentRow | null> {
+export async function getAttachmentByPublicId(
+  db: Db,
+  publicId: string,
+): Promise<AttachmentRow | null> {
   const rows = await db
     .select()
     .from(issueAttachment)
@@ -92,40 +102,60 @@ export async function getAttachmentByPublicId(publicId: string): Promise<Attachm
 // of it in a description keeps working and shows the new file, which is what
 // makes editing an attachment in place possible. Returns null if no row matched.
 export async function replaceAttachmentContent(
+  db: Db,
   publicId: string,
   projectId: number,
   input: { s3Key: string; filename: string; contentType: string; sizeBytes: number },
 ): Promise<{ attachment: AttachmentRow; replacedS3Key: string } | null> {
-  return db.transaction(async (tx) => {
-    await lockAttachmentStorage(tx, projectId);
-    const [current] = await tx
+  // Read the row, then update it only if it is still the row that was read (same size, which
+  // the quota arithmetic relies on) and the new size still fits: one statement. A concurrent
+  // replacement changes the size guard, so the loop starts over on the fresh row.
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const [current] = await db
       .select({ attachment: issueAttachment })
       .from(issueAttachment)
       .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
       .where(and(eq(issueAttachment.publicId, publicId), eq(issue.projectId, projectId)));
     if (!current) return null;
-    await assertAttachmentStorageCapacity(
-      projectId,
-      input.sizeBytes,
-      num(current.attachment.sizeBytes),
-      tx,
-    );
-    const rows = await tx
-      .update(issueAttachment)
-      .set(input)
-      .where(eq(issueAttachment.id, current.attachment.id))
-      .returning();
-    if (!rows[0]) return null;
-    return {
-      attachment: mapAttachment(rows[0]),
-      replacedS3Key: current.attachment.s3Key,
-    };
-  });
+    const replacedBytes = num(current.attachment.sizeBytes);
+    const quota = await attachmentQuotaCondition(db, projectId, input.sizeBytes, replacedBytes);
+    const { sql: text, params } = stmt`UPDATE issue_attachment
+      SET s3_key = ${input.s3Key}, filename = ${input.filename},
+          content_type = ${input.contentType}, size_bytes = ${input.sizeBytes}
+      WHERE id = ${current.attachment.id} AND s3_key = ${current.attachment.s3Key}
+        AND size_bytes = ${replacedBytes} AND ${quota}
+      RETURNING id`;
+    const updated = await d1Of(db)
+      .prepare(text)
+      .bind(...params)
+      .all();
+    if (updated.results.length === 1) {
+      const [row] = await db
+        .select()
+        .from(issueAttachment)
+        .where(eq(issueAttachment.id, current.attachment.id));
+      if (!row) return null;
+      return { attachment: mapAttachment(row), replacedS3Key: current.attachment.s3Key };
+    }
+    // Refused: the row moved under us (retry) or the quota is full (report it).
+    const [again] = await db
+      .select({ s3Key: issueAttachment.s3Key, sizeBytes: issueAttachment.sizeBytes })
+      .from(issueAttachment)
+      .where(eq(issueAttachment.id, current.attachment.id));
+    if (!again) return null;
+    if (again.s3Key === current.attachment.s3Key && num(again.sizeBytes) === replacedBytes) {
+      throw await quotaExceeded(db, projectId, input.sizeBytes, replacedBytes);
+    }
+  }
+  throw new HttpError(409, 'The attachment is being changed elsewhere. Try again.');
 }
 
 // Deletes the row and returns it (with its s3Key) so the caller can remove the
 // object from the store. Returns null if no row matched.
-export async function deleteAttachmentByPublicId(publicId: string): Promise<AttachmentRow | null> {
+export async function deleteAttachmentByPublicId(
+  db: Db,
+  publicId: string,
+): Promise<AttachmentRow | null> {
   const rows = await db
     .delete(issueAttachment)
     .where(eq(issueAttachment.publicId, publicId))
@@ -136,7 +166,11 @@ export async function deleteAttachmentByPublicId(publicId: string): Promise<Atta
 // Remove embeds of one attachment from the issue description and its markdown
 // custom field values. Called on delete so a removed attachment leaves no broken
 // image behind.
-export async function removeAttachmentEmbeds(issueId: number, publicId: string): Promise<void> {
+export async function removeAttachmentEmbeds(
+  db: Db,
+  issueId: number,
+  publicId: string,
+): Promise<void> {
   let changed = false;
 
   const [row] = await db
@@ -167,9 +201,6 @@ export async function removeAttachmentEmbeds(issueId: number, publicId: string):
   // Stripping an embed is an edit of the issue, and sorting by "recently updated"
   // has to place it accordingly.
   if (changed) {
-    await db
-      .update(issue)
-      .set({ updatedAt: sql`now()` })
-      .where(eq(issue.id, issueId));
+    await db.update(issue).set({ updatedAt: new Date() }).where(eq(issue.id, issueId));
   }
 }

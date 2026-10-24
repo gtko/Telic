@@ -1,6 +1,6 @@
-import { Memory } from '@mastra/memory';
-import { db } from '@repo/db';
+import type { Memory } from '@mastra/memory';
 import { sql } from 'drizzle-orm';
+import type { AgentRuntime } from './bindings';
 import { appendTextPart, toolArgsText, toolText } from '../../chat-parts';
 import { deleteContextUsage } from '../../chat-usage';
 import {
@@ -22,8 +22,8 @@ import { getStore } from './store';
 import type { ChatMessageDTO, ChatMessagePage, ChatPart, ChatThreadPage } from '../../model';
 
 // Conversation memory for internal agents. Threads and their messages are
-// persisted in a Postgres-backed store (Mastra manages its own tables), reusing
-// DATABASE_URL. When an agent has memory enabled, a run recalls the last N
+// persisted in a D1-backed store (Mastra's D1Store manages its own tables), on the
+// application database. When an agent has memory enabled, a run recalls the last N
 // messages of the given thread. Only the recency window is used (no semantic
 // recall), so no vector store is required.
 //
@@ -43,21 +43,28 @@ const THREAD_PAGE_SIZE = 25;
 // typed.
 const TITLE_LIMIT = 80;
 
-export function buildMemory(lastMessages: number): Memory {
+export async function buildMemory(rt: AgentRuntime, lastMessages: number): Promise<Memory> {
+  const { Memory } = await import('@mastra/memory');
   return new Memory({
-    storage: getStore(),
+    storage: await getStore(rt.d1),
     options: { lastMessages, semanticRecall: false },
   });
 }
 
 // A single shared Memory instance for reading threads and messages (listing,
 // hydrating a conversation). Reads do not depend on the recency window, so any
-// lastMessages value works; it shares the same PostgresStore as the run memory.
-let readMemory: Memory | null = null;
+// lastMessages value works; it shares the same D1Store as the run memory. One per D1
+// binding and isolate.
+const readMemories = new WeakMap<object, Promise<Memory>>();
 
-function getReadMemory(): Memory {
-  if (!readMemory) readMemory = buildMemory(DEFAULT_LAST_MESSAGES);
-  return readMemory;
+function getReadMemory(rt: AgentRuntime): Promise<Memory> {
+  let memory = readMemories.get(rt.d1);
+  if (!memory) {
+    memory = buildMemory(rt, DEFAULT_LAST_MESSAGES);
+    readMemories.set(rt.d1, memory);
+    memory.catch(() => readMemories.delete(rt.d1));
+  }
+  return memory;
 }
 
 // What a thread is bound to, written when it is created. `kind` separates a UI
@@ -75,12 +82,13 @@ type ThreadMeta = {
 // truncated) unless it already exists, so continuing a conversation leaves its
 // metadata and title alone.
 export async function ensureThread(
+  rt: AgentRuntime,
   threadId: string,
   resourceId: string,
   meta: ThreadMeta,
   title: string,
 ): Promise<void> {
-  const memory = getReadMemory();
+  const memory = await getReadMemory(rt);
   if (await memory.getThreadById({ threadId })) return;
   await memory.createThread({
     threadId,
@@ -94,11 +102,12 @@ export async function ensureThread(
 // Renames one of the caller's chat threads. Returns false when the thread does not
 // exist or belongs to someone else, so the caller maps it to a 404.
 export async function renameChatThread(
+  rt: AgentRuntime,
   threadId: string,
   resourceId: string,
   title: string,
 ): Promise<boolean> {
-  const memory = getReadMemory();
+  const memory = await getReadMemory(rt);
   const thread = await memory.getThreadById({ threadId, resourceId });
   if (!thread) return false;
   await memory.updateThread({ id: threadId, title: title.slice(0, TITLE_LIMIT) });
@@ -107,26 +116,31 @@ export async function renameChatThread(
 
 // Deletes one of the caller's chat threads with its messages. Returns false when the
 // thread does not exist or belongs to someone else, so the caller maps it to a 404.
-export async function deleteChatThread(threadId: string, resourceId: string): Promise<boolean> {
-  const memory = getReadMemory();
+export async function deleteChatThread(
+  rt: AgentRuntime,
+  threadId: string,
+  resourceId: string,
+): Promise<boolean> {
+  const memory = await getReadMemory(rt);
   const thread = await memory.getThreadById({ threadId, resourceId });
   if (!thread) return false;
   await memory.deleteThread(threadId);
-  await deleteContextUsage(threadId);
-  await deleteFavorite(threadId);
+  await deleteContextUsage(rt.db, threadId);
+  await deleteFavorite(rt.db, threadId);
   return true;
 }
 
 // Deletes every thread bound to the given agent, project or schedule, with its
 // messages, and returns how many were deleted. Called when that binding goes away.
 export async function deleteThreadsWhere(
+  rt: AgentRuntime,
   binding: { agentId: number } | { projectId: number } | { scheduleId: number },
 ): Promise<number> {
-  const memory = getReadMemory();
+  const memory = await getReadMemory(rt);
   const { threads } = await memory.listThreads({ filter: { metadata: binding }, perPage: false });
   for (const thread of threads) {
     await memory.deleteThread(thread.id);
-    await deleteContextUsage(thread.id);
+    await deleteContextUsage(rt.db, thread.id);
   }
   return threads.length;
 }
@@ -136,18 +150,19 @@ export async function deleteThreadsWhere(
 // agent binding in metadata, so a caller only ever sees their own conversations with
 // that agent.
 export async function listChatThreads(
+  rt: AgentRuntime,
   resourceId: string,
   agentId: number,
   opts: ThreadListOpts = {},
 ): Promise<ChatThreadPage> {
-  if (opts.favorites) return favoriteChatThreads(resourceId, agentId);
+  if (opts.favorites) return favoriteChatThreads(rt, resourceId, agentId);
   const term = searchTerm(opts.q);
   const page = opts.page ?? 0;
   const rows = term
-    ? await searchChatThreads(resourceId, agentId, term, page)
-    : await unstarredChatThreads(resourceId, agentId, page);
+    ? await searchChatThreads(rt, resourceId, agentId, term, page)
+    : await unstarredChatThreads(rt, resourceId, agentId, page);
   const hasMore = rows.length > THREAD_PAGE_SIZE;
-  const items = await summarize(hasMore ? rows.slice(0, THREAD_PAGE_SIZE) : rows);
+  const items = await summarize(rt.db, hasMore ? rows.slice(0, THREAD_PAGE_SIZE) : rows);
   return { items, nextPage: hasMore ? page + 1 : null };
 }
 
@@ -155,55 +170,64 @@ export async function listChatThreads(
 // the page to tell whether there is another. The starred ones are left out because the
 // group above the list already holds them — which is also why this reads the threads
 // directly instead of through Mastra's storage API, which filters on metadata only.
+// D1Store keeps its dates as ISO strings, which sort as the dates they are.
 async function unstarredChatThreads(
+  rt: AgentRuntime,
   resourceId: string,
   agentId: number,
   page: number,
 ): Promise<ThreadRow[]> {
-  const rows = await db.execute(sql`
-    SELECT ${threadFields}, false AS favorite
+  const rows = await rt.db.all<ThreadRow>(sql`
+    SELECT ${threadFields}, 0 AS favorite
     FROM mastra_threads t
     WHERE ${ownedChatThreads(resourceId, agentId)}
       AND NOT EXISTS (
         SELECT 1 FROM agent_chat_favorite f
         WHERE f.user_id = ${resourceId} AND f.thread_id = t.id
       )
-    ORDER BY t."updatedAt" DESC
+    ORDER BY t.updatedAt DESC
     LIMIT ${THREAD_PAGE_SIZE + 1} OFFSET ${page * THREAD_PAGE_SIZE}
   `);
-  return rows as unknown as ThreadRow[];
+  return rows.map(asThreadRow);
 }
 
 // The conversations the caller starred, newest first. The stars are ours and the
 // threads are Mastra's, so the two are read one after the other rather than joined.
-async function favoriteChatThreads(resourceId: string, agentId: number): Promise<ChatThreadPage> {
-  const ids = await favoriteThreadIds(resourceId, agentId);
+async function favoriteChatThreads(
+  rt: AgentRuntime,
+  resourceId: string,
+  agentId: number,
+): Promise<ChatThreadPage> {
+  const ids = await favoriteThreadIds(rt.db, resourceId, agentId);
   if (ids.length === 0) return { items: [], nextPage: null };
-  const rows = await db.execute(sql`
-    SELECT ${threadFields}, true AS favorite
+  // The ids travel as one JSON parameter: D1 binds at most 100 per statement.
+  const rows = await rt.db.all<ThreadRow>(sql`
+    SELECT ${threadFields}, 1 AS favorite
     FROM mastra_threads t
     WHERE ${ownedChatThreads(resourceId, agentId)}
-      AND t.id IN (${sql.join(
-        ids.map((id) => sql`${id}`),
-        sql`, `,
-      )})
-    ORDER BY t."updatedAt" DESC
+      AND t.id IN (SELECT value FROM json_each(${JSON.stringify(ids)}))
+    ORDER BY t.updatedAt DESC
     LIMIT ${FAVORITES_LIMIT}
   `);
-  return { items: await summarize(rows as unknown as ThreadRow[]), nextPage: null };
+  return { items: await summarize(rt.db, rows.map(asThreadRow)), nextPage: null };
+}
+
+// SQLite hands a boolean back as 0 or 1.
+function asThreadRow(row: ThreadRow): ThreadRow {
+  return { ...row, favorite: Boolean(row.favorite) };
 }
 
 // The columns of a thread the history list reads. Mastra owns these tables, so they are
 // addressed in raw SQL: its storage API searches no text and returns no snippet.
-const threadFields = sql`t.id, t.title, NULL AS "cliSessionId", t."createdAt", t."updatedAt"`;
+const threadFields = sql`t.id, t.title, NULL AS cliSessionId, t.createdAt, t.updatedAt`;
 
 // The caller's own chat threads with one agent. A thread is bound to its agent through
-// the metadata written when it was created, and 'chat' is what tells a conversation
-// apart from an autonomous run's thread.
+// the metadata (a JSON text) written when it was created, and 'chat' is what tells a
+// conversation apart from an autonomous run's thread.
 function ownedChatThreads(resourceId: string, agentId: number) {
-  return sql`t."resourceId" = ${resourceId}
-      AND t.metadata->>'agentId' = ${String(agentId)}
-      AND t.metadata->>'kind' = 'chat'`;
+  return sql`t.resourceId = ${resourceId}
+      AND json_extract(t.metadata, '$.agentId') = ${agentId}
+      AND json_extract(t.metadata, '$.kind') = 'chat'`;
 }
 
 // The conversations whose title or message text contains the term. A message is stored
@@ -215,53 +239,58 @@ function ownedChatThreads(resourceId: string, agentId: number) {
 // title hit first, then the ones where the member's own message matches, then the ones
 // matching only in the agent's reply.
 async function searchChatThreads(
+  rt: AgentRuntime,
   resourceId: string,
   agentId: number,
   term: string,
   page: number,
 ): Promise<ThreadRow[]> {
   const like = likePattern(term);
-  const snippet = snippetOf(sql`part->>'text'`, term);
-  const rows = await db.execute(sql`
+  const snippet = snippetOf(sql`json_extract(part.value, '$.text')`, term);
+  const rows = await rt.db.all<ThreadRow>(sql`
+    WITH hit AS (
+      SELECT msg.thread_id AS thread_id, msg.role AS role, msg.createdAt AS createdAt,
+             ${snippet} AS snippet
+      FROM mastra_threads t
+      JOIN mastra_messages msg ON msg.thread_id = t.id
+      JOIN json_each(msg.content, '$.parts') AS part
+      WHERE ${ownedChatThreads(resourceId, agentId)}
+        AND json_extract(part.value, '$.type') = 'text'
+        AND json_extract(part.value, '$.text') LIKE ${like} ESCAPE '\\'
+    )
     SELECT ${threadFields},
-           hit.snippet,
+           (SELECT h.snippet FROM hit h WHERE h.thread_id = t.id
+             ORDER BY h.createdAt DESC LIMIT 1) AS snippet,
            CASE
-             WHEN t.title ILIKE ${like} THEN 1
-             WHEN coalesce(hit.user_match, false) THEN 2
+             WHEN t.title LIKE ${like} ESCAPE '\\' THEN 1
+             WHEN EXISTS (SELECT 1 FROM hit h WHERE h.thread_id = t.id AND h.role = 'user') THEN 2
              ELSE 3
            END AS rank
     FROM mastra_threads t
-    LEFT JOIN LATERAL (
-      SELECT bool_or(msg.role = 'user') AS user_match,
-             (array_agg(${snippet} ORDER BY msg."createdAt" DESC))[1] AS snippet
-      FROM mastra_messages msg
-      CROSS JOIN LATERAL jsonb_array_elements(msg.content::jsonb -> 'parts') AS part
-      WHERE msg.thread_id = t.id
-        AND part->>'type' = 'text'
-        AND part->>'text' ILIKE ${like}
-    ) hit ON true
     WHERE ${ownedChatThreads(resourceId, agentId)}
-      AND (t.title ILIKE ${like} OR hit.snippet IS NOT NULL)
-    ORDER BY rank, t."updatedAt" DESC
+      AND (t.title LIKE ${like} ESCAPE '\\'
+           OR EXISTS (SELECT 1 FROM hit h WHERE h.thread_id = t.id))
+    ORDER BY rank, t.updatedAt DESC
     LIMIT ${THREAD_PAGE_SIZE + 1} OFFSET ${page * THREAD_PAGE_SIZE}
   `);
   // The stars are in our own table, so they are read for the hits rather than joined.
-  const hits = rows as unknown as ThreadRow[];
   const favorites = await readFavorites(
+    rt.db,
     resourceId,
-    hits.map((row) => row.id),
+    rows.map((row) => row.id),
   );
-  return hits.map((row) => ({ ...row, favorite: favorites.has(row.id) }));
+  return rows.map((row) => ({ ...row, favorite: favorites.has(row.id) }));
 }
 
 // Whether the conversation is the caller's own with this agent, which is what a star is
 // checked against.
 export async function ownsChatThread(
+  rt: AgentRuntime,
   threadId: string,
   resourceId: string,
   agentId: number,
 ): Promise<boolean> {
-  const thread = await getReadMemory().getThreadById({ threadId, resourceId });
+  const thread = await (await getReadMemory(rt)).getThreadById({ threadId, resourceId });
   return thread?.metadata?.agentId === agentId;
 }
 
@@ -269,11 +298,12 @@ export async function ownsChatThread(
 // the thread does not exist or is not owned by resourceId (so the caller maps it to
 // a 404). Messages come back oldest first.
 export async function getChatThreadMessages(
+  rt: AgentRuntime,
   threadId: string,
   resourceId: string,
   page = 0,
 ): Promise<ChatMessagePage | null> {
-  const memory = getReadMemory();
+  const memory = await getReadMemory(rt);
   const thread = await memory.getThreadById({ threadId, resourceId });
   if (!thread) return null;
   const { messages, hasMore } = await memory.recall({

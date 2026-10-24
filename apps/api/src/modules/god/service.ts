@@ -1,5 +1,4 @@
 import {
-  db,
   user,
   session,
   oauthAccessToken,
@@ -20,13 +19,15 @@ import {
   teamRole,
   projectView,
   workspaceManager,
+  type Db,
+  chunk,
 } from '@repo/db';
 import {
   and,
   desc,
   eq,
   exists,
-  ilike,
+  like,
   inArray,
   isNotNull,
   isNull,
@@ -35,7 +36,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
+import type { AnySQLiteColumn, SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { accountsManagedByScim } from '@repo/auth';
 import { iso } from '#shared/lib';
 import { deleteAccount } from '#shared/account-deletion';
@@ -125,7 +126,7 @@ interface UserFacts {
   lastSeen: Map<string, Date>;
 }
 
-async function loadUserFacts(userIds: string[]): Promise<UserFacts> {
+async function loadUserFacts(db: Db, userIds: string[]): Promise<UserFacts> {
   if (userIds.length === 0) {
     return {
       agents: new Set(),
@@ -141,7 +142,7 @@ async function loadUserFacts(userIds: string[]): Promise<UserFacts> {
       .from(account)
       .where(inArray(account.userId, userIds)),
     db
-      .select({ userId: projectMember.userId, count: sql<number>`count(*)::int` })
+      .select({ userId: projectMember.userId, count: sql<number>`count(*)` })
       .from(projectMember)
       .where(inArray(projectMember.userId, userIds))
       .groupBy(projectMember.userId),
@@ -215,19 +216,22 @@ export type UserKind = (typeof USER_KINDS)[number];
 // One page of accounts, newest first. `search` matches the name or the email;
 // `kind` narrows to people or agent bot users. Both filters run in SQL, so the page
 // window and the total count agree.
-export async function listInstanceUsers(options: {
-  search?: string;
-  kind: UserKind;
-  limit: number;
-  offset: number;
-}): Promise<InstanceUserPage> {
+export async function listInstanceUsers(
+  db: Db,
+  options: {
+    search?: string;
+    kind: UserKind;
+    limit: number;
+    offset: number;
+  },
+): Promise<InstanceUserPage> {
   const term = options.search?.trim();
   const isAgent = db
     .select({ n: sql`1` })
     .from(aiAgent)
     .where(eq(aiAgent.userId, user.id));
   const where = and(
-    term ? or(ilike(user.name, `%${term}%`), ilike(user.email, `%${term}%`)) : undefined,
+    term ? or(like(user.name, `%${term}%`), like(user.email, `%${term}%`)) : undefined,
     options.kind === 'human'
       ? notExists(isAgent)
       : options.kind === 'agent'
@@ -244,24 +248,27 @@ export async function listInstanceUsers(options: {
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(user)
       .where(where),
   ]);
 
-  const facts = await loadUserFacts(rows.map((r) => r.id));
-  const scim = await accountsManagedByScim();
+  const facts = await loadUserFacts(
+    db,
+    rows.map((r) => r.id),
+  );
+  const scim = await accountsManagedByScim(db);
   return { items: rows.map((r) => toRow(r, facts, scim)), total: totals[0]?.count ?? 0 };
 }
 
 // One account with the projects it can reach. Returns null for an unknown id.
-export async function getInstanceUser(userId: string): Promise<InstanceUserDetail | null> {
+export async function getInstanceUser(db: Db, userId: string): Promise<InstanceUserDetail | null> {
   const rows = await db.select().from(user).where(eq(user.id, userId));
   const row = rows[0];
   if (!row) return null;
 
   const [facts, memberships, ownedWorkspaces] = await Promise.all([
-    loadUserFacts([row.id]),
+    loadUserFacts(db, [row.id]),
     db
       .select({
         projectId: project.id,
@@ -287,7 +294,10 @@ export async function getInstanceUser(userId: string): Promise<InstanceUserDetai
   ]);
   const owned = new Set(ownedWorkspaces.map((w) => w.id));
 
-  const ownerCounts = await countOwnersByProject(memberships.map((m) => m.projectId));
+  const ownerCounts = await countOwnersByProject(
+    db,
+    memberships.map((m) => m.projectId),
+  );
 
   const projects: InstanceUserProject[] = memberships.map((m) => {
     const role = m.role === 'owner' ? 'owner' : 'member';
@@ -305,14 +315,14 @@ export async function getInstanceUser(userId: string): Promise<InstanceUserDetai
     };
   });
 
-  return { ...toRow(row, facts, await accountsManagedByScim()), projects };
+  return { ...toRow(row, facts, await accountsManagedByScim(db)), projects };
 }
 
 // How many owners each of the given projects has, keyed by project id.
-async function countOwnersByProject(projectIds: number[]): Promise<Map<number, number>> {
+async function countOwnersByProject(db: Db, projectIds: number[]): Promise<Map<number, number>> {
   if (projectIds.length === 0) return new Map();
   const rows = await db
-    .select({ projectId: projectMember.projectId, count: sql<number>`count(*)::int` })
+    .select({ projectId: projectMember.projectId, count: sql<number>`count(*)` })
     .from(projectMember)
     .where(and(eq(projectMember.role, 'owner'), inArray(projectMember.projectId, projectIds)))
     .groupBy(projectMember.projectId);
@@ -323,8 +333,8 @@ async function countOwnersByProject(projectIds: number[]): Promise<Map<number, n
 // sessions, accounts, memberships, notifications, preferences) or sets the
 // reference to null (assignee, activity actor, invites), so this is a single
 // delete.
-export async function deleteInstanceUser(userId: string): Promise<void> {
-  await deleteAccount(userId);
+export async function deleteInstanceUser(db: Db, userId: string): Promise<void> {
+  await deleteAccount(db, userId);
 }
 
 // Deactivates or reactivates an account without deleting it, through the same user.active
@@ -332,10 +342,11 @@ export async function deleteInstanceUser(userId: string): Promise<void> {
 // included, which therefore stay and work again once it is reactivated. Its sessions, MCP
 // OAuth tokens and pending invites are dropped. Returns the updated user, or null if gone.
 export async function setInstanceUserActive(
+  db: Db,
   userId: string,
   active: boolean,
 ): Promise<InstanceUserDetail | null> {
-  if (!(await getInstanceUser(userId))) return null;
+  if (!(await getInstanceUser(db, userId))) return null;
   // Marked first, so a sign-in that lands while the revocation runs is refused a session.
   await db.update(user).set({ active }).where(eq(user.id, userId));
   if (!active) {
@@ -347,7 +358,7 @@ export async function setInstanceUserActive(
       .delete(teamInvite)
       .where(and(eq(teamInvite.invitedByUserId, userId), eq(teamInvite.status, 'pending')));
   }
-  return getInstanceUser(userId);
+  return getInstanceUser(db, userId);
 }
 
 // ── Project directory ────────────────────────────────────────────────────────
@@ -412,17 +423,22 @@ export interface InstanceProjectPage {
 // skill library, the configured tools): they belong to the team that owns the project,
 // so two projects of one team report the same number.
 async function countByTeamOfProject(
-  table: PgTable,
-  teamIdColumn: AnyPgColumn,
+  db: Db,
+  table: SQLiteTable,
+  teamIdColumn: AnySQLiteColumn,
   projectIds: number[],
 ): Promise<Map<number, number>> {
-  const rows = await db
-    .select({ projectId: project.id, count: sql<number>`count(${teamIdColumn})::int` })
-    .from(project)
-    .leftJoin(table, eq(teamIdColumn, project.teamId))
-    .where(inArray(project.id, projectIds))
-    .groupBy(project.id);
-  return new Map(rows.map((r) => [r.projectId, r.count]));
+  const counts = new Map<number, number>();
+  for (const slice of chunk(projectIds, 90)) {
+    const rows = await db
+      .select({ projectId: project.id, count: sql<number>`count(${teamIdColumn})` })
+      .from(project)
+      .leftJoin(table, eq(teamIdColumn, project.teamId))
+      .where(inArray(project.id, slice))
+      .groupBy(project.id);
+    for (const r of rows) counts.set(r.projectId, r.count);
+  }
+  return counts;
 }
 
 const countAt = (counts: Map<number, number>, id: number) => counts.get(id) ?? 0;
@@ -430,17 +446,23 @@ const countAt = (counts: Map<number, number>, id: number) => counts.get(id) ?? 0
 // How many rows each of the given owners has in a table that points at them, keyed by
 // the owner id: a project-scoped table by project, a team-scoped one by team.
 async function countByOwner(
-  table: PgTable,
-  ownerIdColumn: AnyPgColumn,
+  db: Db,
+  table: SQLiteTable,
+  ownerIdColumn: AnySQLiteColumn,
   ownerIds: number[],
   extra?: SQL,
 ): Promise<Map<number, number>> {
-  const rows = await db
-    .select({ ownerId: ownerIdColumn, count: sql<number>`count(*)::int` })
-    .from(table)
-    .where(and(inArray(ownerIdColumn, ownerIds), extra))
-    .groupBy(ownerIdColumn);
-  return new Map(rows.map((r) => [r.ownerId as number, r.count]));
+  // D1 binds at most 100 parameters per statement: long owner lists go in slices.
+  const counts = new Map<number, number>();
+  for (const slice of chunk(ownerIds, 90)) {
+    const rows = await db
+      .select({ ownerId: ownerIdColumn, count: sql<number>`count(*)` })
+      .from(table)
+      .where(and(inArray(ownerIdColumn, slice), extra))
+      .groupBy(ownerIdColumn);
+    for (const r of rows) counts.set(r.ownerId as number, r.count);
+  }
+  return counts;
 }
 
 type ProjectFacts = InstanceProjectCounts & { lastActivityAt: string | null };
@@ -460,7 +482,10 @@ const EMPTY_FACTS: ProjectFacts = {
 
 // The counts and the last feed entry for the given projects, each in one grouped
 // query and joined in memory, so the project query stays a plain select.
-async function loadProjectFacts(projectIds: number[]): Promise<(id: number) => ProjectFacts> {
+async function loadProjectFacts(
+  db: Db,
+  projectIds: number[],
+): Promise<(id: number) => ProjectFacts> {
   if (projectIds.length === 0) return () => EMPTY_FACTS;
 
   const [
@@ -475,22 +500,23 @@ async function loadProjectFacts(projectIds: number[]): Promise<(id: number) => P
     tools,
     activityRows,
   ] = await Promise.all([
-    countByOwner(projectMember, projectMember.projectId, projectIds),
-    countByOwner(issue, issue.projectId, projectIds, isNull(issue.archivedAt)),
-    countByOwner(issue, issue.projectId, projectIds, isNotNull(issue.archivedAt)),
-    countByOwner(initiative, initiative.projectId, projectIds),
-    countByOwner(projectDashboard, projectDashboard.projectId, projectIds),
-    countByOwner(projectView, projectView.projectId, projectIds),
+    countByOwner(db, projectMember, projectMember.projectId, projectIds),
+    countByOwner(db, issue, issue.projectId, projectIds, isNull(issue.archivedAt)),
+    countByOwner(db, issue, issue.projectId, projectIds, isNotNull(issue.archivedAt)),
+    countByOwner(db, initiative, initiative.projectId, projectIds),
+    countByOwner(db, projectDashboard, projectDashboard.projectId, projectIds),
+    countByOwner(db, projectView, projectView.projectId, projectIds),
     // An agent belongs to a team and works in the projects it is a member of, so the
     // count per project is its memberships, not its own rows.
     countByOwner(
+      db,
       projectMember,
       projectMember.projectId,
       projectIds,
       sql`exists (select 1 from ${aiAgent} where ${aiAgent.userId} = ${projectMember.userId})`,
     ),
-    countByTeamOfProject(agentSkill, agentSkill.teamId, projectIds),
-    countByTeamOfProject(agentTool, agentTool.teamId, projectIds),
+    countByTeamOfProject(db, agentSkill, agentSkill.teamId, projectIds),
+    countByTeamOfProject(db, agentTool, agentTool.teamId, projectIds),
     // The feed has no project column of its own; it reaches one through its issue.
     // Reduced to the latest per project below, because aggregating in SQL would
     // return the max as a driver-formatted string, not a Date.
@@ -540,14 +566,17 @@ function toProjectRow(r: ProjectRow, facts: ProjectFacts): InstanceProjectRow {
 
 // One page of projects, newest first. `search` matches the key or the name and runs
 // in SQL, so the page window and the total count agree.
-export async function listInstanceProjects(options: {
-  search?: string;
-  limit: number;
-  offset: number;
-}): Promise<InstanceProjectPage> {
+export async function listInstanceProjects(
+  db: Db,
+  options: {
+    search?: string;
+    limit: number;
+    offset: number;
+  },
+): Promise<InstanceProjectPage> {
   const term = options.search?.trim();
   const where = term
-    ? or(ilike(project.key, `%${term}%`), ilike(project.name, `%${term}%`))
+    ? or(like(project.key, `%${term}%`), like(project.name, `%${term}%`))
     : undefined;
 
   const [rows, totals] = await Promise.all([
@@ -559,27 +588,33 @@ export async function listInstanceProjects(options: {
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(project)
       .where(where),
   ]);
 
-  const facts = await loadProjectFacts(rows.map((r) => r.id));
+  const facts = await loadProjectFacts(
+    db,
+    rows.map((r) => r.id),
+  );
   const items = rows.map((r) => toProjectRow(r, facts(r.id)));
   return { items, total: totals[0]?.count ?? 0 };
 }
 
 // One project with its members and the access each membership resolves to. Returns
 // null for an unknown id.
-export async function getInstanceProject(projectId: number): Promise<InstanceProjectDetail | null> {
+export async function getInstanceProject(
+  db: Db,
+  projectId: number,
+): Promise<InstanceProjectDetail | null> {
   const rows = await db.select().from(project).where(eq(project.id, projectId));
   const row = rows[0];
   if (!row) return null;
 
   const [facts, memberships, contexts] = await Promise.all([
-    loadProjectFacts([row.id]),
-    listAllMembers(projectId),
-    listMemberContexts(projectId),
+    loadProjectFacts(db, [row.id]),
+    listAllMembers(db, projectId),
+    listMemberContexts(db, projectId),
   ]);
 
   const members: InstanceProjectMember[] = memberships.flatMap((m) => {
@@ -680,24 +715,27 @@ const EMPTY_TEAM_COUNTS: InstanceTeamCounts = {
 
 // The counts for the given teams, each in one grouped query and joined in memory,
 // so the team query stays a plain select.
-async function loadTeamCounts(teamIds: number[]): Promise<(id: number) => InstanceTeamCounts> {
+async function loadTeamCounts(
+  db: Db,
+  teamIds: number[],
+): Promise<(id: number) => InstanceTeamCounts> {
   if (teamIds.length === 0) return () => EMPTY_TEAM_COUNTS;
 
   const [members, projects, issues, agents, skills, tools, roles] = await Promise.all([
-    countByOwner(teamMember, teamMember.teamId, teamIds),
-    countByOwner(project, project.teamId, teamIds),
+    countByOwner(db, teamMember, teamMember.teamId, teamIds),
+    countByOwner(db, project, project.teamId, teamIds),
     // Issues have no team column; they reach one through their project.
     db
-      .select({ teamId: project.teamId, count: sql<number>`count(*)::int` })
+      .select({ teamId: project.teamId, count: sql<number>`count(*)` })
       .from(issue)
       .innerJoin(project, eq(project.id, issue.projectId))
       .where(and(inArray(project.teamId, teamIds), isNull(issue.archivedAt)))
       .groupBy(project.teamId)
       .then((rows) => new Map(rows.map((r) => [r.teamId, r.count]))),
-    countByOwner(aiAgent, aiAgent.teamId, teamIds),
-    countByOwner(agentSkill, agentSkill.teamId, teamIds),
-    countByOwner(agentTool, agentTool.teamId, teamIds),
-    countByOwner(teamRole, teamRole.teamId, teamIds),
+    countByOwner(db, aiAgent, aiAgent.teamId, teamIds),
+    countByOwner(db, agentSkill, agentSkill.teamId, teamIds),
+    countByOwner(db, agentTool, agentTool.teamId, teamIds),
+    countByOwner(db, teamRole, teamRole.teamId, teamIds),
   ]);
 
   return (id) => ({
@@ -725,13 +763,16 @@ function toTeamRow(r: TeamRow, counts: InstanceTeamCounts): InstanceTeamRow {
 
 // One page of teams, newest first. `search` matches the name and runs in SQL, so the
 // page window and the total count agree.
-export async function listInstanceTeams(options: {
-  search?: string;
-  limit: number;
-  offset: number;
-}): Promise<InstanceTeamPage> {
+export async function listInstanceTeams(
+  db: Db,
+  options: {
+    search?: string;
+    limit: number;
+    offset: number;
+  },
+): Promise<InstanceTeamPage> {
   const term = options.search?.trim();
-  const where = term ? ilike(team.name, `%${term}%`) : undefined;
+  const where = term ? like(team.name, `%${term}%`) : undefined;
 
   const [rows, totals] = await Promise.all([
     db
@@ -742,35 +783,39 @@ export async function listInstanceTeams(options: {
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(team)
       .where(where),
   ]);
 
-  const counts = await loadTeamCounts(rows.map((r) => r.id));
+  const counts = await loadTeamCounts(
+    db,
+    rows.map((r) => r.id),
+  );
   return { items: rows.map((r) => toTeamRow(r, counts(r.id))), total: totals[0]?.count ?? 0 };
 }
 
 // One team with what it holds. Its projects and its members are their own paged
 // routes, so a large team is never loaded whole. Returns null for an unknown id.
-export async function getInstanceTeam(teamId: number): Promise<InstanceTeamRow | null> {
+export async function getInstanceTeam(db: Db, teamId: number): Promise<InstanceTeamRow | null> {
   const rows = await db.select().from(team).where(eq(team.id, teamId));
   const row = rows[0];
   if (!row) return null;
 
-  const counts = await loadTeamCounts([row.id]);
+  const counts = await loadTeamCounts(db, [row.id]);
   return toTeamRow(row, counts(row.id));
 }
 
 // One page of the projects a team owns, by key. `search` matches the key or the name.
 export async function listInstanceTeamProjects(
+  db: Db,
   teamId: number,
   options: { search?: string; limit: number; offset: number },
 ): Promise<InstanceTeamProjectPage> {
   const term = options.search?.trim();
   const where = and(
     eq(project.teamId, teamId),
-    term ? or(ilike(project.key, `%${term}%`), ilike(project.name, `%${term}%`)) : undefined,
+    term ? or(like(project.key, `%${term}%`), like(project.name, `%${term}%`)) : undefined,
   );
 
   const [rows, totals] = await Promise.all([
@@ -781,8 +826,8 @@ export async function listInstanceTeamProjects(
         name: project.name,
         mcpEnabled: project.mcpEnabled,
         createdAt: project.createdAt,
-        memberCount: sql<number>`count(distinct ${projectMember.userId})::int`,
-        issueCount: sql<number>`count(distinct ${issue.id})::int`,
+        memberCount: sql<number>`count(distinct ${projectMember.userId})`,
+        issueCount: sql<number>`count(distinct ${issue.id})`,
       })
       .from(project)
       .leftJoin(projectMember, eq(projectMember.projectId, project.id))
@@ -793,7 +838,7 @@ export async function listInstanceTeamProjects(
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(project)
       .where(where),
   ]);
@@ -807,13 +852,14 @@ export async function listInstanceTeamProjects(
 // One page of the team's members, people and agents alike, by name. `search` matches
 // the name or the address.
 export async function listInstanceTeamMembers(
+  db: Db,
   teamId: number,
   options: { search?: string; limit: number; offset: number },
 ): Promise<InstanceTeamMemberPage> {
   const term = options.search?.trim();
   const where = and(
     eq(teamMember.teamId, teamId),
-    term ? or(ilike(user.name, `%${term}%`), ilike(user.email, `%${term}%`)) : undefined,
+    term ? or(like(user.name, `%${term}%`), like(user.email, `%${term}%`)) : undefined,
   );
 
   const [rows, totals] = await Promise.all([
@@ -835,7 +881,7 @@ export async function listInstanceTeamMembers(
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(teamMember)
       .innerJoin(user, eq(user.id, teamMember.userId))
       .where(where),
@@ -857,12 +903,15 @@ export async function listInstanceTeamMembers(
 
 // Marks the account's email address as confirmed and returns the updated user.
 // Returns null for an unknown id.
-export async function verifyInstanceUserEmail(userId: string): Promise<InstanceUserDetail | null> {
+export async function verifyInstanceUserEmail(
+  db: Db,
+  userId: string,
+): Promise<InstanceUserDetail | null> {
   const updated = await db
     .update(user)
     .set({ emailVerified: true })
     .where(eq(user.id, userId))
     .returning({ id: user.id });
   if (updated.length === 0) return null;
-  return getInstanceUser(userId);
+  return getInstanceUser(db, userId);
 }

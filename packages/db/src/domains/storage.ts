@@ -1,24 +1,14 @@
-import { eq, sql } from 'drizzle-orm';
-import { db, type DbExecutor } from '../client';
+import { eq, sql, type SQL } from 'drizzle-orm';
+import type { Db, DbExecutor } from '../client';
 import { getSetting } from '../settings';
-import {
-  chatAttachment,
-  documentAsset,
-  initiative,
-  initiativeAttachment,
-  issue,
-  issueAttachment,
-  project,
-  projectDocument,
-  team,
-} from '../schema';
+import { project } from '../schema';
 
 // Instance-wide upload limits (app_setting key 'storage'). Read by the api (every
 // upload path, and the settings/god UI) and by the worker (an imported Plane
 // attachment is checked against the same limits an interactive upload would be).
 // The api owns the write (modules/settings/service.ts's setStorageSettings).
 //
-// The row is seeded by migration 0046, so the limits are set in the database and
+// The row is seeded by drizzle-d1/0002_seed.sql, so the limits are set in the database and
 // edited in god mode — there is no env var for them. defaultStorageSettings() is
 // the fallback for a missing row and the source of the seeded values; keep the two
 // in sync.
@@ -69,8 +59,8 @@ export function defaultStorageSettings(): StorageSettings {
   };
 }
 
-export async function getStorageSettings(): Promise<StorageSettings> {
-  const stored = await getSetting<Partial<StorageSettings>>(STORAGE_SETTING_KEY);
+export async function getStorageSettings(db: Db): Promise<StorageSettings> {
+  const stored = await getSetting<Partial<StorageSettings>>(db, STORAGE_SETTING_KEY);
   // Merge over the default so a value written before a field was added stays valid.
   return { ...defaultStorageSettings(), ...(stored ?? {}) };
 }
@@ -85,67 +75,55 @@ export function mimeAllowed(contentType: string, allowed: string[]): boolean {
   );
 }
 
-function num(value: unknown): number {
-  return Number(value ?? 0);
+// One row (`size`) per attachment of every kind that counts against a quota — issue, chat,
+// document and initiative attachments — of one project or of every project of one workspace.
+// A single UNION ALL, so the total costs one D1 round trip instead of four.
+function attachmentSizes(scope: 'project' | 'workspace', id: number): SQL {
+  const inScope = (projectColumn: string): SQL =>
+    scope === 'project'
+      ? sql`${sql.raw(projectColumn)} = ${id}`
+      : sql`${sql.raw(projectColumn)} IN (
+          SELECT p.id FROM project p JOIN team t ON t.id = p.team_id WHERE t.workspace_id = ${id})`;
+  return sql`
+    SELECT a.size_bytes AS size FROM issue_attachment a JOIN issue i ON i.id = a.issue_id
+      WHERE ${inScope('i.project_id')}
+    UNION ALL
+    SELECT a.size_bytes FROM chat_attachment a WHERE ${inScope('a.project_id')}
+    UNION ALL
+    SELECT a.size_bytes FROM document_asset a JOIN project_document d ON d.id = a.document_id
+      WHERE ${inScope('d.project_id')}
+    UNION ALL
+    SELECT a.size_bytes FROM initiative_attachment a JOIN initiative n ON n.id = a.initiative_id
+      WHERE ${inScope('n.project_id')}`;
 }
 
-const ATTACHMENT_QUOTA_LOCK_NAMESPACE = 1_145_390_932;
-
-// Serializes a project's quota check against a concurrent one — two uploads (or
-// an upload and an import) racing the same read-then-insert could otherwise
-// both pass the check and land over quota together. Held for the rest of the
-// caller's transaction (pg_advisory_xact_lock), so it must be called inside one.
-export async function lockAttachmentStorage(
+async function storedBytes(
   executor: DbExecutor,
-  projectId: number,
-): Promise<void> {
-  await executor.execute(
-    sql`select pg_advisory_xact_lock(${ATTACHMENT_QUOTA_LOCK_NAMESPACE}, ${projectId})`,
+  scope: 'project' | 'workspace',
+  id: number,
+): Promise<number> {
+  const rows = await executor.all<{ total: number | null }>(
+    sql`SELECT COALESCE(SUM(size), 0) AS total FROM (${attachmentSizes(scope, id)})`,
   );
+  return Number(rows[0]?.total ?? 0);
 }
 
 // Total attachment bytes a project has stored, across every kind that counts
 // against its quota (issue, chat, document, initiative attachments) — what a new
 // upload's size is checked against before it is allowed, and what a worker
-// importing issue attachments checks against too. Runs against either the plain
-// db or a transaction: a caller commonly checks capacity and inserts in the same
-// transaction, so both must observe the same snapshot.
-export async function projectStoredBytes(
-  projectId: number,
-  executor: DbExecutor = db,
-): Promise<number> {
-  const issues = await executor
-    .select({ total: sql<string>`coalesce(sum(${issueAttachment.sizeBytes}), 0)` })
-    .from(issueAttachment)
-    .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
-    .where(eq(issue.projectId, projectId));
-  const chats = await executor
-    .select({ total: sql<string>`coalesce(sum(${chatAttachment.sizeBytes}), 0)` })
-    .from(chatAttachment)
-    .where(eq(chatAttachment.projectId, projectId));
-  const documents = await executor
-    .select({ total: sql<string>`coalesce(sum(${documentAsset.sizeBytes}), 0)` })
-    .from(documentAsset)
-    .innerJoin(projectDocument, eq(projectDocument.id, documentAsset.documentId))
-    .where(eq(projectDocument.projectId, projectId));
-  const initiatives = await executor
-    .select({ total: sql<string>`coalesce(sum(${initiativeAttachment.sizeBytes}), 0)` })
-    .from(initiativeAttachment)
-    .innerJoin(initiative, eq(initiative.id, initiativeAttachment.initiativeId))
-    .where(eq(initiative.projectId, projectId));
-  return (
-    num(issues[0]?.total) +
-    num(chats[0]?.total) +
-    num(documents[0]?.total) +
-    num(initiatives[0]?.total)
-  );
+// importing issue attachments checks against too. One statement. On its own the check is
+// advisory: D1 has no row or advisory lock to serialize it against a concurrent insert, so
+// an upload path that must enforce the quota calls reserveStorage, which checks and inserts
+// in one statement.
+export async function projectStoredBytes(executor: DbExecutor, projectId: number): Promise<number> {
+  return storedBytes(executor, 'project', projectId);
 }
 
 // The project's team, read through the same executor a quota check runs on — a
 // copy checks the quota of a project its own transaction has not committed yet.
 export async function projectTeamId(
+  executor: DbExecutor,
   projectId: number,
-  executor: DbExecutor = db,
 ): Promise<number | null> {
   const [owner] = await executor
     .select({ teamId: project.teamId })
@@ -157,40 +135,85 @@ export async function projectTeamId(
 // The same total as projectStoredBytes, summed across every project of one workspace —
 // what a workspace-wide storage ceiling is checked against.
 export async function workspaceStoredBytes(
+  executor: DbExecutor,
   workspaceId: number,
-  executor: DbExecutor = db,
 ): Promise<number> {
-  const issues = await executor
-    .select({ total: sql<string>`coalesce(sum(${issueAttachment.sizeBytes}), 0)` })
-    .from(issueAttachment)
-    .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
-    .innerJoin(project, eq(project.id, issue.projectId))
-    .innerJoin(team, eq(team.id, project.teamId))
-    .where(eq(team.workspaceId, workspaceId));
-  const chats = await executor
-    .select({ total: sql<string>`coalesce(sum(${chatAttachment.sizeBytes}), 0)` })
-    .from(chatAttachment)
-    .innerJoin(project, eq(project.id, chatAttachment.projectId))
-    .innerJoin(team, eq(team.id, project.teamId))
-    .where(eq(team.workspaceId, workspaceId));
-  const documents = await executor
-    .select({ total: sql<string>`coalesce(sum(${documentAsset.sizeBytes}), 0)` })
-    .from(documentAsset)
-    .innerJoin(projectDocument, eq(projectDocument.id, documentAsset.documentId))
-    .innerJoin(project, eq(project.id, projectDocument.projectId))
-    .innerJoin(team, eq(team.id, project.teamId))
-    .where(eq(team.workspaceId, workspaceId));
-  const initiatives = await executor
-    .select({ total: sql<string>`coalesce(sum(${initiativeAttachment.sizeBytes}), 0)` })
-    .from(initiativeAttachment)
-    .innerJoin(initiative, eq(initiative.id, initiativeAttachment.initiativeId))
-    .innerJoin(project, eq(project.id, initiative.projectId))
-    .innerJoin(team, eq(team.id, project.teamId))
-    .where(eq(team.workspaceId, workspaceId));
-  return (
-    num(issues[0]?.total) +
-    num(chats[0]?.total) +
-    num(documents[0]?.total) +
-    num(initiatives[0]?.total)
-  );
+  return storedBytes(executor, 'workspace', workspaceId);
+}
+
+export type AttachmentKind = 'issue' | 'chat' | 'document' | 'initiative';
+
+export interface ReserveStorageInput {
+  kind: AttachmentKind;
+  // The project whose quota the upload counts against.
+  projectId: number;
+  // The row the attachment hangs on: the issue, document or initiative id. A chat attachment
+  // belongs to the project itself, so `ownerId` is ignored for kind 'chat'.
+  ownerId: number;
+  s3Key: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  // Who uploaded it. Stored for 'chat' and 'document'; the other two tables have no column.
+  uploadedByUserId?: string | null;
+  // Allowed total for the project, in bytes. 0 or less means unlimited.
+  quotaBytes: number;
+  publicId?: string;
+}
+
+const RESERVE_TARGETS: Record<
+  AttachmentKind,
+  { table: string; ownerColumn: string; hasUploader: boolean }
+> = {
+  issue: { table: 'issue_attachment', ownerColumn: 'issue_id', hasUploader: false },
+  chat: { table: 'chat_attachment', ownerColumn: 'project_id', hasUploader: true },
+  document: { table: 'document_asset', ownerColumn: 'document_id', hasUploader: true },
+  initiative: { table: 'initiative_attachment', ownerColumn: 'initiative_id', hasUploader: false },
+};
+
+// The owner row must exist and belong to the project the quota is charged to.
+function ownerInProject(kind: AttachmentKind, ownerId: number, projectId: number): SQL {
+  switch (kind) {
+    case 'issue':
+      return sql`SELECT 1 FROM issue WHERE id = ${ownerId} AND project_id = ${projectId}`;
+    case 'document':
+      return sql`SELECT 1 FROM project_document WHERE id = ${ownerId} AND project_id = ${projectId}`;
+    case 'initiative':
+      return sql`SELECT 1 FROM initiative WHERE id = ${ownerId} AND project_id = ${projectId}`;
+    case 'chat':
+      return sql`SELECT 1 FROM project WHERE id = ${projectId}`;
+  }
+}
+
+// Inserts the attachment row only if the project stays within its quota, check and insert in
+// ONE statement (INSERT ... SELECT ... WHERE used + size <= quota). D1 runs statements one at a
+// time, so N concurrent uploads cannot all pass a stale check the way a separate
+// projectStoredBytes + insert could: the ones past the quota insert nothing. It also refuses an
+// owner (issue, document, initiative) that is not in `projectId`, so a caller cannot charge
+// another project's quota. Returns the new row, or null when the quota or the owner refuses it.
+// The row is written before the object, so a failed object-store upload must delete it again.
+export async function reserveStorage(
+  executor: DbExecutor,
+  input: ReserveStorageInput,
+): Promise<{ id: number; publicId: string } | null> {
+  if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 0) {
+    throw new Error('reserveStorage: sizeBytes must be a non-negative integer');
+  }
+  const target = RESERVE_TARGETS[input.kind];
+  const publicId = input.publicId ?? crypto.randomUUID();
+  const ownerId = input.kind === 'chat' ? input.projectId : input.ownerId;
+  const uploaderColumn = target.hasUploader ? sql.raw(', uploaded_by_user_id') : sql.raw('');
+  const uploaderValue = target.hasUploader ? sql`, ${input.uploadedByUserId ?? null}` : sql.raw('');
+  const withinQuota =
+    input.quotaBytes > 0
+      ? sql` AND (SELECT COALESCE(SUM(size), 0) FROM (${attachmentSizes('project', input.projectId)})) + ${input.sizeBytes} <= ${input.quotaBytes}`
+      : sql.raw('');
+  const rows = await executor.all<{ id: number; public_id: string }>(sql`
+    INSERT INTO ${sql.raw(target.table)}
+      (public_id, ${sql.raw(target.ownerColumn)}, s3_key, filename, content_type, size_bytes${uploaderColumn})
+    SELECT ${publicId}, ${ownerId}, ${input.s3Key}, ${input.filename}, ${input.contentType}, ${input.sizeBytes}${uploaderValue}
+    WHERE EXISTS (${ownerInProject(input.kind, ownerId, input.projectId)})${withinQuota}
+    RETURNING id, public_id`);
+  const row = rows[0];
+  return row ? { id: row.id, publicId: row.public_id } : null;
 }

@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { guards, entityGuard } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { HttpError } from '#shared/lib';
 import { assertPublicHttpUrl } from '#shared/net';
 import { mcpTool } from '#mcp/generate';
@@ -25,18 +26,19 @@ import {
 
 export const webhookRoutes = new Elysia({ name: 'webhooks', detail: { tags: ['Webhooks'] } })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
   .macro({
     webhook: entityGuard(
       'webhooks',
       'Webhook not found',
-      async (p) => (await getWebhook(Number(p.webhookId)))?.projectId ?? null,
+      async (p, { db }) => (await getWebhook(db, Number(p.webhookId)))?.projectId ?? null,
     ),
   })
   .get(
     '/projects/:projectKey/webhooks',
-    async ({ project }) => {
-      return listWebhooks(project.id);
+    async ({ db, project }) => {
+      return listWebhooks(db, project.id);
     },
     {
       permission: ['webhooks', 'read'],
@@ -47,10 +49,10 @@ export const webhookRoutes = new Elysia({ name: 'webhooks', detail: { tags: ['We
 
   .post(
     '/projects/:projectKey/webhooks',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       await assertPublicHttpUrl(body.url);
       set.status = 201;
-      return createWebhook({
+      return createWebhook(db, {
         projectId: project.id,
         url: body.url,
         events: body.events,
@@ -67,9 +69,9 @@ export const webhookRoutes = new Elysia({ name: 'webhooks', detail: { tags: ['We
 
   .patch(
     '/webhooks/:webhookId',
-    async ({ params, body }) => {
+    async ({ db, params, body }) => {
       if (body.url !== undefined) await assertPublicHttpUrl(body.url);
-      const updated = await updateWebhook(params.webhookId, body);
+      const updated = await updateWebhook(db, params.webhookId, body);
       if (!updated) throw new HttpError(404, 'Webhook not found');
       return updated;
     },
@@ -84,8 +86,8 @@ export const webhookRoutes = new Elysia({ name: 'webhooks', detail: { tags: ['We
 
   .delete(
     '/webhooks/:webhookId',
-    async ({ params }) => {
-      await deleteWebhook(params.webhookId);
+    async ({ db, params }) => {
+      await deleteWebhook(db, params.webhookId);
       return noContent();
     },
     {
@@ -98,8 +100,11 @@ export const webhookRoutes = new Elysia({ name: 'webhooks', detail: { tags: ['We
 
   .get(
     '/webhooks/:webhookId/deliveries',
-    async ({ params, query }) => {
-      return listWebhookDeliveries(params.webhookId, { before: query.before, limit: query.limit });
+    async ({ db, params, query }) => {
+      return listWebhookDeliveries(db, params.webhookId, {
+        before: query.before,
+        limit: query.limit,
+      });
     },
     {
       params: webhookParams,

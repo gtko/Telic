@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeHtmlString } from '@/lib/sanitize';
 import JSZip from 'jszip';
 import { transliterate } from '@/utils/transliterate';
 
@@ -48,7 +48,7 @@ const PUBLIC_ID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 
 function renderExportMarkdown(value: string): string {
   const html = marked.parse(value, { async: false, breaks: true }) as string;
-  return DOMPurify.sanitize(html);
+  return sanitizeHtmlString(html);
 }
 
 function escapeHtml(value: string): string {
@@ -87,7 +87,7 @@ export function documentExportBody(
   <title>${escapeHtml(title.trim() || 'Untitled')}</title>
   <style>body{max-width:760px;margin:64px auto;padding:0 24px;color:#171717;font:16px/1.65 system-ui,sans-serif}h1,h2,h3{line-height:1.2}pre{overflow:auto;padding:16px;background:#f5f5f5;border-radius:8px}code{font-family:ui-monospace,monospace}img{max-width:100%}blockquote{margin-inline:0;padding-inline-start:16px;border-inline-start:3px solid #d4d4d4;color:#525252}</style>
 </head>
-<body>${heading}${richHtml ? DOMPurify.sanitize(richHtml) : renderExportMarkdown(content)}</body>
+<body>${heading}${richHtml ? sanitizeHtmlString(richHtml) : renderExportMarkdown(content)}</body>
 </html>`;
 }
 

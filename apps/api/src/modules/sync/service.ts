@@ -1,4 +1,4 @@
-import { db, project, projectMember, teamRole, revision } from '@repo/db';
+import { project, projectMember, teamRole, revision, type Db } from '@repo/db';
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import { toMemberContext, type MemberRole } from '#modules/members/service';
 import { workspaceGrants } from '#modules/workspaces/service';
@@ -44,11 +44,12 @@ export interface ScopeRead {
 // unchanged. A scope whose resource their access may not read is dropped the same way,
 // so it also reads as unchanged.
 export async function readRevs(
+  db: Db,
   wanted: ScopeRead[],
   userId: string,
 ): Promise<Record<string, string>> {
   if (wanted.length === 0) return {};
-  const grants = await workspaceGrants(userId);
+  const grants = await workspaceGrants(db, userId);
   const grantedTeams = [...grants.keys()];
   const rows = await db
     .select({

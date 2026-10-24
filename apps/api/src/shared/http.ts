@@ -11,24 +11,33 @@ export function sseFrame(data: unknown, id?: number): string {
 
 // Streams frames as Server-Sent Events. Returned as a raw Response, so a route serving
 // one declares `200: t.Any()` — it is not a JSON shape the validator can describe.
+//
+// The stream is pull-based: the next frame is requested only when the client has room for
+// it, and a client that goes away cancels the stream, which closes the source iterator so
+// whatever it polls stops. A Worker has no process to leak into, but an invocation that
+// keeps polling D1 for a closed connection is billed all the same.
 export function sseResponse(frames: AsyncIterable<string>): Response {
   const encoder = new TextEncoder();
+  const iterator = frames[Symbol.asyncIterator]();
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      for await (const frame of frames) {
-        // The consumer cancelled (e.g. closed the chat): stop consuming the source
-        // instead of enqueuing onto a closed controller.
-        if (controller.desiredSize === null) return;
-        controller.enqueue(encoder.encode(frame));
+    async pull(controller) {
+      try {
+        const next = await iterator.next();
+        if (next.done) controller.close();
+        else controller.enqueue(encoder.encode(next.value));
+      } catch (error) {
+        controller.error(error);
       }
-      controller.close();
+    },
+    async cancel() {
+      await iterator.return?.();
     },
   });
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+      // no-transform keeps an intermediary from compressing (and so buffering) the stream.
+      'Cache-Control': 'no-cache, no-transform',
       // A proxy that buffers the response would hold it back until it ends, which is
       // the one thing an event stream exists to avoid.
       'X-Accel-Buffering': 'no',

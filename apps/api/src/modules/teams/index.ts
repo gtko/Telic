@@ -1,3 +1,6 @@
+import { agentRuntime } from '#modules/agents/core/runtime/bindings';
+import { dbContext } from '#shared/db-context';
+import type { Db } from '@repo/db';
 import { Elysia, t } from 'elysia';
 import { assertProjectWritable, requireUser } from '#shared/access';
 import { authContext } from '#shared/auth-context';
@@ -65,20 +68,22 @@ import {
 
 // The write routes act on a project the team owns; one of another team answers 404
 // rather than being changed through this team.
-async function requireTeamProject(teamId: number, projectId: number): Promise<void> {
-  if (!(await teamOwnsProject(teamId, projectId))) throw new HttpError(404, 'Project not found');
+async function requireTeamProject(db: Db, teamId: number, projectId: number): Promise<void> {
+  if (!(await teamOwnsProject(db, teamId, projectId)))
+    throw new HttpError(404, 'Project not found');
 }
 
 // The teams the session user belongs to. A team owns projects and its own member
 // list. Only the owner of a workspace creates a team in it, and becomes the team's owner.
 export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] } })
+  .use(dbContext)
   .use(authContext)
   .use(guards)
 
   .get(
     '/teams',
-    ({ user, request }) =>
-      listTeams(requireUser(user).id, { mcpOnly: isMcpRequest(request.headers) }),
+    ({ db, user, request }) =>
+      listTeams(db, requireUser(user).id, { mcpOnly: isMcpRequest(request.headers) }),
     {
       response: { 200: TeamListResponse, ...errors(401) },
       detail: {
@@ -94,8 +99,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .get(
     '/teams/:teamId',
-    async ({ membership }) => {
-      const team = await getTeam(membership.teamId, membership.userId);
+    async ({ db, membership }) => {
+      const team = await getTeam(db, membership.teamId, membership.userId);
       if (!team) throw new HttpError(404, 'Team not found');
       return team;
     },
@@ -115,9 +120,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .get(
     '/teams/:teamId/members',
-    ({ membership, query }) =>
+    ({ db, membership, query }) =>
       paginate(query, (window) =>
-        listTeamMembers(membership.teamId, {
+        listTeamMembers(db, membership.teamId, {
           search: query.search,
           kind: query.kind,
           ...window,
@@ -140,9 +145,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .get(
     '/teams/:teamId/projects',
-    ({ membership, query }) =>
+    ({ db, membership, query }) =>
       paginate(query, (window) =>
-        listTeamProjects(membership.teamId, membership.userId, membership.role, {
+        listTeamProjects(db, membership.teamId, membership.userId, membership.role, {
           search: query.search,
           ...window,
         }),
@@ -166,8 +171,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
   // project of the team rather than on a page of them.
   .get(
     '/teams/:teamId/projects/options',
-    ({ membership }) =>
-      listTeamProjectOptions(membership.teamId, membership.userId, membership.role),
+    ({ db, membership }) =>
+      listTeamProjectOptions(db, membership.teamId, membership.userId, membership.role),
     {
       teamMember: true,
       params: teamParams,
@@ -181,8 +186,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .get(
     '/teams/:teamId/projects/:projectId',
-    async ({ membership, params }) => {
+    async ({ db, membership, params }) => {
       const detail = await getTeamProject(
+        db,
         membership.teamId,
         params.projectId,
         membership.userId,
@@ -205,9 +211,10 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .get(
     '/teams/:teamId/projects/:projectId/members',
-    ({ membership, params, query }) =>
+    ({ db, membership, params, query }) =>
       paginate(query, async (window) => {
         const page = await listTeamProjectMembers(
+          db,
           membership.teamId,
           params.projectId,
           membership.userId,
@@ -237,22 +244,26 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
   // that reach covers. Written by an owner or a manager, who run the team; the current
   // state is read off the team list and its projects, which both carry it. Not an MCP
   // tool: it governs MCP access, so an agent must not change it.
-  .patch('/teams/:teamId/mcp', ({ body, membership }) => setTeamMcp(membership.teamId, body), {
-    teamManager: true,
-    params: teamParams,
-    body: updateTeamMcpBody,
-    response: { 200: TeamMcpResponse, ...errors(400, 401, 403, 404) },
-    detail: {
-      summary: "Update a team's MCP settings",
-      description:
-        'Switch MCP on or off for the team, and set which of its projects the reach covers. ' +
-        'Each field is optional; a project of another team is ignored.',
+  .patch(
+    '/teams/:teamId/mcp',
+    ({ db, body, membership }) => setTeamMcp(db, membership.teamId, body),
+    {
+      teamManager: true,
+      params: teamParams,
+      body: updateTeamMcpBody,
+      response: { 200: TeamMcpResponse, ...errors(400, 401, 403, 404) },
+      detail: {
+        summary: "Update a team's MCP settings",
+        description:
+          'Switch MCP on or off for the team, and set which of its projects the reach covers. ' +
+          'Each field is optional; a project of another team is ignored.',
+      },
     },
-  })
+  )
 
   .get(
     '/teams/:teamId/project-defaults',
-    ({ membership }) => getTeamProjectDefaults(membership.teamId),
+    ({ db, membership }) => getTeamProjectDefaults(db, membership.teamId),
     {
       teamMember: true,
       params: teamParams,
@@ -263,7 +274,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .patch(
     '/teams/:teamId/project-defaults',
-    ({ body, membership }) => setTeamProjectDefaults(membership.teamId, body.defaultAgentIds),
+    ({ db, body, membership }) =>
+      setTeamProjectDefaults(db, membership.teamId, body.defaultAgentIds),
     {
       teamManager: true,
       params: teamParams,
@@ -275,11 +287,11 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams',
-    async ({ body, user, set }) => {
+    async ({ db, body, user, set }) => {
       const name = body.name.trim();
       if (!name) throw new HttpError(400, 'Team name is required');
       set.status = 201;
-      return createTeam(name, body.slug, requireUser(user).id, body.workspaceId);
+      return createTeam(db, name, body.slug, requireUser(user).id, body.workspaceId);
     },
     {
       body: createTeamBody,
@@ -295,10 +307,10 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .patch(
     '/teams/:teamId',
-    async ({ body, membership }) => {
+    async ({ db, body, membership }) => {
       const name = body.name?.trim();
       if (name === '') throw new HttpError(400, 'Team name is required');
-      return updateTeam(membership.teamId, { name, slug: body.slug }, membership.userId);
+      return updateTeam(db, membership.teamId, { name, slug: body.slug }, membership.userId);
     },
     {
       teamOwner: true,
@@ -314,8 +326,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .delete(
     '/teams/:teamId',
-    async ({ membership }) => {
-      await deleteTeam(membership.teamId);
+    async ({ db, membership }) => {
+      await deleteTeam(db, membership.teamId);
       return noContent();
     },
     {
@@ -334,9 +346,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams/:teamId/projects',
-    async ({ body, membership, set }) => {
+    async ({ db, body, membership, set }) => {
       set.status = 201;
-      return createProject(body, membership.userId, membership.teamId);
+      return createProject(db, body, membership.userId, membership.teamId);
     },
     {
       teamManager: true,
@@ -358,11 +370,19 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams/:teamId/projects/:projectId/copy',
-    async ({ body, membership, params, set }) => {
-      await requireTeamProject(membership.teamId, params.projectId);
+    async ({ db, env, body, membership, params, set }) => {
+      await requireTeamProject(db, membership.teamId, params.projectId);
       const { include, ...meta } = body;
       set.status = 201;
-      return copyProject(params.projectId, meta, membership.userId, membership.teamId, include);
+      return copyProject(
+        db,
+        env.BUCKET,
+        params.projectId,
+        meta,
+        membership.userId,
+        membership.teamId,
+        include,
+      );
     },
     {
       teamManager: true,
@@ -381,10 +401,10 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .patch(
     '/teams/:teamId/projects/:projectId',
-    async ({ body, membership, params, request }) => {
-      await requireTeamProject(membership.teamId, params.projectId);
-      await assertProjectWritable(params.projectId, request.method);
-      const updated = await updateProject(params.projectId, body);
+    async ({ db, body, membership, params, request }) => {
+      await requireTeamProject(db, membership.teamId, params.projectId);
+      await assertProjectWritable(db, params.projectId, request.method);
+      const updated = await updateProject(db, params.projectId, body);
       if (!updated) throw new HttpError(404, 'Project not found');
       return updated;
     },
@@ -405,9 +425,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams/:teamId/projects/:projectId/archive',
-    async ({ membership, params }) => {
-      await requireTeamProject(membership.teamId, params.projectId);
-      const updated = await setProjectArchived(params.projectId, true);
+    async ({ db, membership, params }) => {
+      await requireTeamProject(db, membership.teamId, params.projectId);
+      const updated = await setProjectArchived(db, params.projectId, true);
       if (!updated) throw new HttpError(404, 'Project not found');
       return updated;
     },
@@ -427,9 +447,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams/:teamId/projects/:projectId/restore',
-    async ({ membership, params }) => {
-      await requireTeamProject(membership.teamId, params.projectId);
-      const updated = await setProjectArchived(params.projectId, false);
+    async ({ db, membership, params }) => {
+      await requireTeamProject(db, membership.teamId, params.projectId);
+      const updated = await setProjectArchived(db, params.projectId, false);
       if (!updated) throw new HttpError(404, 'Project not found');
       return updated;
     },
@@ -443,9 +463,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .delete(
     '/teams/:teamId/projects/:projectId',
-    async ({ membership, params }) => {
-      await requireTeamProject(membership.teamId, params.projectId);
-      await deleteProject(params.projectId);
+    async ({ db, env, auth, membership, params }) => {
+      await requireTeamProject(db, membership.teamId, params.projectId);
+      await deleteProject(agentRuntime(env, auth), params.projectId);
       return noContent();
     },
     {
@@ -464,8 +484,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
   // team; an agent's rank is set with the agent, not here.
   .patch(
     '/teams/:teamId/members/:userId',
-    async ({ body, membership, params }) => {
-      await setTeamMemberRole(membership.teamId, membership, params.userId, body.role);
+    async ({ db, body, membership, params }) => {
+      await setTeamMemberRole(db, membership.teamId, membership, params.userId, body.role);
       return noContent();
     },
     {
@@ -485,8 +505,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
   // An agent is removed with its agent settings, not here.
   .delete(
     '/teams/:teamId/members/:userId',
-    async ({ membership, params }) => {
-      await removeTeamMember(membership.teamId, membership.userId, params.userId);
+    async ({ db, membership, params }) => {
+      await removeTeamMember(db, membership.teamId, membership.userId, params.userId);
       return noContent();
     },
     {
@@ -505,8 +525,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams/:teamId/leave',
-    async ({ membership }) => {
-      await leaveTeam(membership.teamId, membership.userId);
+    async ({ db, membership }) => {
+      await leaveTeam(db, membership.teamId, membership.userId);
       return noContent();
     },
     {

@@ -1,3 +1,4 @@
+import { agentRuntime, runQueueOf } from '#modules/agents/core/runtime/bindings';
 import { Elysia, t, type DocumentDecoration } from 'elysia';
 import { listIssueAgentRuns, getIssueAgentRunTrace } from './agent-runs';
 import { mcpTool } from '#mcp/generate';
@@ -209,53 +210,54 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     issueAgentRuns(_enabled: boolean) {
       return {
         detail: requiresPermission(['ai_agents', 'read']) as DocumentDecoration,
-        async resolve({ params, user, request }) {
+        async resolve({ db, params, user, request }) {
           const projectId = await getIssueProjectId(
+            db,
             Number((params as { issueId: string }).issueId),
           );
           if (projectId == null) throw new HttpError(404, 'Issue not found');
-          await assertPermission(projectId, user, 'work_items', 'read');
-          await assertPermission(projectId, user, 'ai_agents', 'read');
-          await assertMcpAllowed(projectId, request.headers);
+          await assertPermission(db, projectId, user, 'work_items', 'read');
+          await assertPermission(db, projectId, user, 'ai_agents', 'read');
+          await assertMcpAllowed(db, projectId, request.headers);
           return { projectId };
         },
       };
     },
-    workItem: entityGuard('work_items', 'Issue not found', (p) =>
-      getIssueProjectId(Number(p.issueId)),
+    workItem: entityGuard('work_items', 'Issue not found', (p, { db }) =>
+      getIssueProjectId(db, Number(p.issueId)),
     ),
     // The checklist and stats routes carry the section they belong to, so turning it
     // off in the project's settings closes them.
     issueChecklist: entityGuard(
       'work_items',
       'Issue not found',
-      (p) => getIssueProjectId(Number(p.issueId)),
+      (p, { db }) => getIssueProjectId(db, Number(p.issueId)),
       'checklists',
     ),
     issueStats: entityGuard(
       'work_items',
       'Issue not found',
-      (p) => getIssueProjectId(Number(p.issueId)),
+      (p, { db }) => getIssueProjectId(db, Number(p.issueId)),
       'issueStats',
     ),
-    developmentRepositories: entityGuard('repositories', 'Issue not found', (p) =>
-      getIssueProjectId(Number(p.issueId)),
+    developmentRepositories: entityGuard('repositories', 'Issue not found', (p, { db }) =>
+      getIssueProjectId(db, Number(p.issueId)),
     ),
     checklist: entityGuard(
       'work_items',
       'Checklist not found',
-      async (p) => {
-        const issueId = await getChecklistIssueId(Number(p.checklistId));
-        return issueId == null ? null : getIssueProjectId(issueId);
+      async (p, { db }) => {
+        const issueId = await getChecklistIssueId(db, Number(p.checklistId));
+        return issueId == null ? null : getIssueProjectId(db, issueId);
       },
       'checklists',
     ),
     checklistItem: entityGuard(
       'work_items',
       'Checklist item not found',
-      async (p) => {
-        const issueId = await getChecklistItemIssueId(Number(p.itemId));
-        return issueId == null ? null : getIssueProjectId(issueId);
+      async (p, { db }) => {
+        const issueId = await getChecklistItemIssueId(db, Number(p.itemId));
+        return issueId == null ? null : getIssueProjectId(db, issueId);
       },
       'checklists',
     ),
@@ -266,14 +268,17 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     // rule depends on the row, not on the route.
     worklog(_enabled: boolean) {
       return {
-        async resolve({ params, user, request }) {
-          const entry = await getWorklogRef(Number((params as { worklogId: string }).worklogId));
+        async resolve({ db, params, user, request }) {
+          const entry = await getWorklogRef(
+            db,
+            Number((params as { worklogId: string }).worklogId),
+          );
           if (!entry) throw new HttpError(404, 'Time entry not found');
-          await assertPermission(entry.projectId, user, 'work_items', 'edit');
+          await assertPermission(db, entry.projectId, user, 'work_items', 'edit');
           if (entry.userId !== requireUser(user).id)
-            await assertProjectOwner(entry.projectId, user);
-          await assertMcpAllowed(entry.projectId, request.headers);
-          await assertProjectWritable(entry.projectId, request.method);
+            await assertProjectOwner(db, entry.projectId, user);
+          await assertMcpAllowed(db, entry.projectId, request.headers);
+          await assertProjectWritable(db, entry.projectId, request.method);
           return { projectId: entry.projectId };
         },
       };
@@ -282,11 +287,11 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     // on top of the delete the issue's own project asks for through workItem.
     moveTarget(_enabled: boolean) {
       return {
-        async resolve({ body, user, request }) {
-          const target = await getProjectById((body as { projectId: number }).projectId);
+        async resolve({ db, body, user, request }) {
+          const target = await getProjectById(db, (body as { projectId: number }).projectId);
           if (!target) throw new HttpError(404, 'Project not found');
-          await assertPermission(target.id, user, 'work_items', 'create');
-          await assertMcpAllowed(target.id, request.headers);
+          await assertPermission(db, target.id, user, 'work_items', 'create');
+          await assertMcpAllowed(db, target.id, request.headers);
           assertWritable(target, request.method);
           return { target };
         },
@@ -297,14 +302,17 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     // edit this asserts; another member's only a project owner can touch.
     comment(_enabled: boolean) {
       return {
-        async resolve({ params, user, request }) {
-          const entry = await getCommentRef(Number((params as { commentId: string }).commentId));
+        async resolve({ db, params, user, request }) {
+          const entry = await getCommentRef(
+            db,
+            Number((params as { commentId: string }).commentId),
+          );
           if (!entry) throw new HttpError(404, 'Comment not found');
-          await assertPermission(entry.projectId, user, 'work_items', 'edit');
+          await assertPermission(db, entry.projectId, user, 'work_items', 'edit');
           if (entry.actorUserId !== requireUser(user).id)
-            await assertProjectOwner(entry.projectId, user);
-          await assertMcpAllowed(entry.projectId, request.headers);
-          await assertProjectWritable(entry.projectId, request.method);
+            await assertProjectOwner(db, entry.projectId, user);
+          await assertMcpAllowed(db, entry.projectId, request.headers);
+          await assertProjectWritable(db, entry.projectId, request.method);
           return { projectId: entry.projectId };
         },
       };
@@ -312,9 +320,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   })
   .post(
     '/projects/:projectKey/issues',
-    async ({ project, body, user, set }) => {
+    async ({ db, env, project, body, user, set }) => {
       set.status = 201;
-      return createIssue(project, body, requireUser(user).id);
+      return createIssue(db, project, body, requireUser(user).id, runQueueOf(env));
     },
     {
       body: createIssueBody,
@@ -338,8 +346,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Applies one patch to every listed issue.
   .patch(
     '/projects/:projectKey/issues/bulk',
-    async ({ project, body, user }) => {
+    async ({ db, project, body, user }) => {
       const updated = await bulkUpdateIssues(
+        db,
         project.id,
         body.ids,
         body.patch,
@@ -359,8 +368,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Adds labels to every listed issue, keeping their existing labels.
   .post(
     '/projects/:projectKey/issues/bulk/labels',
-    async ({ project, body, user }) => {
-      const updated = await bulkAddLabels(project.id, body.ids, body.add, requireUser(user).id);
+    async ({ db, project, body, user }) => {
+      const updated = await bulkAddLabels(db, project.id, body.ids, body.add, requireUser(user).id);
       return { updated };
     },
     {
@@ -375,10 +384,10 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Archives every listed issue.
   .post(
     '/projects/:projectKey/issues/bulk/archive',
-    async ({ project, body, user }) => {
+    async ({ db, project, body, user }) => {
       const actorUserId = requireUser(user).id;
-      await disposeSubtasksOf(project.id, body.ids, 'archive', disposition(body), actorUserId);
-      const archived = await bulkArchiveIssues(project.id, body.ids, actorUserId);
+      await disposeSubtasksOf(db, project.id, body.ids, 'archive', disposition(body), actorUserId);
+      const archived = await bulkArchiveIssues(db, project.id, body.ids, actorUserId);
       return { archived };
     },
     {
@@ -393,8 +402,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Deletes every listed issue and removes their attachment objects.
   .post(
     '/projects/:projectKey/issues/bulk/delete',
-    async ({ project, body, user }) => {
+    async ({ db, project, body, user }) => {
       const fromSubtasks = await disposeSubtasksOf(
+        db,
         project.id,
         body.ids,
         'delete',
@@ -402,6 +412,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         requireUser(user).id,
       );
       const { deleted, attachments } = await bulkDeleteIssues(
+        db,
         project.id,
         body.ids,
         requireUser(user).id,
@@ -425,9 +436,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // /issues/:sequenceNumber so the static "search" segment wins over the numeric param.
   .get(
     '/projects/:projectKey/issues/search',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const limit = Math.min(Math.max(query.limit ?? 50, 1), 500);
-      return searchIssues(project, { query: query.q, limit }, { includeArchived: true });
+      return searchIssues(db, project, { query: query.q, limit }, { includeArchived: true });
     },
     {
       params: projectKeyParams,
@@ -448,7 +459,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // 'true'.
   .get(
     '/projects/:projectKey/issues',
-    async ({ project, query }) => {
+    async ({ db, project, query }) => {
       const labelIds = query.labelIds
         ? query.labelIds.split(',').map(Number).filter(Number.isFinite)
         : undefined;
@@ -461,6 +472,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
       const str = (v: string | undefined) => (v ? v : undefined);
       const limit = Math.min(Math.max(query.limit ?? 50, 1), 500);
       return searchIssues(
+        db,
         project,
         {
           columnId: posId(query.columnId),
@@ -504,9 +516,10 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // search_issues, and read an issue's relations with the issue itself.
   .get(
     '/projects/:projectKey/issues/board',
-    async ({ project }) => ({
+    async ({ db, project }) => ({
       issues: await attachSubtaskCounts(
-        await attachBoardLinks(await listIssues(project), project.id),
+        db,
+        await attachBoardLinks(db, await listIssues(db, project), project.id),
         project.id,
       ),
     }),
@@ -522,7 +535,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // and restore. Same read permission as the board.
   .get(
     '/projects/:projectKey/issues/archived',
-    async ({ project }) => listArchivedIssues(project),
+    async ({ db, project }) => listArchivedIssues(db, project),
     {
       params: projectKeyParams,
       permission: ['work_items', 'read'],
@@ -536,22 +549,22 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // identifier-based issue page. Same read permission as the by-id read.
   .get(
     '/projects/:projectKey/issues/:sequenceNumber',
-    async ({ project, params, user, request }) => {
-      const issue = await getIssueBySequence(project.id, params.sequenceNumber);
+    async ({ db, project, params, user, request }) => {
+      const issue = await getIssueBySequence(db, project.id, params.sequenceNumber);
       if (!issue) throw new HttpError(404, 'Issue not found');
       // An old number of a moved issue resolves to it in the project it is in now,
       // which the caller must be able to read as well.
       if (issue.projectId !== project.id) {
-        await assertPermission(issue.projectId, user, 'work_items', 'read');
-        await assertMcpAllowed(issue.projectId, request.headers);
+        await assertPermission(db, issue.projectId, user, 'work_items', 'read');
+        await assertMcpAllowed(db, issue.projectId, request.headers);
       }
-      const fields = await getIssueFieldValues(issue.id);
-      const links = await listIssueLinks(issue.id);
-      const watchers = await listIssueWatchers(issue.projectId, issue.id);
-      const parent = await getParentRef(issue.parentId);
-      const subtasks = await listSubtasks(issue.id);
-      const checklists = await listChecklists(issue.id);
-      const development = await listIssueDevelopmentLinks(issue.id);
+      const fields = await getIssueFieldValues(db, issue.id);
+      const links = await listIssueLinks(db, issue.id);
+      const watchers = await listIssueWatchers(db, issue.projectId, issue.id);
+      const parent = await getParentRef(db, issue.parentId);
+      const subtasks = await listSubtasks(db, issue.id);
+      const checklists = await listChecklists(db, issue.id);
+      const development = await listIssueDevelopmentLinks(db, issue.id);
       return { ...issue, fields, links, watchers, parent, subtasks, checklists, development };
     },
     {
@@ -572,20 +585,20 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // workItem guard, which would resolve the project id a second time.
   .get(
     '/issues/:issueId',
-    async ({ params, user, request }) => {
-      const issue = await getIssue(params.issueId);
+    async ({ db, params, user, request }) => {
+      const issue = await getIssue(db, params.issueId);
       if (!issue) throw new HttpError(404, 'Issue not found');
-      await assertPermission(issue.projectId, user, 'work_items', 'read');
+      await assertPermission(db, issue.projectId, user, 'work_items', 'read');
       // This route resolves the project itself, so it also enforces the per-project
       // MCP toggle itself (it does not run through the workItem guard).
-      await assertMcpAllowed(issue.projectId, request.headers);
-      const fields = await getIssueFieldValues(issue.id);
-      const links = await listIssueLinks(issue.id);
-      const watchers = await listIssueWatchers(issue.projectId, issue.id);
-      const parent = await getParentRef(issue.parentId);
-      const subtasks = await listSubtasks(issue.id);
-      const checklists = await listChecklists(issue.id);
-      const development = await listIssueDevelopmentLinks(issue.id);
+      await assertMcpAllowed(db, issue.projectId, request.headers);
+      const fields = await getIssueFieldValues(db, issue.id);
+      const links = await listIssueLinks(db, issue.id);
+      const watchers = await listIssueWatchers(db, issue.projectId, issue.id);
+      const parent = await getParentRef(db, issue.parentId);
+      const subtasks = await listSubtasks(db, issue.id);
+      const checklists = await listChecklists(db, issue.id);
+      const development = await listIssueDevelopmentLinks(db, issue.id);
       return { ...issue, fields, links, watchers, parent, subtasks, checklists, development };
     },
     {
@@ -604,14 +617,16 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // a column (position).
   .patch(
     '/issues/:issueId',
-    async ({ params, body, user, projectId }) => {
+    async ({ db, env, params, body, user, projectId }) => {
       const actorUserId = requireUser(user).id;
       const issueId = params.issueId;
       const { labelIds, ...patch } = body;
-      const issue = await updateIssue(issueId, patch, actorUserId);
+      const issue = await updateIssue(db, issueId, patch, actorUserId, {
+        queue: runQueueOf(env),
+      });
       if (!issue) throw new HttpError(404, 'Issue not found');
       if (labelIds) {
-        await setIssueLabels(projectId, issueId, labelIds, actorUserId);
+        await setIssueLabels(db, projectId, issueId, labelIds, actorUserId);
         issue.labelIds = labelIds;
       }
       return issue;
@@ -635,8 +650,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the next number there; the old identifier keeps resolving to it.
   .post(
     '/issues/:issueId/move',
-    async ({ params, body, target, user }) =>
-      moveIssue(params.issueId, target, body.columnId, requireUser(user).id),
+    async ({ db, params, body, target, user }) =>
+      moveIssue(db, params.issueId, target, body.columnId, requireUser(user).id),
     {
       params: issueParams,
       body: moveIssueBody,
@@ -657,7 +672,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .get(
     '/issues/:issueId/development/repositories',
-    async ({ projectId }) => listDevelopmentRepositories(projectId),
+    async ({ db, projectId }) => listDevelopmentRepositories(db, projectId),
     {
       params: issueParams,
       developmentRepositories: 'edit',
@@ -672,8 +687,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .get(
     '/issues/:issueId/development/repositories/:repositoryId/pull-requests',
-    async ({ params, query, projectId }) =>
+    async ({ db, params, query, projectId }) =>
       listLinkablePullRequests(
+        db,
         projectId,
         params.issueId,
         params.repositoryId,
@@ -694,8 +710,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .get(
     '/issues/:issueId/development/repositories/:repositoryId/branches',
-    async ({ params, query, projectId }) =>
-      listManagedBranches(projectId, params.repositoryId, query.page ?? 1),
+    async ({ db, params, query, projectId }) =>
+      listManagedBranches(db, projectId, params.repositoryId, query.page ?? 1),
     {
       params: issueDevelopmentRepositoryParams,
       query: issueDevelopmentListQuery,
@@ -710,8 +726,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .post(
     '/issues/:issueId/development',
-    async ({ params, body, projectId, user, set }) => {
+    async ({ db, params, body, projectId, user, set }) => {
       const result = await linkExistingPullRequest(
+        db,
         projectId,
         params.issueId,
         body.repositoryId,
@@ -721,6 +738,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         if (result.link.number == null)
           throw new HttpError(500, 'Linked pull request has no number');
         await recordActivity(
+          db,
           params.issueId,
           [
             {
@@ -758,7 +776,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .post(
     '/issues/:issueId/development/pull-requests',
-    async ({ params, body, projectId, set }) => {
+    async ({ db, params, body, projectId, set }) => {
       const sourceBranch = body.sourceBranch.trim();
       const targetBranch = body.targetBranch.trim();
       const title = body.title.trim();
@@ -766,13 +784,19 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         throw new HttpError(400, 'Branches and title are required');
       if (sourceBranch === targetBranch)
         throw new HttpError(400, 'Source and target branches must be different');
-      const result = await createAndLinkPullRequest(projectId, params.issueId, body.repositoryId, {
-        sourceBranch,
-        targetBranch,
-        title,
-        description: body.description,
-        draft: body.draft,
-      });
+      const result = await createAndLinkPullRequest(
+        db,
+        projectId,
+        params.issueId,
+        body.repositoryId,
+        {
+          sourceBranch,
+          targetBranch,
+          title,
+          description: body.description,
+          draft: body.draft,
+        },
+      );
       set.status = 201;
       return result.link;
     },
@@ -791,8 +815,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .delete(
     '/issues/:issueId/development/:linkId',
-    async ({ params }) => {
-      if (!(await removeIssueDevelopmentLink(params.issueId, params.linkId)))
+    async ({ db, params }) => {
+      if (!(await removeIssueDevelopmentLink(db, params.issueId, params.linkId)))
         throw new HttpError(404, 'Development link not found');
       return noContent();
     },
@@ -813,15 +837,16 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // request.
   .delete(
     '/issues/:issueId',
-    async ({ params, query, user, projectId }) => {
+    async ({ db, params, query, user, projectId }) => {
       const fromSubtasks = await disposeSubtasksOf(
+        db,
         projectId,
         [params.issueId],
         'delete',
         disposition(query),
         requireUser(user).id,
       );
-      const attachments = await deleteIssue(params.issueId, requireUser(user).id);
+      const attachments = await deleteIssue(db, params.issueId, requireUser(user).id);
       if (!attachments) throw new HttpError(404, 'Issue not found');
       await purgeObjects([...fromSubtasks, ...attachments]);
       return noContent();
@@ -845,16 +870,17 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // demand. Uses the work_items edit permission.
   .post(
     '/issues/:issueId/archive',
-    async ({ params, body, user, projectId }) => {
+    async ({ db, params, body, user, projectId }) => {
       const actorUserId = requireUser(user).id;
       await disposeSubtasksOf(
+        db,
         projectId,
         [params.issueId],
         'archive',
         disposition(body),
         actorUserId,
       );
-      const issue = await archiveIssue(params.issueId, actorUserId);
+      const issue = await archiveIssue(db, params.issueId, actorUserId);
       if (!issue) throw new HttpError(404, 'Issue not found');
       return issue;
     },
@@ -876,11 +902,11 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // with its archived subtasks.
   .post(
     '/issues/:issueId/restore',
-    async ({ params, user }) => {
+    async ({ db, params, user }) => {
       const actorUserId = requireUser(user).id;
-      const issue = await restoreIssue(params.issueId, actorUserId);
+      const issue = await restoreIssue(db, params.issueId, actorUserId);
       if (!issue) throw new HttpError(404, 'Issue not found');
-      await restoreSubtasksOf(issue.id, actorUserId);
+      await restoreSubtasksOf(db, issue.id, actorUserId);
       return issue;
     },
     {
@@ -903,13 +929,15 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // body.valueEnd.
   .put(
     '/issues/:issueId/fields/:fieldId',
-    async ({ params, body, user, projectId }) => {
+    async ({ db, env, params, body, user, projectId }) => {
       await setIssueFieldValue(
+        db,
         projectId,
         params.issueId,
         params.fieldId,
         body,
         requireUser(user).id,
+        runQueueOf(env),
       );
       return { ok: true };
     },
@@ -934,9 +962,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the relations is part of the issue read, so there is no list route.
   .post(
     '/issues/:issueId/links',
-    async ({ params, body, user, set }) => {
+    async ({ db, params, body, user, set }) => {
       set.status = 201;
-      return addIssueLink(params.issueId, body.targetIssueId, body.kind, requireUser(user).id);
+      return addIssueLink(db, params.issueId, body.targetIssueId, body.kind, requireUser(user).id);
     },
     {
       body: addIssueLinkBody,
@@ -956,8 +984,13 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // between two other issues cannot be removed through it.
   .delete(
     '/issues/:issueId/links/:linkId',
-    async ({ params, user }) => {
-      const removed = await removeIssueLink(params.issueId, params.linkId, requireUser(user).id);
+    async ({ db, params, user }) => {
+      const removed = await removeIssueLink(
+        db,
+        params.issueId,
+        params.linkId,
+        requireUser(user).id,
+      );
       if (!removed) throw new HttpError(404, 'Link not found');
       return noContent();
     },
@@ -976,21 +1009,25 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Checklists on the issue: lists of small steps that do not warrant a subtask.
   // The issue read already carries them, so this list route is for a refresh
   // after a checklist write rather than the first render.
-  .get('/issues/:issueId/checklists', async ({ params }) => listChecklists(params.issueId), {
-    params: issueParams,
-    issueChecklist: 'read',
-    response: { 200: t.Array(ChecklistResponse), ...commonErrors },
-    detail: {
-      summary: "List an issue's checklists",
-      description: 'Every checklist of an issue with its items, both in display order.',
+  .get(
+    '/issues/:issueId/checklists',
+    async ({ db, params }) => listChecklists(db, params.issueId),
+    {
+      params: issueParams,
+      issueChecklist: 'read',
+      response: { 200: t.Array(ChecklistResponse), ...commonErrors },
+      detail: {
+        summary: "List an issue's checklists",
+        description: 'Every checklist of an issue with its items, both in display order.',
+      },
     },
-  })
+  )
 
   .post(
     '/issues/:issueId/checklists',
-    async ({ params, body, user, set }) => {
+    async ({ db, params, body, user, set }) => {
       set.status = 201;
-      return createChecklist(params.issueId, body.title, requireUser(user).id);
+      return createChecklist(db, params.issueId, body.title, requireUser(user).id);
     },
     {
       body: checklistTitleBody,
@@ -1009,7 +1046,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the parameter.
   .put(
     '/issues/:issueId/checklists/reorder',
-    async ({ params, body }) => reorderChecklists(params.issueId, body.orderedIds),
+    async ({ db, params, body }) => reorderChecklists(db, params.issueId, body.orderedIds),
     {
       body: OrderedIdsSchema,
       params: issueParams,
@@ -1025,8 +1062,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .patch(
     '/checklists/:checklistId',
-    async ({ params, body, user }) =>
-      renameChecklist(params.checklistId, body.title, requireUser(user).id),
+    async ({ db, params, body, user }) =>
+      renameChecklist(db, params.checklistId, body.title, requireUser(user).id),
     {
       body: checklistTitleBody,
       params: checklistParams,
@@ -1043,8 +1080,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Deleting a checklist deletes its items with it.
   .delete(
     '/checklists/:checklistId',
-    async ({ params, user }) => {
-      const removed = await deleteChecklist(params.checklistId, requireUser(user).id);
+    async ({ db, params, user }) => {
+      const removed = await deleteChecklist(db, params.checklistId, requireUser(user).id);
       if (!removed) throw new HttpError(404, 'Checklist not found');
       return noContent();
     },
@@ -1062,9 +1099,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .post(
     '/checklists/:checklistId/items',
-    async ({ params, body, user, set }) => {
+    async ({ db, params, body, user, set }) => {
       set.status = 201;
-      return createChecklistItem(params.checklistId, body.content, requireUser(user).id);
+      return createChecklistItem(db, params.checklistId, body.content, requireUser(user).id);
     },
     {
       body: createChecklistItemBody,
@@ -1081,9 +1118,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .post(
     '/checklists/:checklistId/items/batch',
-    async ({ params, body, user, set }) => {
+    async ({ db, params, body, user, set }) => {
       set.status = 201;
-      return createChecklistItems(params.checklistId, body.items, requireUser(user).id);
+      return createChecklistItems(db, params.checklistId, body.items, requireUser(user).id);
     },
     {
       body: createChecklistItemsBody,
@@ -1101,7 +1138,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .put(
     '/checklists/:checklistId/items/reorder',
-    async ({ params, body }) => reorderChecklistItems(params.checklistId, body.orderedIds),
+    async ({ db, params, body }) => reorderChecklistItems(db, params.checklistId, body.orderedIds),
     {
       body: OrderedIdsSchema,
       params: checklistParams,
@@ -1119,7 +1156,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // frequent write here, so it deliberately does not reach the activity feed.
   .patch(
     '/checklists/items/:itemId',
-    async ({ params, body }) => updateChecklistItem(params.itemId, body),
+    async ({ db, params, body }) => updateChecklistItem(db, params.itemId, body),
     {
       body: updateChecklistItemBody,
       params: checklistItemParams,
@@ -1135,8 +1172,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .delete(
     '/checklists/items/:itemId',
-    async ({ params, user }) => {
-      const removed = await deleteChecklistItem(params.itemId, requireUser(user).id);
+    async ({ db, params, user }) => {
+      const removed = await deleteChecklistItem(db, params.itemId, requireUser(user).id);
       if (!removed) throw new HttpError(404, 'Checklist item not found');
       return noContent();
     },
@@ -1154,8 +1191,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .get(
     '/issues/:issueId/agent-runs',
-    async ({ params, query, projectId }) =>
-      listIssueAgentRuns(projectId, params.issueId, query.before, query.limit),
+    async ({ db, params, query, projectId }) =>
+      listIssueAgentRuns(db, projectId, params.issueId, query.before, query.limit),
     {
       params: issueParams,
       query: issueAgentRunsQuery,
@@ -1171,8 +1208,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .get(
     '/issues/:issueId/agent-runs/:runId/trace',
-    async ({ params, user, query, projectId }) => {
+    async ({ env, auth, params, user, query, projectId }) => {
       const trace = await getIssueAgentRunTrace(
+        agentRuntime(env, auth),
         projectId,
         params.issueId,
         params.runId,
@@ -1202,7 +1240,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // The time logged on the issue. The entries are their own read: the issue payload
   // carries their sum, which is what a board and the Time property show, and only
   // the section that lists them needs the entries themselves.
-  .get('/issues/:issueId/worklogs', async ({ params }) => listWorklogs(params.issueId), {
+  .get('/issues/:issueId/worklogs', async ({ db, params }) => listWorklogs(db, params.issueId), {
     params: issueParams,
     workItem: 'read',
     response: { 200: t.Array(WorklogResponse), ...commonErrors },
@@ -1216,9 +1254,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .post(
     '/issues/:issueId/worklogs',
-    async ({ params, body, user, set }) => {
+    async ({ db, params, body, user, set }) => {
       set.status = 201;
-      return createWorklog(params.issueId, requireUser(user).id, body);
+      return createWorklog(db, params.issueId, requireUser(user).id, body);
     },
     {
       body: createWorklogBody,
@@ -1236,7 +1274,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .patch(
     '/worklogs/:worklogId',
-    async ({ params, body, user }) => updateWorklog(params.worklogId, body, requireUser(user).id),
+    async ({ db, params, body, user }) =>
+      updateWorklog(db, params.worklogId, body, requireUser(user).id),
     {
       body: updateWorklogBody,
       params: worklogParams,
@@ -1255,8 +1294,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .delete(
     '/worklogs/:worklogId',
-    async ({ params, user }) => {
-      const removed = await deleteWorklog(params.worklogId, requireUser(user).id);
+    async ({ db, params, user }) => {
+      const removed = await deleteWorklog(db, params.worklogId, requireUser(user).id);
       if (!removed) throw new HttpError(404, 'Time entry not found');
       return noContent();
     },
@@ -1282,9 +1321,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // watcher list carried by the issue read.
   .post(
     '/issues/:issueId/watch',
-    async ({ params, projectId, user }) => {
-      await setIssueWatching(params.issueId, requireUser(user).id, true);
-      return listIssueWatchers(projectId, params.issueId);
+    async ({ db, params, projectId, user }) => {
+      await setIssueWatching(db, params.issueId, requireUser(user).id, true);
+      return listIssueWatchers(db, projectId, params.issueId);
     },
     {
       params: issueParams,
@@ -1302,9 +1341,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the caller.
   .delete(
     '/issues/:issueId/watch',
-    async ({ params, projectId, user }) => {
-      await setIssueWatching(params.issueId, requireUser(user).id, false);
-      return listIssueWatchers(projectId, params.issueId);
+    async ({ db, params, projectId, user }) => {
+      await setIssueWatching(db, params.issueId, requireUser(user).id, false);
+      return listIssueWatchers(db, projectId, params.issueId);
     },
     {
       params: issueParams,
@@ -1322,12 +1361,12 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // have their own delegation flow and must never receive human notifications.
   .put(
     '/issues/:issueId/watchers/:userId',
-    async ({ params, projectId }) => {
-      if (!(await isEligibleIssueWatcher(projectId, params.userId))) {
+    async ({ db, params, projectId }) => {
+      if (!(await isEligibleIssueWatcher(db, projectId, params.userId))) {
         throw new HttpError(400, 'Watcher must be a human project member with work item access');
       }
-      await setIssueWatching(params.issueId, params.userId, true);
-      return listIssueWatchers(projectId, params.issueId);
+      await setIssueWatching(db, params.issueId, params.userId, true);
+      return listIssueWatchers(db, projectId, params.issueId);
     },
     {
       params: issueWatcherParams,
@@ -1344,12 +1383,12 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .delete(
     '/issues/:issueId/watchers/:userId',
-    async ({ params, projectId }) => {
-      if (!(await isEligibleIssueWatcher(projectId, params.userId))) {
+    async ({ db, params, projectId }) => {
+      if (!(await isEligibleIssueWatcher(db, projectId, params.userId))) {
         throw new HttpError(400, 'Watcher must be a human project member with work item access');
       }
-      await setIssueWatching(params.issueId, params.userId, false);
-      return listIssueWatchers(projectId, params.issueId);
+      await setIssueWatching(db, params.issueId, params.userId, false);
+      return listIssueWatchers(db, projectId, params.issueId);
     },
     {
       params: issueWatcherParams,
@@ -1371,8 +1410,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // nextCursor is null on the last page.
   .get(
     '/issues/:issueId/feed',
-    async ({ params, query }) =>
-      listFeed(params.issueId, { ...query, cursor: feedCursor(query.cursor) }),
+    async ({ db, params, query }) =>
+      listFeed(db, params.issueId, { ...query, cursor: feedCursor(query.cursor) }),
     {
       params: issueParams,
       query: feedPageQuery,
@@ -1393,8 +1432,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // grouped shape of the activity log reads this instead of grouping client-side.
   .get(
     '/issues/:issueId/feed/grouped',
-    async ({ params, query }) =>
-      listGroupedFeed(params.issueId, { ...query, cursor: feedCursor(query.cursor) }),
+    async ({ db, params, query }) =>
+      listGroupedFeed(db, params.issueId, { ...query, cursor: feedCursor(query.cursor) }),
     {
       params: issueParams,
       query: feedPageQuery,
@@ -1409,7 +1448,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   )
 
   // The number of entries behind each feed filter, for the tabs of the activity log.
-  .get('/issues/:issueId/feed/counts', async ({ params }) => countFeed(params.issueId), {
+  .get('/issues/:issueId/feed/counts', async ({ db, params }) => countFeed(db, params.issueId), {
     params: issueParams,
     workItem: 'read',
     response: { 200: FeedCountsResponse, ...commonErrors },
@@ -1423,21 +1462,25 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // each. Entry-free and unpaged: the change log holds a handful of status entries,
   // and a client reads the entries of one stretch separately when it opens that
   // stretch.
-  .get('/issues/:issueId/timeline', async ({ params }) => listStatusTimeline(params.issueId), {
-    params: issueParams,
-    issueStats: 'read',
-    response: { 200: t.Array(TimelineSegmentResponse), ...commonErrors },
-    detail: {
-      summary: 'Get an issue status timeline',
-      description: "Get the stretches an issue spent in each status, with each one's duration.",
+  .get(
+    '/issues/:issueId/timeline',
+    async ({ db, params }) => listStatusTimeline(db, params.issueId),
+    {
+      params: issueParams,
+      issueStats: 'read',
+      response: { 200: t.Array(TimelineSegmentResponse), ...commonErrors },
+      detail: {
+        summary: 'Get an issue status timeline',
+        description: "Get the stretches an issue spent in each status, with each one's duration.",
+      },
     },
-  })
+  )
 
   // The entries of one stretch of that timeline, addressed by its bounds: the
   // client opening a bar asks for [from, to), leaving `to` off for the open one.
   .get(
     '/issues/:issueId/timeline/items',
-    async ({ params, query }) => listFeedRange(params.issueId, query.from, query.to),
+    async ({ db, params, query }) => listFeedRange(db, params.issueId, query.from, query.to),
     {
       params: issueParams,
       query: feedRangeQuery,
@@ -1452,7 +1495,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   // Read on its own, not as part of the issue: only the issue screen shows the
   // cycles, and every board carries the issue payload.
-  .get('/issues/:issueId/cycles', async ({ params }) => listIssueCycles(params.issueId), {
+  .get('/issues/:issueId/cycles', async ({ db, params }) => listIssueCycles(db, params.issueId), {
     params: issueParams,
     workItem: 'read',
     response: { 200: t.Array(IssueCycleResponse), ...commonErrors },
@@ -1467,14 +1510,18 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // agent's bot user).
   .post(
     '/issues/:issueId/comments',
-    async ({ params, body, user, set }) => {
+    async ({ db, env, params, body, user, set }) => {
       set.status = 201;
-      return createComment({
-        issueId: params.issueId,
-        actorUserId: requireUser(user).id,
-        body: body.body,
-        replyToId: body.replyToId,
-      });
+      return createComment(
+        db,
+        {
+          issueId: params.issueId,
+          actorUserId: requireUser(user).id,
+          body: body.body,
+          replyToId: body.replyToId,
+        },
+        runQueueOf(env),
+      );
     },
     {
       body: createCommentBody,
@@ -1497,8 +1544,15 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the comment guard asserts; another member's only a project owner can change.
   .patch(
     '/comments/:commentId',
-    async ({ params, body, user, projectId }) =>
-      updateComment(params.commentId, body.body, requireUser(user).id, projectId),
+    async ({ db, env, params, body, user, projectId }) =>
+      updateComment(
+        db,
+        params.commentId,
+        body.body,
+        requireUser(user).id,
+        projectId,
+        runQueueOf(env),
+      ),
     {
       body: updateCommentBody,
       params: commentParams,
@@ -1518,8 +1572,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // Deletes a comment, together with its replies (they cascade on reply_to_id).
   .delete(
     '/comments/:commentId',
-    async ({ params, user, projectId }) => {
-      const removed = await deleteComment(params.commentId, requireUser(user).id, projectId);
+    async ({ db, params, user, projectId }) => {
+      const removed = await deleteComment(db, params.commentId, requireUser(user).id, projectId);
       if (!removed) throw new HttpError(404, 'Comment not found');
       return noContent();
     },

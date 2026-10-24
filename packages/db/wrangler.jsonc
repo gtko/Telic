@@ -1,0 +1,15 @@
+{
+  // D1 target for the migrations in drizzle-d1/. Used by `wrangler d1 migrations apply --local`
+  // (db:migrate:local) and by the tests. The database_id is a placeholder until the real D1
+  // database is provisioned; --local never sends it anywhere.
+  "name": "telic-db",
+  "compatibility_date": "2026-01-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "telic",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle-d1",
+    },
+  ],
+}

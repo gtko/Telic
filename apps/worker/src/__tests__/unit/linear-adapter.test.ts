@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import type { PinnedRequestInit } from '@repo/net';
 import { AttachmentRejectedError } from '../../attachment-download';
 import {
@@ -224,7 +224,7 @@ describe('LinearReader requests', () => {
     const comments = await reader.listIssueComments('issue-505');
     const uploads = await reader.listIssueAttachments('issue-505');
 
-    expect(issue.descriptionMarkdown).toEndWith('Imported from Linear: ATO-505');
+    expect(issue.descriptionMarkdown.endsWith('Imported from Linear: ATO-505')).toBe(true);
     expect(comments).toMatchObject([{ authorEmail: null, authorName: 'GitHub' }]);
     expect(uploads.map((u) => [u.filename, u.contentType])).toEqual([
       ['image.png', 'image/png'],

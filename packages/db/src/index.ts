@@ -1,4 +1,4 @@
-export { db, type DbExecutor } from './client';
+export { createDb, type Db, type DbExecutor } from './client';
 export * from './schema';
 export * from './permissions';
 export { getSetting, getOrCreateSetting, setSetting } from './settings';
@@ -34,7 +34,17 @@ export {
   mimeAllowed,
   projectStoredBytes,
   projectTeamId,
+  reserveStorage,
   workspaceStoredBytes,
-  lockAttachmentStorage,
+  type AttachmentKind,
+  type ReserveStorageInput,
   type StorageSettings,
 } from './domains/storage';
+export { batchAll, chunk, type BatchStatement } from './helpers';
+export {
+  abortBatchWhen,
+  isForeignKeyViolation,
+  isGuardViolation,
+  isUniqueViolation,
+  rowsChanged,
+} from './invariants';

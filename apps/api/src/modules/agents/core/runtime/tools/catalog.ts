@@ -19,7 +19,7 @@
 // of these keys and the role its membership of that project carries.
 //
 // ToolMeta carries no resource and no action. The permission of an action is the one
-// its route asserts and is read off the route (see actionCatalog in route-tools.ts);
+// its route asserts and is read off the route (see actionCatalog in action-catalog.ts);
 // restating it here would be a second list that drifts from the guards silently.
 
 // The feature an action belongs to, so the config UI can group the catalog.

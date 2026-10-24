@@ -1,0 +1,531 @@
+import { describe, it, expect } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { team } from '@repo/db';
+import { db } from '../../helpers/db';
+import { ownWorkspaceId, createProject } from '../../helpers/app';
+import {
+  addUser,
+  createAgentUser,
+  joinProject,
+  setup,
+  type Actor,
+} from '../../../src/modules/god/__tests__/helpers';
+
+// The instance user directory under god mode: listing every account on the instance,
+// reading one with the projects it can reach, confirming an email address on the
+// owner's behalf, and deleting an account. These routes read across the better-auth
+// tables and every project's membership, which no project-scoped route may do, so the
+// whole plugin sits behind the god guard.
+
+const ALL = { kind: 'all' as const, page: 1, pageSize: 50 };
+
+// Moves the person's team into the owner's workspace, so what they own there is outside
+// the workspaces they own.
+async function moveTeamTo(owner: Actor, person: Actor): Promise<void> {
+  const [own] = (await person.api.teams.get()).data!;
+  await db
+    .update(team)
+    .set({ workspaceId: await ownWorkspaceId(owner.api) })
+    .where(eq(team.id, own!.id));
+}
+
+async function withoutDeadlock<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutResult = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error('concurrent document/account operation deadlocked')),
+      10_000,
+    );
+  });
+  return Promise.race([operation, timeoutResult]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
+describe('god users', () => {
+  describe('access', () => {
+    it('refuses every route for a user who is not the instance owner', async () => {
+      const { god } = await setup();
+      const outsider = await addUser();
+
+      expect((await outsider.api.god.users.get({ query: ALL })).status).toBe(403);
+      expect((await outsider.api.god.users({ userId: god.id }).get()).status).toBe(403);
+      expect((await outsider.api.god.users({ userId: god.id })['verify-email'].post()).status).toBe(
+        403,
+      );
+      expect((await outsider.api.god.users({ userId: god.id }).delete()).status).toBe(403);
+    });
+  });
+
+  describe('list — GET /god/users', () => {
+    it('reports the sign-in state and project count of each account', async () => {
+      const { god } = await setup();
+      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
+
+      const res = await god.api.god.users.get({ query: ALL });
+
+      expect(res.status).toBe(200);
+      expect(res.data?.total).toBe(1);
+      expect(res.data?.items[0]).toMatchObject({
+        id: god.id,
+        email: 'root@example.com',
+        name: 'Root',
+        role: 'god',
+        isAgent: false,
+        emailVerified: false,
+        // Signing up links the password provider and opens a session.
+        providers: ['credential'],
+        projectCount: 1,
+      });
+      expect(res.data?.items[0].lastSeenAt).not.toBeNull();
+    });
+
+    it('lists people by default and agent bot users only when asked', async () => {
+      const { god } = await setup();
+      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
+      const agentUserId = await createAgentUser(god, 'MKT');
+
+      const humans = await god.api.god.users.get({
+        query: { kind: 'human', page: 1, pageSize: 50 },
+      });
+      const agents = await god.api.god.users.get({
+        query: { kind: 'agent', page: 1, pageSize: 50 },
+      });
+      const all = await god.api.god.users.get({ query: ALL });
+
+      expect(humans.data?.total).toBe(1);
+      expect(humans.data?.items.map((u) => u.id)).toEqual([god.id]);
+
+      expect(agents.data?.total).toBe(1);
+      expect(agents.data?.items[0]).toMatchObject({ id: agentUserId, isAgent: true });
+
+      expect(all.data?.total).toBe(2);
+      expect(all.data?.items.map((u) => u.id).sort()).toEqual([god.id, agentUserId].sort());
+    });
+
+    it('defaults to people when no kind is given', async () => {
+      const { god } = await setup();
+      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
+      await createAgentUser(god, 'MKT');
+
+      const res = await god.api.god.users.get({ query: {} });
+
+      expect(res.status).toBe(200);
+      expect(res.data?.total).toBe(1);
+      expect(res.data?.items.map((u) => u.id)).toEqual([god.id]);
+    });
+
+    it('matches the search term against the name or the email', async () => {
+      const { god } = await setup();
+      await addUser({ name: 'Alice Smith', email: 'alice@example.com' });
+      await addUser({ name: 'Bob Jones', email: 'bob@corp.test' });
+
+      const byName = await god.api.god.users.get({ query: { ...ALL, search: 'alice' } });
+      const byEmail = await god.api.god.users.get({ query: { ...ALL, search: 'corp.test' } });
+      const noMatch = await god.api.god.users.get({ query: { ...ALL, search: 'nobody' } });
+
+      expect(byName.data?.items.map((u) => u.email)).toEqual(['alice@example.com']);
+      expect(byEmail.data?.items.map((u) => u.email)).toEqual(['bob@corp.test']);
+      expect(noMatch.data?.items).toEqual([]);
+      // The total counts the matches, not every account.
+      expect(byName.data?.total).toBe(1);
+      expect(noMatch.data?.total).toBe(0);
+    });
+
+    it('pages while the total stays the full match count', async () => {
+      const { god } = await setup();
+      await addUser();
+      await addUser();
+
+      const first = await god.api.god.users.get({ query: { ...ALL, page: 1, pageSize: 2 } });
+      const second = await god.api.god.users.get({ query: { ...ALL, page: 2, pageSize: 2 } });
+
+      expect(first.data?.items).toHaveLength(2);
+      expect(second.data?.items).toHaveLength(1);
+      expect(first.data?.total).toBe(3);
+      expect(second.data?.total).toBe(3);
+      // The two windows together cover every account exactly once.
+      const paged = [...first.data!.items, ...second.data!.items].map((u) => u.id);
+      expect(new Set(paged).size).toBe(3);
+    });
+
+    it('rejects a page size outside the allowed range', async () => {
+      const { god } = await setup();
+
+      expect((await god.api.god.users.get({ query: { ...ALL, pageSize: 0 } })).status).toBe(400);
+      expect((await god.api.god.users.get({ query: { ...ALL, pageSize: 500 } })).status).toBe(400);
+    });
+  });
+
+  describe('detail — GET /god/users/:userId', () => {
+    it('resolves an owner membership to full permissions', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ name: 'Alice', email: 'alice@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+
+      const res = await god.api.god.users({ userId: alice.id }).get();
+
+      expect(res.status).toBe(200);
+      expect(res.data?.projects).toHaveLength(1);
+      expect(res.data?.projects[0]).toMatchObject({
+        projectKey: 'MKT',
+        projectName: 'Marketing',
+        role: 'owner',
+        roleId: null,
+        roleName: null,
+        // Alice is the only owner, so deleting her would leave MKT unmanaged.
+        ownerCount: 1,
+      });
+      // An owner bypasses the matrix, so every resource comes back granted.
+      expect(res.data?.projects[0].permissions.work_items.create).toBe(true);
+      expect(res.data?.projects[0].permissions.members_manage.delete).toBe(true);
+    });
+
+    it("resolves a member membership to the assigned role's matrix", async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const bob = await addUser({ email: 'bob@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, bob, 'MKT', 'member');
+
+      const res = await god.api.god.users({ userId: bob.id }).get();
+
+      expect(res.status).toBe(200);
+      expect(res.data?.projects[0]).toMatchObject({
+        projectKey: 'MKT',
+        role: 'member',
+        roleName: 'Member',
+        ownerCount: 1,
+      });
+      // The default Member role: full work items, no member management.
+      expect(res.data?.projects[0].permissions.work_items.create).toBe(true);
+      expect(res.data?.projects[0].permissions.members_manage.create).toBe(false);
+    });
+
+    it('counts every owner of a shared project', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const bob = await addUser({ email: 'bob@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, bob, 'MKT', 'owner');
+
+      const res = await god.api.god.users({ userId: alice.id }).get();
+
+      expect(res.data?.projects[0]).toMatchObject({ role: 'owner', ownerCount: 2 });
+    });
+
+    it('returns an account with no memberships as reachable by nothing', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+
+      const res = await god.api.god.users({ userId: alice.id }).get();
+
+      expect(res.status).toBe(200);
+      expect(res.data?.projects).toEqual([]);
+      expect(res.data?.projectCount).toBe(0);
+    });
+
+    it('404s for an unknown id', async () => {
+      const { god } = await setup();
+
+      const res = await god.api.god.users({ userId: 'no-such-user' }).get();
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('verify email — POST /god/users/:userId/verify-email', () => {
+    it('marks the address confirmed and reports it on the list too', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+
+      const before = await god.api.god.users({ userId: alice.id }).get();
+      expect(before.data?.emailVerified).toBe(false);
+
+      const res = await god.api.god.users({ userId: alice.id })['verify-email'].post();
+
+      expect(res.status).toBe(200);
+      expect(res.data?.emailVerified).toBe(true);
+
+      const listed = await god.api.god.users.get({ query: { ...ALL, search: 'alice@' } });
+      expect(listed.data?.items[0]?.emailVerified).toBe(true);
+    });
+
+    it('404s for an unknown id', async () => {
+      const { god } = await setup();
+
+      const res = await god.api.god.users({ userId: 'no-such-user' })['verify-email'].post();
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('delete — DELETE /god/users/:userId', () => {
+    it('removes an account that owns nothing on its own', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+
+      const res = await god.api.god.users({ userId: alice.id }).delete();
+
+      expect(res.status).toBe(204);
+      expect((await god.api.god.users({ userId: alice.id }).get()).status).toBe(404);
+      expect((await god.api.god.users.get({ query: ALL })).data?.total).toBe(1);
+    });
+
+    it('removes an account whose projects still have another owner', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const bob = await addUser({ email: 'bob@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, bob, 'MKT', 'owner');
+
+      const res = await god.api.god.users({ userId: alice.id }).delete();
+
+      expect(res.status).toBe(204);
+      // MKT survives with Bob as its remaining owner.
+      const remaining = await god.api.god.users({ userId: bob.id }).get();
+      expect(remaining.data?.projects).toHaveLength(1);
+      expect(remaining.data?.projects[0]).toMatchObject({ projectKey: 'MKT', ownerCount: 1 });
+    });
+
+    it('removes private documents while public documents remain recoverable', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, god, 'MKT', 'owner');
+      const pages = alice.api.projects({ projectKey: 'MKT' }).documents;
+      const shared = (await pages.post({ title: 'Shared handbook' })).data!;
+      const privatePage = (await pages.post({ title: 'Private draft', isPrivate: true })).data!;
+      const publicChild = (await pages.post({ title: 'Published child', parentId: privatePage.id }))
+        .data!;
+
+      expect((await god.api.god.users({ userId: alice.id }).delete()).status).toBe(204);
+
+      const documents = god.api.projects({ projectKey: 'MKT' }).documents;
+      const surviving = await documents({ documentId: shared.id }).get();
+      expect(surviving.data).toMatchObject({ ownerUserId: null, isPrivate: false, version: 2 });
+      expect((await documents({ documentId: privatePage.id }).get()).status).toBe(404);
+      expect((await documents({ documentId: publicChild.id }).get()).data).toMatchObject({
+        ownerUserId: null,
+        parentId: null,
+        version: 2,
+      });
+      expect(
+        (await documents({ documentId: publicChild.id }).revisions.get()).data?.map(
+          (revision) => revision.version,
+        ),
+      ).toEqual([2, 1]);
+      const claimed = await documents({ documentId: shared.id }).ownership.post({
+        version: surviving.data!.version,
+        ownerUserId: god.id,
+      });
+      expect(claimed.data).toMatchObject({ ownerUserId: god.id });
+    });
+
+    it('serializes a document upload with deletion of its uploader account', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, god, 'MKT', 'owner');
+      const pages = alice.api.projects({ projectKey: 'MKT' }).documents;
+      const privatePage = (await pages.post({ title: 'Private upload target', isPrivate: true }))
+        .data!;
+
+      const concurrent = Promise.all([
+        pages({ documentId: privatePage.id }).assets.post({
+          file: new File(['concurrent bytes'], 'race.txt', { type: 'text/plain' }),
+        }),
+        god.api.god.users({ userId: alice.id }).delete(),
+      ]);
+      const [upload, deletion] = await withoutDeadlock(concurrent);
+
+      expect(deletion.status).toBe(204);
+      expect([201, 401, 403, 404]).toContain(upload.status);
+      expect(
+        (
+          await god.api
+            .projects({ projectKey: 'MKT' })
+            .documents({ documentId: privatePage.id })
+            .get()
+        ).status,
+      ).toBe(404);
+    });
+
+    it('does not leave an ownerless private page during access change and account deletion', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, god, 'MKT', 'owner');
+      const pages = alice.api.projects({ projectKey: 'MKT' }).documents;
+      const page = (await pages.post({ title: 'Public draft' })).data!;
+
+      const [privacy, deletion] = await withoutDeadlock(
+        Promise.all([
+          pages({ documentId: page.id }).access.post({
+            version: page.version,
+            isPrivate: true,
+          }),
+          god.api.god.users({ userId: alice.id }).delete(),
+        ]),
+      );
+
+      expect(deletion.status).toBe(204);
+      expect([200, 401, 403, 404]).toContain(privacy.status);
+      const surviving = await god.api
+        .projects({ projectKey: 'MKT' })
+        .documents({ documentId: page.id })
+        .get();
+      if (surviving.status === 200) {
+        expect(surviving.data).toMatchObject({ isPrivate: false, ownerUserId: null });
+      } else {
+        expect(surviving.status).toBe(404);
+      }
+    });
+
+    it('does not expose or orphan a private revision during account deletion', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, god, 'MKT', 'owner');
+      const pages = alice.api.projects({ projectKey: 'MKT' }).documents;
+      const privatePage = (
+        await pages.post({ title: 'Private history', content: 'Secret', isPrivate: true })
+      ).data!;
+      const privateRevision = (await pages({ documentId: privatePage.id }).revisions.get())
+        .data![0]!;
+      const sanitized = await pages({ documentId: privatePage.id }).patch({
+        version: privatePage.version,
+        content: 'Public body',
+      });
+      const published = await pages({ documentId: privatePage.id }).access.post({
+        version: sanitized.data!.version,
+        isPrivate: false,
+      });
+
+      const [restore, deletion] = await withoutDeadlock(
+        Promise.all([
+          pages({ documentId: privatePage.id })
+            .revisions({ revisionId: privateRevision.id })
+            .restore.post({ version: published.data!.version }),
+          god.api.god.users({ userId: alice.id }).delete(),
+        ]),
+      );
+
+      expect(deletion.status).toBe(204);
+      expect([200, 401, 403, 404]).toContain(restore.status);
+      const surviving = await god.api
+        .projects({ projectKey: 'MKT' })
+        .documents({ documentId: privatePage.id })
+        .get();
+      if (surviving.status === 200) {
+        expect(surviving.data).toMatchObject({ isPrivate: false, ownerUserId: null });
+        expect(surviving.data?.content).not.toBe('Secret');
+      } else {
+        expect(surviving.status).toBe(404);
+      }
+    });
+
+    it('refuses to delete the instance owner', async () => {
+      const { god } = await setup();
+
+      const res = await god.api.god.users({ userId: god.id }).delete();
+
+      expect(res.status).toBe(403);
+      expect((await god.api.god.users({ userId: god.id }).get()).status).toBe(200);
+    });
+
+    it("refuses to delete an agent's bot user", async () => {
+      const { god } = await setup();
+      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
+      const agentUserId = await createAgentUser(god, 'MKT');
+
+      const res = await god.api.god.users({ userId: agentUserId }).delete();
+
+      expect(res.status).toBe(400);
+      expect((await god.api.god.users({ userId: agentUserId }).get()).status).toBe(200);
+    });
+
+    it('refuses when the account is the only owner of a project', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const bob = await addUser({ email: 'bob@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, bob, 'MKT', 'member');
+      await moveTeamTo(god, alice);
+
+      const res = await god.api.god.users({ userId: alice.id }).delete();
+
+      expect(res.status).toBe(400);
+      // The message names the projects standing in the way.
+      expect(JSON.stringify(res.error?.value)).toContain('MKT');
+      // Neither the account nor the project was touched.
+      expect((await god.api.god.users({ userId: alice.id }).get()).status).toBe(200);
+      expect((await god.api.god.users({ userId: bob.id }).get()).data?.projects).toHaveLength(1);
+    });
+
+    it('hands a project in their own workspace to the instance owner without asking', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const [own] = (await alice.api.workspaces.get()).data!;
+      const team = await alice.api.teams.post({ name: 'Solo', slug: 'solo', workspaceId: own!.id });
+      await alice.api.teams({ teamId: team.data!.id }).projects.post({ key: 'SOL', name: 'Solo' });
+
+      const detail = await god.api.god.users({ userId: alice.id }).get();
+      expect(detail.data?.projects[0]).toMatchObject({ ownerCount: 1, inOwnWorkspace: true });
+
+      const res = await god.api.god.users({ userId: alice.id }).delete();
+
+      expect(res.status).toBe(204);
+      const kept = await god.api.god.users({ userId: god.id }).get();
+      expect(kept.data?.projects).toEqual([
+        expect.objectContaining({ projectKey: 'SOL', role: 'owner' }),
+      ]);
+    });
+
+    it('deletes the sole-owned projects with the account when asked', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const bob = await addUser({ email: 'bob@example.com' });
+      await createProject(alice.api, { key: 'MKT', name: 'Marketing' });
+      await joinProject(alice, bob, 'MKT', 'member');
+      await moveTeamTo(god, alice);
+
+      const res = await god.api.god
+        .users({ userId: alice.id })
+        .delete(undefined, { query: { withProjects: true } });
+
+      expect(res.status).toBe(204);
+      expect((await god.api.god.users({ userId: alice.id }).get()).status).toBe(404);
+      // MKT went with the account, so Bob's membership went with it.
+      const remaining = await god.api.god.users({ userId: bob.id }).get();
+      expect(remaining.data?.projects).toEqual([]);
+      expect(remaining.data?.projectCount).toBe(0);
+    });
+
+    it('leaves projects the account only shares alone', async () => {
+      const { god } = await setup();
+      const alice = await addUser({ email: 'alice@example.com' });
+      const bob = await addUser({ email: 'bob@example.com' });
+      // Bob owns OPS; Alice is only a member there, so it is not hers to take down.
+      await createProject(bob.api, { key: 'OPS', name: 'Operations' });
+      await joinProject(bob, alice, 'OPS', 'member');
+
+      const res = await god.api.god
+        .users({ userId: alice.id })
+        .delete(undefined, { query: { withProjects: true } });
+
+      expect(res.status).toBe(204);
+      const remaining = await god.api.god.users({ userId: bob.id }).get();
+      expect(remaining.data?.projects).toHaveLength(1);
+      expect(remaining.data?.projects[0]).toMatchObject({ projectKey: 'OPS' });
+    });
+
+    it('404s for an unknown id', async () => {
+      const { god } = await setup();
+
+      const res = await god.api.god.users({ userId: 'no-such-user' }).delete();
+
+      expect(res.status).toBe(404);
+    });
+  });
+});

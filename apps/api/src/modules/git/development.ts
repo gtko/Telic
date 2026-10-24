@@ -1,4 +1,4 @@
-import { db, issue, issueDevelopmentCheck, issueDevelopmentLink } from '@repo/db';
+import { chunk, issue, issueDevelopmentCheck, issueDevelopmentLink, type Db } from '@repo/db';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
 import {
@@ -64,7 +64,7 @@ function pullRequestState(event: PullRequestEvent): PullRequestState {
   return 'open';
 }
 
-function projectIssue(projectId: number) {
+function projectIssue(db: Db, projectId: number) {
   return inArray(
     issueDevelopmentLink.issueId,
     db.select({ id: issue.id }).from(issue).where(eq(issue.projectId, projectId)),
@@ -81,7 +81,10 @@ function aggregateChecks(checks: DevelopmentCheck[]): PipelineStatus | null {
   return 'success';
 }
 
-export async function listIssueDevelopmentLinks(issueId: number): Promise<DevelopmentLink[]> {
+export async function listIssueDevelopmentLinks(
+  db: Db,
+  issueId: number,
+): Promise<DevelopmentLink[]> {
   const links = await db
     .select()
     .from(issueDevelopmentLink)
@@ -123,13 +126,14 @@ export async function listIssueDevelopmentLinks(issueId: number): Promise<Develo
 }
 
 export async function listLinkablePullRequests(
+  db: Db,
   projectId: number,
   issueId: number,
   repositoryId: number,
   state: 'open' | 'all',
   page: number,
 ): Promise<LinkablePullRequestPage> {
-  const result = await listManagedPullRequests(projectId, repositoryId, state, page);
+  const result = await listManagedPullRequests(db, projectId, repositoryId, state, page);
   const linked = result.page.pullRequests.length
     ? await db
         .select({ number: issueDevelopmentLink.number })
@@ -157,14 +161,15 @@ export async function listLinkablePullRequests(
 }
 
 async function storePullRequestLink(
+  db: Db,
   projectId: number,
   issueId: number,
   provider: 'github' | 'gitlab',
   details: ProviderPullRequestDetails,
 ): Promise<{ link: DevelopmentLink; created: boolean }> {
-  const createdIssueIds = await upsertPullRequestLinks([issueId], provider, details.event);
-  if (details.run) await updatePipelineLinks(projectId, provider, details.run);
-  const links = await listIssueDevelopmentLinks(issueId);
+  const createdIssueIds = await upsertPullRequestLinks(db, [issueId], provider, details.event);
+  if (details.run) await updatePipelineLinks(db, projectId, provider, details.run);
+  const links = await listIssueDevelopmentLinks(db, issueId);
   const link = links.find(
     (item) =>
       item.provider === provider &&
@@ -176,26 +181,28 @@ async function storePullRequestLink(
 }
 
 export async function linkExistingPullRequest(
+  db: Db,
   projectId: number,
   issueId: number,
   repositoryId: number,
   number: number,
 ): Promise<{ link: DevelopmentLink; created: boolean }> {
-  const result = await getManagedPullRequest(projectId, repositoryId, number);
-  return storePullRequestLink(projectId, issueId, result.provider, result.details);
+  const result = await getManagedPullRequest(db, projectId, repositoryId, number);
+  return storePullRequestLink(db, projectId, issueId, result.provider, result.details);
 }
 
 export async function createAndLinkPullRequest(
+  db: Db,
   projectId: number,
   issueId: number,
   repositoryId: number,
   input: CreateProviderPullRequestInput,
 ): Promise<{ link: DevelopmentLink; created: boolean }> {
-  const result = await createManagedPullRequest(projectId, repositoryId, input);
-  return storePullRequestLink(projectId, issueId, result.provider, result.details);
+  const result = await createManagedPullRequest(db, projectId, repositoryId, input);
+  return storePullRequestLink(db, projectId, issueId, result.provider, result.details);
 }
 
-export async function hasOpenDevelopmentLinks(issueId: number): Promise<boolean> {
+export async function hasOpenDevelopmentLinks(db: Db, issueId: number): Promise<boolean> {
   const [link] = await db
     .select({ id: issueDevelopmentLink.id })
     .from(issueDevelopmentLink)
@@ -211,6 +218,7 @@ export async function hasOpenDevelopmentLinks(issueId: number): Promise<boolean>
 }
 
 export async function removeIssueDevelopmentLink(
+  db: Db,
   issueId: number,
   linkId: number,
 ): Promise<boolean> {
@@ -244,14 +252,15 @@ function pullRequestUpdateValues(event: PullRequestEvent, updatedAt: Date) {
     ...values,
     pipelineStatus: sql<
       string | null
-    >`CASE WHEN ${issueDevelopmentLink.headSha} IS DISTINCT FROM ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineStatus} END`,
+    >`CASE WHEN ${issueDevelopmentLink.headSha} IS NOT ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineStatus} END`,
     pipelineUrl: sql<
       string | null
-    >`CASE WHEN ${issueDevelopmentLink.headSha} IS DISTINCT FROM ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineUrl} END`,
+    >`CASE WHEN ${issueDevelopmentLink.headSha} IS NOT ${event.headSha} THEN NULL ELSE ${issueDevelopmentLink.pipelineUrl} END`,
   };
 }
 
 export async function updatePullRequestLinks(
+  db: Db,
   projectId: number,
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -264,12 +273,13 @@ export async function updatePullRequestLinks(
         eq(issueDevelopmentLink.provider, provider),
         eq(issueDevelopmentLink.repository, event.repo),
         eq(issueDevelopmentLink.externalKey, `pull_request:${event.number}`),
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
 }
 
 export async function upsertPullRequestLinks(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -312,6 +322,7 @@ export async function upsertPullRequestLinks(
 }
 
 export async function removePullRequestLinks(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -330,6 +341,7 @@ export async function removePullRequestLinks(
 }
 
 export async function upsertBranchLinks(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: BranchEvent,
@@ -374,6 +386,7 @@ export async function upsertBranchLinks(
 }
 
 export async function removeBranchLinks(
+  db: Db,
   projectId: number,
   issueIds: number[] | null,
   provider: GitProviderKey,
@@ -389,7 +402,7 @@ export async function removeBranchLinks(
         eq(issueDevelopmentLink.provider, provider),
         eq(issueDevelopmentLink.repository, repo),
         eq(issueDevelopmentLink.externalKey, `branch:${branch}`),
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
 }
@@ -398,6 +411,7 @@ export async function removeBranchLinks(
 // the pull request arrives so its pipeline and check rows survive the transition.
 // If the pull request row already exists, only remove the now-redundant branch row.
 export async function promoteBranchLinksToPullRequest(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -405,53 +419,56 @@ export async function promoteBranchLinksToPullRequest(
   if (issueIds.length === 0 || !event.sourceBranch) return [];
   const branchKey = `branch:${event.sourceBranch}`;
   const pullRequestKey = `pull_request:${event.number}`;
-  return db.transaction(async (tx) => {
-    const links = await tx
-      .select({
-        id: issueDevelopmentLink.id,
-        issueId: issueDevelopmentLink.issueId,
-        externalKey: issueDevelopmentLink.externalKey,
-      })
-      .from(issueDevelopmentLink)
-      .where(
+  const now = new Date();
+  // No read-then-write: both steps test their condition inside the statement, and the pair
+  // is one atomic batch. The promotion goes first, and only touches a branch row whose issue
+  // has no pull request row yet; what is left of the branch rows then has one, so the second
+  // statement removes exactly the redundant ones.
+  const promoted: number[] = [];
+  for (const part of chunk(issueIds, 40)) {
+    const [updated] = await db.batch([
+      db
+        .update(issueDevelopmentLink)
+        .set(pullRequestUpdateValues(event, now))
+        .where(
+          and(
+            inArray(issueDevelopmentLink.issueId, part),
+            eq(issueDevelopmentLink.provider, provider),
+            eq(issueDevelopmentLink.repository, event.repo),
+            eq(issueDevelopmentLink.externalKey, branchKey),
+            sql`NOT EXISTS (
+              SELECT 1 FROM issue_development_link AS pr
+              WHERE pr.issue_id = ${issueDevelopmentLink.issueId}
+                AND pr.provider = ${provider}
+                AND pr.repository = ${event.repo}
+                AND pr.external_key = ${pullRequestKey}
+            )`,
+          ),
+        )
+        .returning({ issueId: issueDevelopmentLink.issueId }),
+      db.delete(issueDevelopmentLink).where(
         and(
-          inArray(issueDevelopmentLink.issueId, issueIds),
+          inArray(issueDevelopmentLink.issueId, part),
           eq(issueDevelopmentLink.provider, provider),
           eq(issueDevelopmentLink.repository, event.repo),
-          inArray(issueDevelopmentLink.externalKey, [branchKey, pullRequestKey]),
+          eq(issueDevelopmentLink.externalKey, branchKey),
+          sql`EXISTS (
+              SELECT 1 FROM issue_development_link AS pr
+              WHERE pr.issue_id = ${issueDevelopmentLink.issueId}
+                AND pr.provider = ${provider}
+                AND pr.repository = ${event.repo}
+                AND pr.external_key = ${pullRequestKey}
+            )`,
         ),
-      );
-    const pullRequestIssueIds = new Set(
-      links.filter((link) => link.externalKey === pullRequestKey).map((link) => link.issueId),
-    );
-    const branchLinks = links.filter((link) => link.externalKey === branchKey);
-    const promoted = branchLinks.filter((link) => !pullRequestIssueIds.has(link.issueId));
-    const redundant = branchLinks.filter((link) => pullRequestIssueIds.has(link.issueId));
-
-    if (promoted.length > 0) {
-      await tx
-        .update(issueDevelopmentLink)
-        .set(pullRequestUpdateValues(event, new Date()))
-        .where(
-          inArray(
-            issueDevelopmentLink.id,
-            promoted.map((link) => link.id),
-          ),
-        );
-    }
-    if (redundant.length > 0) {
-      await tx.delete(issueDevelopmentLink).where(
-        inArray(
-          issueDevelopmentLink.id,
-          redundant.map((link) => link.id),
-        ),
-      );
-    }
-    return promoted.map((link) => link.issueId);
-  });
+      ),
+    ]);
+    promoted.push(...updated.map((row) => row.issueId));
+  }
+  return promoted;
 }
 
 export async function updatePipelineLinks(
+  db: Db,
   projectId: number,
   provider: GitProviderKey,
   event: PipelineEvent,
@@ -479,12 +496,13 @@ export async function updatePipelineLinks(
         eq(issueDevelopmentLink.repository, event.repo),
         identity,
         currentHead,
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
 }
 
 export async function updateCheckLinks(
+  db: Db,
   projectId: number,
   provider: GitProviderKey,
   event: CheckEvent,
@@ -504,7 +522,7 @@ export async function updateCheckLinks(
         eq(issueDevelopmentLink.repository, event.repo),
         identity,
         eq(issueDevelopmentLink.headSha, event.headSha),
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
   if (links.length === 0) return;

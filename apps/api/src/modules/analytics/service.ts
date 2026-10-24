@@ -1,5 +1,4 @@
 import {
-  db,
   issue,
   projectColumn,
   projectMember,
@@ -12,6 +11,7 @@ import {
   webhookDelivery,
   initiative,
   type ActivityPayload,
+  type Db,
 } from '@repo/db';
 import { and, desc, eq, gte, inArray, isNull, isNotNull, lt, sql } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
@@ -19,9 +19,22 @@ import type { AgentRunTrigger } from '#modules/agents/model';
 
 // Read-only project metrics for the dashboards feature. Every figure is derived
 // from the existing issue / project_column / issue_activity / issue_status tables —
-// there is no analytics storage. This module is the only place in the API that uses
-// GROUP BY and date_trunc; counts are cast to int (Postgres count() returns bigint,
-// which would otherwise arrive as a string).
+// there is no analytics storage. Timestamps are stored as epoch milliseconds, and the
+// calendar boundaries (day, ISO week) are UTC.
+
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+const WEEK_MS = 7 * DAY_MS;
+
+const startOfDay = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS;
+// The Monday of the week holding `ms` (the epoch day 0 is a Thursday).
+const startOfWeek = (ms: number) => {
+  const day = Math.floor(ms / DAY_MS);
+  return (day - ((day + 3) % 7)) * DAY_MS;
+};
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const two = (n: number) => String(n).padStart(2, '0');
 
 // One row per closed issue: when it entered the completed state it is still in. A
 // move between two completed columns falls inside that stretch of the history, so it
@@ -38,7 +51,7 @@ function closings(projectId: number) {
        AND NOT EXISTS (
              SELECT 1 FROM issue_status p
               WHERE p.issue_id = s.issue_id
-                AND p.state_type IS DISTINCT FROM 'completed'
+                AND p.state_type IS NOT 'completed'
                 AND (p.entered_at, p.id) > (s.entered_at, s.id))
      GROUP BY s.issue_id`;
 }
@@ -56,11 +69,11 @@ export interface StatsDto {
 
 const OPEN_STATES = sql`${projectColumn.stateType} NOT IN ('completed', 'canceled')`;
 
-export async function getStats(projectId: number): Promise<StatsDto> {
+export async function getStats(db: Db, projectId: number): Promise<StatsDto> {
   // One row per state type with its issue count; the open/backlog/in-progress
   // figures are derived from it.
   const stateRows = await db
-    .select({ stateType: projectColumn.stateType, count: sql<number>`count(*)::int` })
+    .select({ stateType: projectColumn.stateType, count: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
     .where(eq(issue.projectId, projectId))
@@ -76,21 +89,22 @@ export async function getStats(projectId: number): Promise<StatsDto> {
   }
 
   const [{ overdue }] = await db
-    .select({ overdue: sql<number>`count(*)::int` })
+    .select({ overdue: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
-    .where(and(eq(issue.projectId, projectId), sql`${issue.dueDate} < CURRENT_DATE`, OPEN_STATES));
+    .where(and(eq(issue.projectId, projectId), sql`${issue.dueDate} < date('now')`, OPEN_STATES));
 
   const [{ unassigned }] = await db
-    .select({ unassigned: sql<number>`count(*)::int` })
+    .select({ unassigned: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
     .where(and(eq(issue.projectId, projectId), isNull(issue.assigneeUserId), OPEN_STATES));
 
-  const closedRows = (await db.execute(sql`
-    SELECT count(*)::int AS count
+  const since7d = Date.now() - 7 * DAY_MS;
+  const closedRows = (await db.all(sql`
+    SELECT count(*) AS count
       FROM (${closings(projectId)}) c
-     WHERE c.closed_at >= now() - interval '7 days'`)) as unknown as { count: number }[];
+     WHERE c.closed_at >= ${since7d}`)) as unknown as { count: number }[];
   const closedLast7d = Number(closedRows[0]!.count);
 
   return { open, inProgress, backlog, overdue, unassigned, closedLast7d };
@@ -115,15 +129,19 @@ const PRIORITY_LABEL: Record<string, string> = {
   none: 'No priority',
 };
 
-export async function getBreakdown(projectId: number, by: BreakdownBy): Promise<BreakdownItem[]> {
+export async function getBreakdown(
+  db: Db,
+  projectId: number,
+  by: BreakdownBy,
+): Promise<BreakdownItem[]> {
   if (by === 'status') {
     // Every column, including empty ones, in work items order.
     const rows = await db
       .select({
-        key: sql<string>`${projectColumn.id}::text`,
+        key: sql<string>`CAST(${projectColumn.id} AS TEXT)`,
         label: projectColumn.name,
         color: projectColumn.color,
-        count: sql<number>`count(${issue.id})::int`,
+        count: sql<number>`count(${issue.id})`,
       })
       .from(projectColumn)
       .leftJoin(issue, eq(issue.columnId, projectColumn.id))
@@ -137,7 +155,7 @@ export async function getBreakdown(projectId: number, by: BreakdownBy): Promise<
     const rows = await db
       .select({
         key: sql<string>`COALESCE(${issue.priority}, 'none')`,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`count(*)`,
       })
       .from(issue)
       .where(eq(issue.projectId, projectId))
@@ -154,10 +172,10 @@ export async function getBreakdown(projectId: number, by: BreakdownBy): Promise<
   if (by === 'type') {
     const rows = await db
       .select({
-        key: sql<string>`COALESCE(${issueType.id}::text, 'none')`,
+        key: sql<string>`COALESCE(CAST(${issueType.id} AS TEXT), 'none')`,
         label: sql<string>`COALESCE(${issueType.name}, 'No type')`,
         color: issueType.color,
-        count: sql<number>`count(${issue.id})::int`,
+        count: sql<number>`count(${issue.id})`,
       })
       .from(issue)
       .leftJoin(issueType, eq(issueType.id, issue.typeId))
@@ -177,7 +195,7 @@ export async function getBreakdown(projectId: number, by: BreakdownBy): Promise<
       .select({
         key: sql<string>`COALESCE(${user.id}, 'none')`,
         label: sql<string>`COALESCE(${user.name}, 'Not delegated')`,
-        count: sql<number>`count(${issue.id})::int`,
+        count: sql<number>`count(${issue.id})`,
       })
       .from(issue)
       .leftJoin(user, eq(user.id, issue.delegateUserId))
@@ -192,7 +210,7 @@ export async function getBreakdown(projectId: number, by: BreakdownBy): Promise<
     .select({
       key: sql<string>`COALESCE(${user.id}, 'none')`,
       label: sql<string>`COALESCE(${user.name}, 'Unassigned')`,
-      count: sql<number>`count(${issue.id})::int`,
+      count: sql<number>`count(${issue.id})`,
     })
     .from(issue)
     .leftJoin(user, eq(user.id, issue.assigneeUserId))
@@ -213,48 +231,56 @@ export interface PulseBucket {
 
 // Per-unit heatmap geometry. `rows` cells stack in each column. `aligned` units
 // snap each column to a calendar boundary so the rows carry meaning — an hour
-// column is a day (rows = hours 0..23, `super` = day), a day column is a week
-// (rows = Sun..Sat, `super` = week). Weeks have no such boundary, so they are
-// unaligned: each column just packs `rows` consecutive weeks ending at now. fmt
-// is the tooltip label (Postgres to_char pattern).
+// column is a day (rows = hours 0..23), a day column is a week (rows = the seven
+// days of an ISO week). Weeks have no such boundary, so they are unaligned: each
+// column just packs `rows` consecutive weeks ending at now.
 const PULSE_UNIT: Record<
   PulseUnit,
   {
-    trunc: string;
-    super: string;
-    superField: string;
-    baseField: string;
+    stepMs: number;
+    superMs: number;
+    floor: (ms: number) => number;
+    superFloor: (ms: number) => number;
     rows: number;
     aligned: boolean;
-    fmt: string;
+    label: (ms: number) => string;
   }
 > = {
   hour: {
-    trunc: 'hour',
-    super: 'day',
-    superField: 'days',
-    baseField: 'hours',
+    stepMs: HOUR_MS,
+    superMs: DAY_MS,
+    floor: (ms) => Math.floor(ms / HOUR_MS) * HOUR_MS,
+    superFloor: startOfDay,
     rows: 24,
     aligned: true,
-    fmt: 'Mon DD, HH24:00',
+    label: (ms) => {
+      const d = new Date(ms);
+      return `${MONTHS[d.getUTCMonth()]} ${two(d.getUTCDate())}, ${two(d.getUTCHours())}:00`;
+    },
   },
   day: {
-    trunc: 'day',
-    super: 'week',
-    superField: 'weeks',
-    baseField: 'days',
+    stepMs: DAY_MS,
+    superMs: WEEK_MS,
+    floor: startOfDay,
+    superFloor: startOfWeek,
     rows: 7,
     aligned: true,
-    fmt: 'Dy, Mon DD',
+    label: (ms) => {
+      const d = new Date(ms);
+      return `${WEEKDAYS[d.getUTCDay()]}, ${MONTHS[d.getUTCMonth()]} ${two(d.getUTCDate())}`;
+    },
   },
   week: {
-    trunc: 'week',
-    super: 'week',
-    superField: 'weeks',
-    baseField: 'weeks',
+    stepMs: WEEK_MS,
+    superMs: WEEK_MS,
+    floor: startOfWeek,
+    superFloor: startOfWeek,
     rows: 4,
     aligned: false,
-    fmt: '"Week of" Mon DD',
+    label: (ms) => {
+      const d = new Date(ms);
+      return `Week of ${MONTHS[d.getUTCMonth()]} ${two(d.getUTCDate())}`;
+    },
   },
 };
 
@@ -263,44 +289,37 @@ export function pulseRows(unit: PulseUnit): number {
 }
 
 // A zero-filled activity series for the heatmap: `columns` columns of `rows` cells
-// each, ending at now (see PULSE_UNIT for the geometry). Postgres generates the
-// full bucket axis with generate_series and left-joins the counts, so the client
-// renders the returned order directly — no client-side date math or timezone
-// reconciliation. projectId and columns are validated numbers and the unit tokens
-// are whitelisted, so the interpolation is injection-safe.
+// each, ending at now (see PULSE_UNIT for the geometry). The database counts the
+// activity per bucket index and the full axis is filled in here, so the client
+// renders the returned order directly, with no client-side date math or timezone
+// reconciliation.
 export async function getPulse(
+  db: Db,
   projectId: number,
   unit: PulseUnit,
   columns: number,
   actorUserId?: string,
 ): Promise<PulseBucket[]> {
   const u = PULSE_UNIT[unit];
-  // Both branches yield exactly columns*rows buckets. Aligned: start at the super
-  // boundary `columns-1` supers back, end at the current super plus its remaining
-  // cells. Unaligned: just columns*rows base units back from the current bucket.
-  const range = u.aligned
-    ? {
-        start: `date_trunc('${u.super}', now()) - make_interval(${u.superField} => ${columns - 1})`,
-        end: `date_trunc('${u.super}', now()) + make_interval(${u.baseField} => ${u.rows - 1})`,
-      }
-    : {
-        start: `date_trunc('${u.trunc}', now()) - make_interval(${u.baseField} => ${columns * u.rows - 1})`,
-        end: `date_trunc('${u.trunc}', now())`,
-      };
-  const q = sql`${sql.raw(`
-    SELECT to_char(s.bucket, '${u.fmt}') AS label,
-           COALESCE(count(a.id), 0)::int AS count
-    FROM generate_series(${range.start}, ${range.end}, interval '1 ${u.trunc}') AS s(bucket)
-    LEFT JOIN issue_activity a
-      ON date_trunc('${u.trunc}', a.created_at) = s.bucket
-      AND a.issue_id IN (SELECT id FROM issue WHERE project_id = ${projectId})
-  `)}
-    ${actorUserId == null ? sql`` : sql`AND a.actor_user_id = ${actorUserId}`}
-    GROUP BY s.bucket
-    ORDER BY s.bucket
-  `;
-  const rows = (await db.execute(q)) as unknown as { label: string; count: number }[];
-  return rows.map((r) => ({ label: r.label, count: Number(r.count) }));
+  const now = Date.now();
+  const total = columns * u.rows;
+  // Aligned: start at the super boundary `columns-1` supers back, so the last column
+  // is the current super. Unaligned: `total` base units back from the current bucket.
+  const start = u.aligned
+    ? u.superFloor(now) - (columns - 1) * u.superMs
+    : u.floor(now) - (total - 1) * u.stepMs;
+  const rows = (await db.all(sql`
+    SELECT CAST((a.created_at - ${start}) / ${u.stepMs} AS INTEGER) AS idx, count(a.id) AS count
+      FROM issue_activity a
+     WHERE a.issue_id IN (SELECT id FROM issue WHERE project_id = ${projectId})
+       AND a.created_at >= ${start}
+       ${actorUserId == null ? sql`` : sql`AND a.actor_user_id = ${actorUserId}`}
+     GROUP BY idx`)) as unknown as { idx: number; count: number }[];
+  const counts = new Map(rows.map((r) => [Number(r.idx), Number(r.count)]));
+  return Array.from({ length: total }, (_, i) => ({
+    label: u.label(start + i * u.stepMs),
+    count: counts.get(i) ?? 0,
+  }));
 }
 
 // --- Throughput (created vs closed per week) -------------------------------------
@@ -314,27 +333,35 @@ export interface ThroughputWeek {
 // Creations come from the change log, closings from the status history; the two are
 // counted in one pass over their union so the weeks need no merging afterwards. A
 // week with neither is absent from the result.
-export async function getThroughput(projectId: number, weeks: number): Promise<ThroughputWeek[]> {
-  const since = sql`date_trunc('week', now()) - make_interval(weeks => ${weeks - 1})`;
-  const rows = (await db.execute(sql`
-    SELECT to_char(e.week, 'YYYY-MM-DD') AS week,
-           (count(*) FILTER (WHERE e.kind = 'created'))::int AS created,
-           (count(*) FILTER (WHERE e.kind = 'closed'))::int AS closed
+export async function getThroughput(
+  db: Db,
+  projectId: number,
+  weeks: number,
+): Promise<ThroughputWeek[]> {
+  const since = startOfWeek(Date.now()) - (weeks - 1) * WEEK_MS;
+  const rows = (await db.all(sql`
+    SELECT e.week AS week,
+           count(*) FILTER (WHERE e.kind = 'created') AS created,
+           count(*) FILTER (WHERE e.kind = 'closed') AS closed
       FROM (
-        SELECT date_trunc('week', a.created_at) AS week, 'created' AS kind
+        SELECT (a.created_at / 86400000 - ((a.created_at / 86400000 + 3) % 7)) * 86400000 AS week, 'created' AS kind
           FROM issue_activity a
           JOIN issue i ON i.id = a.issue_id
          WHERE i.project_id = ${projectId}
            AND a.action = 'created'
            AND a.created_at >= ${since}
         UNION ALL
-        SELECT date_trunc('week', c.closed_at), 'closed'
+        SELECT (c.closed_at / 86400000 - ((c.closed_at / 86400000 + 3) % 7)) * 86400000, 'closed'
           FROM (${closings(projectId)}) c
          WHERE c.closed_at >= ${since}
       ) e
      GROUP BY e.week
-     ORDER BY e.week`)) as unknown as ThroughputWeek[];
-  return rows.map((r) => ({ week: r.week, created: Number(r.created), closed: Number(r.closed) }));
+     ORDER BY e.week`)) as unknown as { week: number; created: number; closed: number }[];
+  return rows.map((r) => ({
+    week: new Date(Number(r.week)).toISOString().slice(0, 10),
+    created: Number(r.created),
+    closed: Number(r.closed),
+  }));
 }
 
 // --- Burnup (scope / started / completed per day, with a forecast) ---------------
@@ -381,26 +408,33 @@ export interface BurnupParams {
 // whose stretch covers that midnight. So an issue that was reopened leaves the
 // completed line for the days it was open again, and a canceled issue leaves the
 // scope line — the chart is a history of the project, not of the events.
-export async function getBurnup(projectId: number, params: BurnupParams): Promise<BurnupDto> {
-  const targetDate = await initiativeTargetDate(projectId, params.initiativeId);
+export async function getBurnup(
+  db: Db,
+  projectId: number,
+  params: BurnupParams,
+): Promise<BurnupDto> {
+  const targetDate = await initiativeTargetDate(db, projectId, params.initiativeId);
+  const today = startOfDay(Date.now());
   const initiativeFilter =
-    params.initiativeId == null ? sql`` : sql`AND i.initiative_id = ${params.initiativeId}::int`;
-  const rows = (await db.execute(sql`
-    WITH d AS (
-      SELECT generate_series(current_date - ${params.days - 1}::int, current_date, '1 day')::date AS day
+    params.initiativeId == null ? sql`` : sql`AND i.initiative_id = ${params.initiativeId}`;
+  const rows = (await db.all(sql`
+    WITH RECURSIVE d(day) AS (
+      SELECT ${today - (params.days - 1) * DAY_MS}
+      UNION ALL
+      SELECT day + ${DAY_MS} FROM d WHERE day < ${today}
     )
-    SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
-           (count(s.issue_id) FILTER (WHERE s.state_type IS DISTINCT FROM 'canceled'))::int AS scope,
-           (count(s.issue_id) FILTER (WHERE s.state_type IN ('started', 'completed')))::int AS started,
-           (count(s.issue_id) FILTER (WHERE s.state_type = 'completed'))::int AS completed
+    SELECT strftime('%Y-%m-%d', d.day / 1000, 'unixepoch') AS date,
+           count(s.issue_id) FILTER (WHERE s.state_type IS NOT 'canceled') AS scope,
+           count(s.issue_id) FILTER (WHERE s.state_type IN ('started', 'completed')) AS started,
+           count(s.issue_id) FILTER (WHERE s.state_type = 'completed') AS completed
       FROM d
       LEFT JOIN (
         SELECT s.issue_id, s.state_type, s.entered_at, s.left_at
           FROM issue_status s
           JOIN issue i ON i.id = s.issue_id
          WHERE i.project_id = ${projectId} ${initiativeFilter}
-      ) s ON s.entered_at < d.day + 1
-         AND (s.left_at IS NULL OR s.left_at >= d.day + 1)
+      ) s ON s.entered_at < d.day + ${DAY_MS}
+         AND (s.left_at IS NULL OR s.left_at >= d.day + ${DAY_MS})
      GROUP BY d.day
      ORDER BY d.day`)) as unknown as BurnupDay[];
   const days = rows.map((r) => ({
@@ -416,6 +450,7 @@ export async function getBurnup(projectId: number, params: BurnupParams): Promis
 // project is charted. An initiative from another project is a 404, not an empty
 // chart, so a wrong id does not read as an initiative with no issues.
 async function initiativeTargetDate(
+  db: Db,
   projectId: number,
   initiativeId: number | null,
 ): Promise<string | null> {
@@ -540,6 +575,7 @@ export interface ActivityPage {
 // issue ids the client resolved from a work items filter set. An empty issueIds array
 // means "the filter matched no issues", so the feed is empty.
 export async function listActivity(
+  db: Db,
   projectId: number,
   opts: {
     before?: ActivityCursor | null;
@@ -564,7 +600,7 @@ export async function listActivity(
   if (opts.to) conds.push(lt(issueActivity.createdAt, opts.to));
   if (before)
     conds.push(
-      sql`(${issueActivity.createdAt}, ${issueActivity.id}) < (${before.ts}::timestamptz, ${before.id}::integer)`,
+      sql`(${issueActivity.createdAt}, ${issueActivity.id}) < (CAST(${before.ts} AS INTEGER), CAST(${before.id} AS INTEGER))`,
     );
 
   const rows = await db
@@ -580,7 +616,7 @@ export async function listActivity(
       action: issueActivity.action,
       payload: issueActivity.payload,
       createdAt: issueActivity.createdAt,
-      cursorTs: sql<string>`${issueActivity.createdAt}::text`,
+      cursorTs: sql<string>`CAST(${issueActivity.createdAt} AS TEXT)`,
     })
     .from(issueActivity)
     .innerJoin(issue, eq(issue.id, issueActivity.issueId))
@@ -629,6 +665,7 @@ export interface AgentRunFeedItem {
 // carries the project it worked in; ai_agent is joined for the agent name and issue
 // when the run is issue-triggered.
 export async function listAgentRunFeed(
+  db: Db,
   projectId: number,
   opts: { status?: string | null; limit?: number } = {},
 ): Promise<AgentRunFeedItem[]> {
@@ -679,14 +716,18 @@ export interface AgentRunStatsDto {
 
 // Agent run outcome counts over the last `days` days for the project. Backs the
 // agent health widget's success rate and failure count.
-export async function getAgentRunStats(projectId: number, days: number): Promise<AgentRunStatsDto> {
+export async function getAgentRunStats(
+  db: Db,
+  projectId: number,
+  days: number,
+): Promise<AgentRunStatsDto> {
   const rows = await db
-    .select({ status: agentRun.status, count: sql<number>`count(*)::int` })
+    .select({ status: agentRun.status, count: sql<number>`count(*)` })
     .from(agentRun)
     .where(
       and(
         eq(agentRun.projectId, projectId),
-        sql`${agentRun.createdAt} >= now() - make_interval(days => ${days})`,
+        gte(agentRun.createdAt, new Date(Date.now() - days * DAY_MS)),
       ),
     )
     .groupBy(agentRun.status);
@@ -715,21 +756,25 @@ export interface WebhookStatsDto {
 // Webhook delivery outcome counts over the last `days` days plus the current
 // active/disabled subscription split (a dead endpoint is auto-disabled once its
 // consecutive failures cross the worker threshold). Backs the webhook health widget.
-export async function getWebhookStats(projectId: number, days: number): Promise<WebhookStatsDto> {
+export async function getWebhookStats(
+  db: Db,
+  projectId: number,
+  days: number,
+): Promise<WebhookStatsDto> {
   const deliveryRows = await db
-    .select({ status: webhookDelivery.status, count: sql<number>`count(*)::int` })
+    .select({ status: webhookDelivery.status, count: sql<number>`count(*)` })
     .from(webhookDelivery)
     .innerJoin(webhook, eq(webhook.id, webhookDelivery.webhookId))
     .where(
       and(
         eq(webhook.projectId, projectId),
-        sql`${webhookDelivery.createdAt} >= now() - make_interval(days => ${days})`,
+        gte(webhookDelivery.createdAt, new Date(Date.now() - days * DAY_MS)),
       ),
     )
     .groupBy(webhookDelivery.status);
 
   const webhookRows = await db
-    .select({ isActive: webhook.isActive, count: sql<number>`count(*)::int` })
+    .select({ isActive: webhook.isActive, count: sql<number>`count(*)` })
     .from(webhook)
     .where(eq(webhook.projectId, projectId))
     .groupBy(webhook.isActive);
@@ -770,7 +815,7 @@ export interface AgentWorkloadItem {
 // Per-agent workload for the project: how many open issues each agent is currently
 // delegated, and its lifetime run outcomes. Three cheap grouped reads merged in
 // memory (one per source), keyed by the agent's bot user id and agent id.
-export async function getAgentWorkload(projectId: number): Promise<AgentWorkloadItem[]> {
+export async function getAgentWorkload(db: Db, projectId: number): Promise<AgentWorkloadItem[]> {
   const agents = await db
     .select({ id: aiAgent.id, userId: aiAgent.userId, name: aiAgent.username, kind: aiAgent.kind })
     .from(aiAgent)
@@ -781,7 +826,7 @@ export async function getAgentWorkload(projectId: number): Promise<AgentWorkload
   if (agents.length === 0) return [];
 
   const delegatedRows = await db
-    .select({ userId: issue.delegateUserId, count: sql<number>`count(*)::int` })
+    .select({ userId: issue.delegateUserId, count: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
     .where(and(eq(issue.projectId, projectId), isNotNull(issue.delegateUserId), OPEN_STATES))
@@ -791,9 +836,9 @@ export async function getAgentWorkload(projectId: number): Promise<AgentWorkload
   const runRows = await db
     .select({
       agentId: agentRun.agentId,
-      total: sql<number>`count(*)::int`,
-      success: sql<number>`(count(*) filter (where ${agentRun.status} = 'success'))::int`,
-      failed: sql<number>`(count(*) filter (where ${agentRun.status} = 'failed'))::int`,
+      total: sql<number>`count(*)`,
+      success: sql<number>`count(*) filter (where ${agentRun.status} = 'success')`,
+      failed: sql<number>`count(*) filter (where ${agentRun.status} = 'failed')`,
     })
     .from(agentRun)
     .where(eq(agentRun.projectId, projectId))

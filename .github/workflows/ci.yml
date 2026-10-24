@@ -82,20 +82,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Integration tests need a live database, so they run in the compose gate:
-      # a throwaway Postgres and RustFS, with the api built from the production
-      # Dockerfile. Building both api-test and worker-test also verifies their
-      # Dockerfiles build.
-      - name: Build test images
-        run: docker compose -f docker-compose.test.yml build
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
-      # `run` starts api-test's dependencies (Postgres healthy, the RustFS bucket
-      # init completed), runs the suite, and exits with its code. It does not use
-      # --abort-on-container-exit, which would tear the stack down the moment the
-      # one-shot rustfs-test-init exits, before api-test starts.
-      - name: Run the compose test gate
-        run: docker compose -f docker-compose.test.yml run --rm api-test
+      # Cache the global bun install cache, keyed by the lockfile.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
 
-      - name: Tear down
-        if: always()
-        run: docker compose -f docker-compose.test.yml down -v
+      - run: bun install --frozen-lockfile
+
+      # Vitest suites run on a local Miniflare D1 and workerd: the `node` and `workers`
+      # projects of apps/api, and the suites of the packages, apps/worker and apps/bot.
+      - name: Test
+        run: bun run test

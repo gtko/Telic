@@ -1,4 +1,4 @@
-import { db, teamWorkspaceId } from '@repo/db';
+import { teamWorkspaceId } from '@repo/db';
 import { getProjectTeamId } from '#modules/projects/service';
 import { getAgentSettings } from '#modules/settings/service';
 import { getLimits } from '#shared/limits';
@@ -7,44 +7,95 @@ import { agentRunStarted, recordAgentRunFinished } from './run-activity';
 import { runAdmissionDelay } from './run-admission';
 import { runRefusal } from './run-refusal';
 import {
+  MAX_CONSUMER_RUN_SECONDS,
   agentRunConfig,
-  claimDueRuns,
+  claimRun,
   countRunsAhead,
   deferRun,
+  explainMiss,
   markRunFailed,
   markRunExecuting,
   markRunSuccess,
+  requeueRun,
   runRetryDelayMs,
   scheduleRunRetry,
   type ClaimedRun,
 } from './run-queue';
-import { STEP_LIMIT_MESSAGE, runAgent } from './runtime';
+import type { AgentRuntime, RunMessage } from './runtime/bindings';
+import { STEP_LIMIT_MESSAGE, runAgent } from './runtime/entry';
 import { runThreadId } from './runtime/thread-ids';
 
-// Drains the agent_run queue. The runtime, the model credentials and the limits are
-// all here, so the run is claimed and executed in the same process — the queue row is
-// the only thing a run is built from, so nothing about which project or which bot user
-// it acts as can be handed in from outside.
+// Runs the agent_run rows a Cloudflare Queue consumer is told about. The message holds a
+// run id and nothing else: the row is claimed here (one conditional UPDATE, see claimRun)
+// and is the only thing a run is built from, so nothing about which project or which bot
+// user it acts as can be handed in from outside.
 
 // How long a run waits when its workspace has no free slot.
 const DEFERRED_RETRY_SECONDS = 30;
 
-export async function processAgentRuns(): Promise<void> {
-  const runs = await claimDueRuns();
-  await Promise.all(runs.map(processRun));
+// One queue message as the consumer sees it: the Workers `Message` reduced to what is used.
+export interface RunQueueMessage {
+  body: RunMessage;
+  ack(): void;
+  retry(options?: { delaySeconds?: number }): void;
 }
 
-async function processRun(run: ClaimedRun): Promise<void> {
-  const teamId = await getProjectTeamId(run.projectId);
+// The consumer's `queue(batch, env)` handler body. Messages run side by side; each is
+// acknowledged once handled, and one that failed unexpectedly (a database outage, say) is
+// retried later — the run it names is claimed only if it is still due.
+export async function consumeRunBatch(
+  rt: AgentRuntime,
+  messages: readonly RunQueueMessage[],
+): Promise<void> {
+  await Promise.all(
+    messages.map(async (message) => {
+      try {
+        await handleRunMessage(rt, message.body.runId);
+        message.ack();
+      } catch (error) {
+        console.error(`[run-queue] run ${message.body.runId} failed:`, error);
+        message.retry({ delaySeconds: 30 });
+      }
+    }),
+  );
+}
+
+// Claims the run and executes it. A run that cannot be claimed is looked at again when
+// it matters: after its retry delay, at the end of the lease another consumer holds, or
+// shortly if an earlier run of its issue goes first. Duplicate messages find the run
+// taken (or finished) and end here.
+export async function handleRunMessage(
+  rt: AgentRuntime,
+  runId: number,
+  now = Date.now(),
+): Promise<'ran' | 'skipped'> {
+  const run = await claimRun(rt.db, runId, now);
+  if (!run) {
+    const miss = await explainMiss(rt.db, runId, now);
+    if (miss.retryInSeconds != null) await requeueRun(rt.queue, runId, miss.retryInSeconds);
+    return 'skipped';
+  }
+  await processRun(rt, run);
+  return 'ran';
+}
+
+async function processRun(rt: AgentRuntime, run: ClaimedRun): Promise<void> {
+  const { db } = rt;
+  const teamId = await getProjectTeamId(db, run.projectId);
   const workspaceId = await teamWorkspaceId(teamId, db);
-  const { maxConcurrentRuns, maxRunSeconds } = await getLimits(workspaceId);
-  if (maxConcurrentRuns > 0 && (await countRunsAhead(workspaceId, run.id)) >= maxConcurrentRuns) {
-    await deferRun(run.id, DEFERRED_RETRY_SECONDS);
+  const { maxConcurrentRuns, maxRunSeconds } = await getLimits(db, workspaceId);
+  if (
+    maxConcurrentRuns > 0 &&
+    (await countRunsAhead(db, workspaceId, run.id)) >= maxConcurrentRuns
+  ) {
+    await deferRun(db, run.id, DEFERRED_RETRY_SECONDS);
+    await requeueRun(rt.queue, run.id, DEFERRED_RETRY_SECONDS);
     return;
   }
   const wait = await runAdmissionDelay(run);
   if (wait > 0) {
-    await deferRun(run.id, wait);
+    await deferRun(db, run.id, wait);
+    await requeueRun(rt.queue, run.id, wait);
     return;
   }
   // Refused before anything is recorded on the issue, and not retried: the attempt would
@@ -56,7 +107,7 @@ async function processRun(run: ClaimedRun): Promise<void> {
     userId: run.requesterUserId,
   });
   if (refused) {
-    await markRunFailed(run.id, refused);
+    await markRunFailed(db, run.id, refused);
     return;
   }
   // The issue's timeline entries are written here, where the agent's work actually
@@ -64,22 +115,20 @@ async function processRun(run: ClaimedRun): Promise<void> {
   // the last attempt logs one.
   const configuredTimeoutMs = runTimeoutMs(
     run.agentRunTimeoutSec,
-    (await getAgentSettings()).maxRunSeconds,
+    (await getAgentSettings(db)).maxRunSeconds,
     maxRunSeconds,
   );
-  if (run.executionDeadline <= performance.now()) return;
+  if (run.executionDeadline <= Date.now()) return;
   try {
-    await agentRunStarted(run);
-    if (!(await markRunExecuting(run.id, run.attempts))) return;
-    const timeoutMs = Math.floor(
-      Math.min(configuredTimeoutMs, run.executionDeadline - performance.now()),
-    );
+    await agentRunStarted(db, run);
+    if (!(await markRunExecuting(db, run.id, run.attempts))) return;
+    const timeoutMs = Math.floor(Math.min(configuredTimeoutMs, run.executionDeadline - Date.now()));
     if (timeoutMs <= 0) {
-      await recordAgentRunFinished(run, 'failed');
-      await markRunFailed(run.id, 'Claim execution budget exhausted');
+      await recordAgentRunFinished(db, run, 'failed');
+      await markRunFailed(db, run.id, 'Claim execution budget exhausted');
       return;
     }
-    const result = await runAgent(run.agentId, run.projectId, framePrompt(run), {
+    const result = await runAgent(rt, run.agentId, run.projectId, framePrompt(run), {
       callerUserId: run.agentUserId,
       threadId: runThreadId(run),
       issueId: run.issueId,
@@ -92,25 +141,32 @@ async function processRun(run: ClaimedRun): Promise<void> {
     if (result.aborted) {
       // Mastra resolves generate() on abort, so the partial text would read as a success.
       // Not retried: a run that hits the time limit will hit it again.
-      await recordAgentRunFinished(run, 'failed');
-      await markRunFailed(run.id, `Timed out after ${Math.round(timeoutMs / 1000)}s`, result.text);
+      await recordAgentRunFinished(db, run, 'failed');
+      await markRunFailed(
+        db,
+        run.id,
+        `Timed out after ${Math.round(timeoutMs / 1000)}s`,
+        result.text,
+      );
       return;
     }
     if (result.stepLimit) {
-      await recordAgentRunFinished(run, 'failed');
-      await markRunFailed(run.id, STEP_LIMIT_MESSAGE);
+      await recordAgentRunFinished(db, run, 'failed');
+      await markRunFailed(db, run.id, STEP_LIMIT_MESSAGE);
       return;
     }
-    await recordAgentRunFinished(run, 'success');
-    await markRunSuccess(run.id, result.text, result.usage);
+    await recordAgentRunFinished(db, run, 'success');
+    await markRunSuccess(db, run.id, result.text, result.usage);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (run.attempts < agentRunConfig.maxAttempts()) {
-      await scheduleRunRetry(run.id, runRetryDelayMs(run.attempts), message);
+      const delayMs = runRetryDelayMs(run.attempts);
+      await scheduleRunRetry(db, run.id, delayMs, message);
+      await requeueRun(rt.queue, run.id, delayMs / 1000);
       return;
     }
-    await recordAgentRunFinished(run, 'failed');
-    await markRunFailed(run.id, message);
+    await recordAgentRunFinished(db, run, 'failed');
+    await markRunFailed(db, run.id, message);
   }
 }
 
@@ -123,6 +179,11 @@ function runTimeoutMs(
   instanceSeconds: number,
   workspaceSeconds: number,
 ): number {
-  const seconds = Math.min(agentSeconds ?? instanceSeconds, instanceSeconds);
+  // Never more than a queue consumer invocation can give (MAX_CONSUMER_RUN_SECONDS).
+  const seconds = Math.min(
+    agentSeconds ?? instanceSeconds,
+    instanceSeconds,
+    MAX_CONSUMER_RUN_SECONDS,
+  );
   return (workspaceSeconds > 0 ? Math.min(seconds, workspaceSeconds) : seconds) * 1000;
 }

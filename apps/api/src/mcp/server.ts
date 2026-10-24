@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { agentTeam } from '#modules/agents/core/service';
 import { listTeams } from '#modules/teams/service';
+import type { Db } from '@repo/db';
 import type { McpApp } from './types';
 import { routeTools, withoutFields, type McpRouteTool } from './generate';
 import { dispatchTool } from './dispatch';
@@ -19,10 +20,10 @@ const TEAM_PARAM = 'teamId';
 // with a single team acts in that one. A person in several teams names the team on
 // each call. It is never resolved from projectKey — an agent has to be creatable in
 // a team that holds no project.
-async function callerTeam(userId: string): Promise<number | null> {
-  const ofAgent = await agentTeam(userId);
+async function callerTeam(db: Db, userId: string): Promise<number | null> {
+  const ofAgent = await agentTeam(db, userId);
   if (ofAgent !== null) return ofAgent;
-  const teams = await listTeams(userId, { mcpOnly: true });
+  const teams = await listTeams(db, userId, { mcpOnly: true });
   return teams.length === 1 ? teams[0].id : null;
 }
 
@@ -32,6 +33,7 @@ async function callerTeam(userId: string): Promise<number | null> {
 // TypeBox JSON Schema can be served as the tool inputSchema without converting to
 // Zod. Arguments are validated by the route itself, not here.
 export async function buildMcpServer(
+  db: Db,
   app: McpApp,
   credential: McpCredential,
   userId: string,
@@ -48,7 +50,7 @@ export async function buildMcpServer(
 
   const table = routeTools(app);
   const byName = new Map(table.map((t) => [t.name, t]));
-  const teamId = await callerTeam(userId);
+  const teamId = await callerTeam(db, userId);
   const needsTeam = (tool: McpRouteTool) => tool.pathParams.includes(TEAM_PARAM);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

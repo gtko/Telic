@@ -1,5 +1,6 @@
-import { db, issue, issueWorklog, user } from '@repo/db';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { type Db, issue, issueWorklog, user } from '@repo/db';
+import { desc, eq, sql } from 'drizzle-orm';
+import { inIds } from './sql-helpers';
 import { HttpError, iso } from '#shared/lib';
 import { recordActivity, timeText } from './activity';
 
@@ -54,7 +55,7 @@ function assertNotFuture(spentOn: string): void {
 // Every entry of an issue, the newest day first and the newest entry first within a
 // day. The author's name and picture come along, so the section names them without
 // a lookup of its own.
-export async function listWorklogs(issueId: number): Promise<WorklogRow[]> {
+export async function listWorklogs(db: Db, issueId: number): Promise<WorklogRow[]> {
   const rows = await db
     .select(worklogColumns)
     .from(issueWorklog)
@@ -68,17 +69,18 @@ export async function listWorklogs(issueId: number): Promise<WorklogRow[]> {
 // zero mapIssue set for an issue nothing was logged on. One grouped query for the
 // whole set, the same shape as the other per-issue enrichment.
 export async function attachLoggedMinutes<T extends { id: number; loggedMinutes: number }>(
+  db: Db,
   issues: T[],
 ): Promise<void> {
   if (issues.length === 0) return;
   const rows = await db
     .select({
       issueId: issueWorklog.issueId,
-      minutes: sql<number>`sum(${issueWorklog.minutes})::int`,
+      minutes: sql<number>`sum(${issueWorklog.minutes})`,
     })
     .from(issueWorklog)
     .where(
-      inArray(
+      inIds(
         issueWorklog.issueId,
         issues.map((i) => i.id),
       ),
@@ -92,6 +94,7 @@ export async function attachLoggedMinutes<T extends { id: number; loggedMinutes:
 // issue, and the member who logged it, which decides whether the caller may touch
 // it. Null when there is no such entry.
 export async function getWorklogRef(
+  db: Db,
   worklogId: number,
 ): Promise<{ issueId: number; projectId: number; userId: string } | null> {
   const rows = await db
@@ -107,6 +110,7 @@ export async function getWorklogRef(
 }
 
 export async function createWorklog(
+  db: Db,
   issueId: number,
   userId: string,
   input: WorklogInput,
@@ -124,15 +128,16 @@ export async function createWorklog(
     .returning({ id: issueWorklog.id });
 
   await recordActivity(
+    db,
     issueId,
     [{ action: 'worklog', to: worklogSide({ id: row.id, ...input }) }],
     userId,
   );
-  return requireWorklog(row.id);
+  return requireWorklog(db, row.id);
 }
 
 // One entry with its author, for the routes that return the row they wrote.
-async function requireWorklog(worklogId: number): Promise<WorklogRow> {
+async function requireWorklog(db: Db, worklogId: number): Promise<WorklogRow> {
   const rows = await db
     .select(worklogColumns)
     .from(issueWorklog)
@@ -145,13 +150,14 @@ async function requireWorklog(worklogId: number): Promise<WorklogRow> {
 // Changes an entry. The feed keeps what it held before, so a correction can be read
 // against the time it replaced. Who may change whose is settled by the route guard.
 export async function updateWorklog(
+  db: Db,
   worklogId: number,
   patch: Partial<WorklogInput>,
   actorUserId?: string | null,
 ): Promise<WorklogRow> {
   // Every field is optional, so a patch can carry none. Drizzle rejects an empty
   // `set`, and there would be nothing to write anyway.
-  if (Object.keys(patch).length === 0) return requireWorklog(worklogId);
+  if (Object.keys(patch).length === 0) return requireWorklog(db, worklogId);
   if (patch.spentOn !== undefined) assertNotFuture(patch.spentOn);
 
   const [previous] = await db
@@ -173,6 +179,7 @@ export async function updateWorklog(
 
   if (row.minutes !== previous.minutes || row.spentOn !== previous.spentOn) {
     await recordActivity(
+      db,
       previous.issueId,
       [
         {
@@ -184,12 +191,13 @@ export async function updateWorklog(
       actorUserId,
     );
   }
-  return requireWorklog(worklogId);
+  return requireWorklog(db, worklogId);
 }
 
 // Deletes an entry, lowering the issue's logged time by that entry alone. Returns
 // false when there is no such entry.
 export async function deleteWorklog(
+  db: Db,
   worklogId: number,
   actorUserId?: string | null,
 ): Promise<boolean> {
@@ -202,6 +210,7 @@ export async function deleteWorklog(
   if (!removed) return false;
 
   await recordActivity(
+    db,
     removed.issueId,
     [{ action: 'worklog', from: worklogSide(removed) }],
     actorUserId,

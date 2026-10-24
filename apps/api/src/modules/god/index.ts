@@ -1,7 +1,10 @@
+import { agentRuntime } from '#modules/agents/core/runtime/bindings';
+import type { Db } from '@repo/db';
+import { dbContext } from '#shared/db-context';
 import { Elysia, t } from 'elysia';
 import {
-  GOOGLE_REDIRECT_URI,
-  OIDC_REDIRECT_URI,
+  googleRedirectUri,
+  oidcRedirectUri,
   getAuthSettings,
   setAuthSettings,
   getEmailSettings,
@@ -115,15 +118,16 @@ import {
 
 // Whether any single sign-on provider can run right now. Password sign-in may only
 // be turned off while one can.
-async function hasSsoProvider(): Promise<boolean> {
-  return (await hasConfiguredOidc()) || (await hasConfiguredGoogle());
+async function hasSsoProvider(db: Db): Promise<boolean> {
+  return (await hasConfiguredOidc(db)) || (await hasConfiguredGoogle(db));
 }
 
 async function assertUsableSignInMethod(
+  db: Db,
   nextProviderUsable: boolean,
   otherProviderUsable: boolean,
 ): Promise<void> {
-  const auth = await getAuthSettings();
+  const auth = await getAuthSettings(db);
   if (!auth.emailPassword && !nextProviderUsable && !otherProviderUsable) {
     throw new HttpError(400, 'Enable password sign-in or another single sign-on provider first');
   }
@@ -140,6 +144,7 @@ function assertActiveSwitchable(lock: ActiveLock | null): void {
 }
 
 export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
+  .use(dbContext)
   .use(authContext)
   // Every route in this plugin is instance administration, so the role check runs
   // once here instead of per route.
@@ -149,10 +154,10 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/auth-settings',
-    async () => ({
-      ...(await getAuthSettings()),
-      hasEmailProvider: await hasConfiguredEmailProvider(),
-      hasSsoProvider: await hasSsoProvider(),
+    async ({ db }) => ({
+      ...(await getAuthSettings(db)),
+      hasEmailProvider: await hasConfiguredEmailProvider(db),
+      hasSsoProvider: await hasSsoProvider(db),
     }),
     {
       response: { 200: AuthSettingsResponse, ...errors(401, 403) },
@@ -166,20 +171,20 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/auth-settings',
-    async ({ body }) => {
-      const ready = await hasConfiguredEmailProvider();
+    async ({ db, body }) => {
+      const ready = await hasConfiguredEmailProvider(db);
       // Verification mail and magic links have no way to reach the user without a
       // provider, so they cannot be turned on before one is configured.
       if (!ready && (body.requireEmailVerification || body.magicLink)) {
         throw new HttpError(400, 'Configure an email provider first');
       }
-      const sso = await hasSsoProvider();
+      const sso = await hasSsoProvider(db);
       // Without another way in, turning the password form off would lock everyone
       // out, the instance owner included.
       if (body.emailPassword === false && !sso) {
         throw new HttpError(400, 'Configure a single sign-on provider first');
       }
-      const next = await setAuthSettings(body);
+      const next = await setAuthSettings(db, body);
       return { ...next, hasEmailProvider: ready, hasSsoProvider: sso };
     },
     {
@@ -193,7 +198,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   )
 
-  .get('/god/email-settings', () => getEmailSettings(), {
+  .get('/god/email-settings', ({ db }) => getEmailSettings(db), {
     response: { 200: EmailSettingsResponse, ...errors(401, 403) },
     detail: {
       summary: 'Get instance email settings',
@@ -201,7 +206,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/email-settings', ({ body }) => setEmailSettings(body), {
+  .put('/god/email-settings', ({ db, body }) => setEmailSettings(db, body), {
     body: EmailSettingsBody,
     response: { 200: EmailSettingsResponse, ...errors(400, 401, 403) },
     detail: {
@@ -212,10 +217,10 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .post(
     '/god/email-settings/test',
-    async ({ user, body: patch }) => {
+    async ({ db, user, body: patch }) => {
       const current = requireGod(user);
       if (!current.email) throw new HttpError(400, 'The instance owner has no email address');
-      const config = await resolveEmailConfig(patch ?? {});
+      const config = await resolveEmailConfig(db, patch ?? {});
       if (!hasEmailProvider(config)) {
         throw new HttpError(400, 'Configure an email provider first');
       }
@@ -224,7 +229,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         "This test confirms that It's a Plan can send email through the configured provider.",
       );
       const result = await sendEmail(
-        { ...config, smtp: { ...config.smtp, timeout: config.smtp.timeout ?? 15 } },
+        { resend: config.resend, from: config.from },
         {
           to: current.email,
           subject: "It's a Plan email test",
@@ -250,7 +255,10 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/google-settings',
-    async () => ({ ...(await getGoogleSettings()), redirectUri: GOOGLE_REDIRECT_URI }),
+    async ({ db, env }) => ({
+      ...(await getGoogleSettings(db)),
+      redirectUri: googleRedirectUri(env),
+    }),
     {
       response: { 200: GoogleSettingsResponse, ...errors(401, 403) },
       detail: {
@@ -262,8 +270,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/google-settings',
-    async ({ body }) => {
-      const current = await getGoogleSettings();
+    async ({ db, env, body }) => {
+      const current = await getGoogleSettings(db);
       const enabled = body.enabled ?? current.enabled;
       const clientId = body.clientId ?? current.clientId;
       const hasClientSecret = (body.clientSecret?.length ?? 0) > 0 || current.hasClientSecret;
@@ -273,11 +281,12 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         throw new HttpError(400, 'Add the Google client ID and secret first');
       }
       await assertUsableSignInMethod(
+        db,
         enabled && clientId.length > 0 && hasClientSecret,
-        await hasConfiguredOidc(),
+        await hasConfiguredOidc(db),
       );
-      const next = await setGoogleSettings(body);
-      return { ...next, redirectUri: GOOGLE_REDIRECT_URI };
+      const next = await setGoogleSettings(db, body);
+      return { ...next, redirectUri: googleRedirectUri(env) };
     },
     {
       body: GoogleSettingsBody,
@@ -291,7 +300,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/oidc-settings',
-    async () => ({ ...(await getOidcSettings()), redirectUri: OIDC_REDIRECT_URI }),
+    async ({ db, env }) => ({ ...(await getOidcSettings(db)), redirectUri: oidcRedirectUri(env) }),
     {
       response: { 200: OidcSettingsResponse, ...errors(401, 403) },
       detail: {
@@ -303,8 +312,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/oidc-settings',
-    async ({ body }) => {
-      const current = await getOidcSettings();
+    async ({ db, env, body }) => {
+      const current = await getOidcSettings(db);
       const enabled = body.enabled ?? current.enabled;
       const discoveryUrl = body.discoveryUrl ?? current.discoveryUrl;
       const clientId = body.clientId ?? current.clientId;
@@ -315,11 +324,12 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         throw new HttpError(400, 'Add the discovery URL, client ID and secret first');
       }
       await assertUsableSignInMethod(
+        db,
         enabled && discoveryUrl.length > 0 && clientId.length > 0 && hasClientSecret,
-        await hasConfiguredGoogle(),
+        await hasConfiguredGoogle(db),
       );
-      const next = await setOidcSettings(body);
-      return { ...next, redirectUri: OIDC_REDIRECT_URI };
+      const next = await setOidcSettings(db, body);
+      return { ...next, redirectUri: oidcRedirectUri(env) };
     },
     {
       body: OidcSettingsBody,
@@ -332,23 +342,27 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   )
 
-  .get('/god/scim', async () => ({ ...(await getScimSettings(null)), baseUrl: SCIM_BASE_URL }), {
-    response: { 200: ScimSettingsResponse, ...errors(401, 403) },
-    detail: {
-      summary: 'Get SCIM provisioning settings',
-      description: 'Get whether SCIM provisioning is on and whether a token has been generated.',
+  .get(
+    '/god/scim',
+    async ({ db }) => ({ ...(await getScimSettings(db, null)), baseUrl: SCIM_BASE_URL }),
+    {
+      response: { 200: ScimSettingsResponse, ...errors(401, 403) },
+      detail: {
+        summary: 'Get SCIM provisioning settings',
+        description: 'Get whether SCIM provisioning is on and whether a token has been generated.',
+      },
     },
-  })
+  )
 
   .patch(
     '/god/scim',
-    async ({ body }) => {
+    async ({ db, body }) => {
       // Enabling it without a token would leave the endpoint answering 401 to
       // everything, which reads as a broken integration rather than a missing step.
-      if (body.enabled && !(await getScimSettings(null)).hasToken) {
+      if (body.enabled && !(await getScimSettings(db, null)).hasToken) {
         throw new HttpError(400, 'Generate a SCIM token first');
       }
-      return { ...(await setScimSettings(null, body)), baseUrl: SCIM_BASE_URL };
+      return { ...(await setScimSettings(db, null, body)), baseUrl: SCIM_BASE_URL };
     },
     {
       body: ScimSettingsBody,
@@ -360,7 +374,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   )
 
-  .post('/god/scim/token', async () => ({ token: await rotateScimToken(null) }), {
+  .post('/god/scim/token', async ({ db }) => ({ token: await rotateScimToken(db, null) }), {
     response: { 200: ScimTokenResponse, ...errors(401, 403) },
     detail: {
       summary: 'Generate a SCIM token',
@@ -370,7 +384,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/scim/groups', () => listProvisionedGroups(null), {
+  .get('/god/scim/groups', ({ db }) => listProvisionedGroups(db, null), {
     response: { 200: t.Array(ProvisionedGroupResponse), ...errors(401, 403) },
     detail: {
       summary: 'List provisioned groups',
@@ -382,7 +396,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/scim/groups/:groupId/mappings',
-    ({ params, body }) => setGroupMappings(null, params.groupId, body.mappings),
+    ({ db, params, body }) => setGroupMappings(db, null, params.groupId, body.mappings),
     {
       params: scimGroupParams,
       body: ScimGroupMappingsBody,
@@ -396,7 +410,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   )
 
-  .get('/god/scim/projects', () => listMappableProjects(null), {
+  .get('/god/scim/projects', ({ db }) => listMappableProjects(db, null), {
     response: { 200: MappableProjectListResponse, ...errors(401, 403) },
     detail: {
       summary: 'List mappable projects',
@@ -406,7 +420,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/storage-settings', () => getStorageSettings(), {
+  .get('/god/storage-settings', ({ db }) => getStorageSettings(db), {
     response: { 200: StorageSettingsSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get storage limits',
@@ -414,7 +428,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/storage-settings', ({ body }) => setStorageSettings(body), {
+  .put('/god/storage-settings', ({ db, body }) => setStorageSettings(db, body), {
     body: StorageSettingsBody,
     response: { 200: StorageSettingsSchema, ...errors(400, 401, 403) },
     detail: {
@@ -424,7 +438,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/project-defaults', () => getProjectDefaults(), {
+  .get('/god/project-defaults', ({ db }) => getProjectDefaults(db), {
     response: { 200: ProjectDefaultsSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get project defaults',
@@ -432,7 +446,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/project-defaults', ({ body }) => setProjectDefaults(body), {
+  .put('/god/project-defaults', ({ db, body }) => setProjectDefaults(db, body), {
     body: ProjectDefaultsSchema,
     response: { 200: ProjectDefaultsSchema, ...errors(400, 401, 403) },
     detail: {
@@ -442,7 +456,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/agent-settings', () => getAgentSettings(), {
+  .get('/god/agent-settings', ({ db }) => getAgentSettings(db), {
     response: { 200: AgentSettingsSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get instance agent settings',
@@ -450,7 +464,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/agent-settings', ({ body }) => setAgentSettings(body), {
+  .put('/god/agent-settings', ({ db, body }) => setAgentSettings(db, body), {
     body: t.Partial(AgentSettingsSchema),
     response: { 200: AgentSettingsSchema, ...errors(400, 401, 403) },
     detail: {
@@ -461,7 +475,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/hotkey-settings', () => getHotkeySettings(), {
+  .get('/god/hotkey-settings', ({ db }) => getHotkeySettings(db), {
     response: { 200: HotkeyCombosSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get instance keyboard shortcuts',
@@ -470,7 +484,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/hotkey-settings', ({ body }) => setHotkeySettings(body), {
+  .put('/god/hotkey-settings', ({ db, body }) => setHotkeySettings(db, body), {
     body: HotkeyCombosSchema,
     response: { 200: HotkeyCombosSchema, ...errors(400, 401, 403) },
     detail: {
@@ -502,7 +516,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/telegram-settings', () => getInstanceBotSettings(), {
+  .get('/god/telegram-settings', ({ db }) => getInstanceBotSettings(db), {
     response: { 200: TelegramSettingsResponse, ...errors(401, 403) },
     detail: {
       summary: 'Get Telegram bot settings',
@@ -512,8 +526,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/telegram-settings',
-    async ({ body }) => {
-      const current = await getInstanceBotSettings();
+    async ({ db, body }) => {
+      const current = await getInstanceBotSettings(db);
       const hasBotToken = (body.botToken?.length ?? 0) > 0 || current.hasBotToken;
       // Without a token the bot can neither link accounts nor deliver, so turning it
       // on would only offer a button that leads nowhere.
@@ -521,7 +535,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         throw new HttpError(400, 'Add the bot token first');
       }
       try {
-        return await setInstanceBotSettings(body);
+        return await setInstanceBotSettings(db, body);
       } catch (err) {
         // A token Telegram rejects is the administrator's mistake, not a server
         // failure: report it as a bad request with what Telegram said.
@@ -541,9 +555,9 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/users',
-    ({ query }) =>
+    ({ db, query }) =>
       paginate(query, (window) =>
-        listInstanceUsers({ search: query.search, kind: query.kind ?? 'human', ...window }),
+        listInstanceUsers(db, { search: query.search, kind: query.kind ?? 'human', ...window }),
       ),
     {
       query: listUsersQuery,
@@ -558,8 +572,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/users/:userId',
-    async ({ params }) => {
-      const found = await getInstanceUser(params.userId);
+    async ({ db, params }) => {
+      const found = await getInstanceUser(db, params.userId);
       if (!found) throw new HttpError(404, 'User not found');
       return found;
     },
@@ -576,8 +590,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .post(
     '/god/users/:userId/verify-email',
-    async ({ params }) => {
-      const updated = await verifyInstanceUserEmail(params.userId);
+    async ({ db, params }) => {
+      const updated = await verifyInstanceUserEmail(db, params.userId);
       if (!updated) throw new HttpError(404, 'User not found');
       return updated;
     },
@@ -594,11 +608,11 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .post(
     '/god/users/:userId/deactivate',
-    async ({ params }) => {
-      const target = await getInstanceUser(params.userId);
+    async ({ db, params }) => {
+      const target = await getInstanceUser(db, params.userId);
       if (!target) throw new HttpError(404, 'User not found');
       assertActiveSwitchable(target.activeLock);
-      const updated = await setInstanceUserActive(params.userId, false);
+      const updated = await setInstanceUserActive(db, params.userId, false);
       if (!updated) throw new HttpError(404, 'User not found');
       return updated;
     },
@@ -617,11 +631,11 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .post(
     '/god/users/:userId/reactivate',
-    async ({ params }) => {
-      const target = await getInstanceUser(params.userId);
+    async ({ db, params }) => {
+      const target = await getInstanceUser(db, params.userId);
       if (!target) throw new HttpError(404, 'User not found');
       assertActiveSwitchable(target.activeLock);
-      const updated = await setInstanceUserActive(params.userId, true);
+      const updated = await setInstanceUserActive(db, params.userId, true);
       if (!updated) throw new HttpError(404, 'User not found');
       return updated;
     },
@@ -639,8 +653,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .delete(
     '/god/users/:userId',
-    async ({ params, query }) => {
-      const target = await getInstanceUser(params.userId);
+    async ({ db, env, auth, params, query }) => {
+      const target = await getInstanceUser(db, params.userId);
       if (!target) throw new HttpError(404, 'User not found');
       // An instance owner is not removable here: the role is what grants god mode,
       // so deleting one from inside it is how an instance loses its administration.
@@ -664,9 +678,9 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         );
       }
       if (query.withProjects) {
-        for (const p of sole) await deleteProject(p.projectId);
+        for (const p of sole) await deleteProject(agentRuntime(env, auth), p.projectId);
       }
-      await deleteInstanceUser(params.userId);
+      await deleteInstanceUser(db, params.userId);
       return noContent();
     },
     {
@@ -683,8 +697,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/projects',
-    ({ query }) =>
-      paginate(query, (window) => listInstanceProjects({ search: query.search, ...window })),
+    ({ db, query }) =>
+      paginate(query, (window) => listInstanceProjects(db, { search: query.search, ...window })),
     {
       query: searchPageQuery,
       response: { 200: InstanceProjectPageResponse, ...errors(400, 401, 403) },
@@ -697,8 +711,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/projects/:projectId',
-    async ({ params }) => {
-      const found = await getInstanceProject(params.projectId);
+    async ({ db, params }) => {
+      const found = await getInstanceProject(db, params.projectId);
       if (!found) throw new HttpError(404, 'Project not found');
       return found;
     },
@@ -715,8 +729,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/teams',
-    ({ query }) =>
-      paginate(query, (window) => listInstanceTeams({ search: query.search, ...window })),
+    ({ db, query }) =>
+      paginate(query, (window) => listInstanceTeams(db, { search: query.search, ...window })),
     {
       query: searchPageQuery,
       response: { 200: InstanceTeamPageResponse, ...errors(400, 401, 403) },
@@ -729,8 +743,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/teams/:teamId',
-    async ({ params }) => {
-      const found = await getInstanceTeam(params.teamId);
+    async ({ db, params }) => {
+      const found = await getInstanceTeam(db, params.teamId);
       if (!found) throw new HttpError(404, 'Team not found');
       return found;
     },
@@ -746,9 +760,9 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/teams/:teamId/projects',
-    ({ params, query }) =>
+    ({ db, params, query }) =>
       paginate(query, (window) =>
-        listInstanceTeamProjects(params.teamId, { search: query.search, ...window }),
+        listInstanceTeamProjects(db, params.teamId, { search: query.search, ...window }),
       ),
     {
       params: teamParams,
@@ -763,9 +777,9 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/teams/:teamId/members',
-    ({ params, query }) =>
+    ({ db, params, query }) =>
       paginate(query, (window) =>
-        listInstanceTeamMembers(params.teamId, { search: query.search, ...window }),
+        listInstanceTeamMembers(db, params.teamId, { search: query.search, ...window }),
       ),
     {
       params: teamParams,

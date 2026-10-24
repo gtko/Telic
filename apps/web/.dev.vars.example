@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `bun run preview` (opennextjs-cloudflare preview).
+API_URL=http://localhost:3000
+NEXTJS_ENV=development

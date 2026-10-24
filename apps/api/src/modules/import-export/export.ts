@@ -1,5 +1,5 @@
 import {
-  db,
+  chunk,
   project,
   projectColumn,
   label,
@@ -9,6 +9,7 @@ import {
   issueActivity,
   issueLink,
   user,
+  type Db,
 } from '@repo/db';
 import { eq, and, inArray } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
@@ -57,7 +58,15 @@ export interface ProjectExport {
   issues: ExportedIssue[];
 }
 
-export async function exportProject(projectId: number): Promise<ProjectExport> {
+// Runs `read` once per chunk of `ids` (D1 binds at most 100 parameters per statement) and
+// concatenates the rows; no query when there is no id.
+async function readByIds<Id, Row>(ids: Id[], read: (part: Id[]) => Promise<Row[]>): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (const part of chunk(ids)) rows.push(...(await read(part)));
+  return rows;
+}
+
+export async function exportProject(db: Db, projectId: number): Promise<ProjectExport> {
   const [projectRow] = await db
     .select({ key: project.key, name: project.name, description: project.description })
     .from(project)
@@ -110,12 +119,12 @@ export async function exportProject(projectId: number): Promise<ProjectExport> {
   );
   const issueIds = issueRows.map((i) => i.id);
 
-  const labelLinks = issueIds.length
-    ? await db
-        .select({ issueId: issueLabel.issueId, labelId: issueLabel.labelId })
-        .from(issueLabel)
-        .where(inArray(issueLabel.issueId, issueIds))
-    : [];
+  const labelLinks = await readByIds(issueIds, (part) =>
+    db
+      .select({ issueId: issueLabel.issueId, labelId: issueLabel.labelId })
+      .from(issueLabel)
+      .where(inArray(issueLabel.issueId, part)),
+  );
   const labelsByIssueId = new Map<number, string[]>();
   for (const link of labelLinks) {
     const name = labelNameById.get(link.labelId);
@@ -125,8 +134,9 @@ export async function exportProject(projectId: number): Promise<ProjectExport> {
     else labelsByIssueId.set(link.issueId, [name]);
   }
 
-  const comments = issueIds.length
-    ? await db
+  const comments = (
+    await readByIds(issueIds, (part) =>
+      db
         .select({
           id: issueActivity.id,
           issueId: issueActivity.issueId,
@@ -137,20 +147,20 @@ export async function exportProject(projectId: number): Promise<ProjectExport> {
           replyToId: issueActivity.replyToId,
         })
         .from(issueActivity)
-        .where(and(inArray(issueActivity.issueId, issueIds), eq(issueActivity.kind, 'comment')))
-        .orderBy(issueActivity.createdAt)
-    : [];
+        .where(and(inArray(issueActivity.issueId, part), eq(issueActivity.kind, 'comment'))),
+    )
+  ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id);
 
-  const relations = issueIds.length
-    ? await db
-        .select({
-          sourceIssueId: issueLink.sourceIssueId,
-          targetIssueId: issueLink.targetIssueId,
-          kind: issueLink.kind,
-        })
-        .from(issueLink)
-        .where(inArray(issueLink.sourceIssueId, issueIds))
-    : [];
+  const relations = await readByIds(issueIds, (part) =>
+    db
+      .select({
+        sourceIssueId: issueLink.sourceIssueId,
+        targetIssueId: issueLink.targetIssueId,
+        kind: issueLink.kind,
+      })
+      .from(issueLink)
+      .where(inArray(issueLink.sourceIssueId, part)),
+  );
   const relationsBySourceId = new Map<number, typeof relations>();
   for (const relation of relations) {
     const forIssue = relationsBySourceId.get(relation.sourceIssueId);
@@ -165,16 +175,13 @@ export async function exportProject(projectId: number): Promise<ProjectExport> {
       ),
     ),
   ];
-  const emailByUserId = userIds.length
-    ? new Map(
-        (
-          await db
-            .select({ id: user.id, email: user.email })
-            .from(user)
-            .where(inArray(user.id, userIds))
-        ).map((u) => [u.id, u.email]),
+  const emailByUserId = new Map(
+    (
+      await readByIds(userIds, (part) =>
+        db.select({ id: user.id, email: user.email }).from(user).where(inArray(user.id, part)),
       )
-    : new Map<string, string>();
+    ).map((u) => [u.id, u.email]),
+  );
 
   const commentsByIssueId = new Map<number, typeof comments>();
   for (const comment of comments) {

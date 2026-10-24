@@ -1,5 +1,8 @@
 import {
-  db,
+  type Db,
+  batchAll,
+  chunk,
+  type BatchStatement,
   agentFieldTrigger,
   aiAgent,
   customField,
@@ -69,14 +72,21 @@ function mapField(
 
 // Loads the options for the given field ids, grouped by field, each list ordered
 // by position. Returns an empty map for no ids.
-async function optionsByField(fieldIds: number[]): Promise<Map<number, CustomFieldOptionRow[]>> {
+async function optionsByField(
+  db: Db,
+  fieldIds: number[],
+): Promise<Map<number, CustomFieldOptionRow[]>> {
   const byField = new Map<number, CustomFieldOptionRow[]>();
   if (fieldIds.length === 0) return byField;
-  const rows = await db
-    .select()
-    .from(customFieldOption)
-    .where(inArray(customFieldOption.fieldId, fieldIds))
-    .orderBy(customFieldOption.position);
+  const rows = (
+    await Promise.all(
+      chunk(fieldIds).map((ids) =>
+        db.select().from(customFieldOption).where(inArray(customFieldOption.fieldId, ids)),
+      ),
+    )
+  )
+    .flat()
+    .sort((a, b) => a.position - b.position);
   for (const o of rows) {
     let list = byField.get(o.fieldId);
     if (!list) byField.set(o.fieldId, (list = []));
@@ -90,6 +100,7 @@ async function optionsByField(fieldIds: number[]): Promise<Map<number, CustomFie
 // returns every field of the project regardless of type scope (used by the board
 // payload, which filters by type on the client).
 export async function listCustomFields(
+  db: Db,
   projectId: number,
   opts: { issueTypeId?: number; allTypes?: boolean } = {},
 ): Promise<CustomFieldRow[]> {
@@ -108,30 +119,40 @@ export async function listCustomFields(
     .from(customField)
     .where(and(...conds))
     .orderBy(asc(customField.position));
-  const options = await optionsByField(fields.map((f) => f.id));
+  const options = await optionsByField(
+    db,
+    fields.map((f) => f.id),
+  );
   return fields.map((f) => mapField(f, options.get(f.id) ?? []));
 }
 
 // The ids of the member fields of the given projects an agent can be set into: the ones
 // whose scope holds agents. These are the fields an agent may carry a run trigger for.
-export async function listAgentMemberFieldIds(projectIds: number[]): Promise<number[]> {
+export async function listAgentMemberFieldIds(db: Db, projectIds: number[]): Promise<number[]> {
   if (projectIds.length === 0) return [];
-  const rows = await db
-    .select({ id: customField.id })
-    .from(customField)
-    .where(
-      and(
-        inArray(customField.projectId, projectIds),
-        eq(customField.fieldType, 'member'),
-        inArray(customField.memberScope, ['all', 'agents']),
+  const rows = (
+    await Promise.all(
+      chunk(projectIds).map((ids) =>
+        db
+          .select({ id: customField.id })
+          .from(customField)
+          .where(
+            and(
+              inArray(customField.projectId, ids),
+              eq(customField.fieldType, 'member'),
+              inArray(customField.memberScope, ['all', 'agents']),
+            ),
+          ),
       ),
-    );
+    )
+  ).flat();
   return rows.map((r) => r.id);
 }
 
 // One field by id, scoped to its project so a field id from another project is
 // not matched. Returns null when no field of that id exists in the project.
 export async function getCustomFieldById(
+  db: Db,
   projectId: number,
   id: number,
 ): Promise<CustomFieldRow | null> {
@@ -140,39 +161,36 @@ export async function getCustomFieldById(
     .from(customField)
     .where(and(eq(customField.id, id), eq(customField.projectId, projectId)));
   if (!rows[0]) return null;
-  const options = await optionsByField([id]);
+  const options = await optionsByField(db, [id]);
   return mapField(rows[0], options.get(id) ?? []);
 }
 
-export async function createCustomField(input: {
-  projectId: number;
-  issueTypeId?: number | null;
-  name: string;
-  fieldType: CustomFieldType;
-  memberScope?: MemberScope | null;
-  showInBody?: boolean;
-  options?: string[];
-}): Promise<CustomFieldRow> {
+export async function createCustomField(
+  db: Db,
+  input: {
+    projectId: number;
+    issueTypeId?: number | null;
+    name: string;
+    fieldType: CustomFieldType;
+    memberScope?: MemberScope | null;
+    showInBody?: boolean;
+    options?: string[];
+  },
+): Promise<CustomFieldRow> {
   const issueTypeId = input.issueTypeId ?? null;
   if (issueTypeId != null) {
-    const type = await getIssueTypeById(issueTypeId);
+    const type = await getIssueTypeById(db, issueTypeId);
     if (!type || type.projectId !== input.projectId) {
       throw new HttpError(400, 'issueTypeId does not belong to this project');
     }
   }
-  const [{ pos }] = await db
-    .select({ pos: sql<number>`COALESCE(MAX(${customField.position}), -1) + 1` })
-    .from(customField)
-    .where(
-      and(
-        eq(customField.projectId, input.projectId),
-        sql`${customField.issueTypeId} IS NOT DISTINCT FROM ${issueTypeId}`,
-      ),
-    );
   const options = input.options ?? [];
-  // One transaction, so a rejected option list leaves no field behind.
-  const id = await db.transaction(async (tx) => {
-    const [row] = await tx
+  // One batch, so a rejected option list leaves no field behind. The position is
+  // computed by the INSERT itself (no read-then-write), and the options point at the
+  // field just inserted: D1 runs a batch alone, so the highest id of the project's
+  // fields is the new one (last_insert_rowid() would move on after the first option).
+  const [created] = await db.batch([
+    db
       .insert(customField)
       .values({
         projectId: input.projectId,
@@ -181,20 +199,19 @@ export async function createCustomField(input: {
         fieldType: input.fieldType,
         memberScope: input.fieldType === 'member' ? (input.memberScope ?? 'all') : null,
         showInBody: input.showInBody ?? false,
-        position: Number(pos),
+        position: sql`(select coalesce(max(position), -1) + 1 from ${customField} where project_id = ${input.projectId} and issue_type_id is ${issueTypeId})`,
       })
-      .returning({ id: customField.id });
-    if (options.length > 0) {
-      await tx
-        .insert(customFieldOption)
-        .values(options.map((value, index) => ({ fieldId: row.id, value, position: index })));
-    }
-    return row.id;
-  });
-  return (await getCustomFieldById(input.projectId, id))!;
+      .returning({ id: customField.id }),
+    ...options.map((value, index) =>
+      db.insert(customFieldOption).values({
+        fieldId: sql`(select max(id) from ${customField} where project_id = ${input.projectId})`,
+        value,
+        position: index,
+      }),
+    ),
+  ]);
+  return (await getCustomFieldById(db, input.projectId, created[0]!.id))!;
 }
-
-type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function holdsOptions(fieldType: CustomFieldType): boolean {
   return fieldType === 'select' || fieldType === 'multi_select';
@@ -203,21 +220,18 @@ function holdsOptions(fieldType: CustomFieldType): boolean {
 // Every value issues hold in the field, both the scalar rows and the selections of
 // its options. A value is written into the column of the type it was set under, so
 // it is unreadable once the field carries another type.
-async function clearFieldValues(tx: Transaction, fieldId: number): Promise<void> {
-  await tx.delete(issueFieldValue).where(eq(issueFieldValue.fieldId, fieldId));
-  await tx.delete(issueFieldOption).where(eq(issueFieldOption.fieldId, fieldId));
+function clearFieldValues(db: Db, fieldId: number) {
+  return [
+    db.delete(issueFieldValue).where(eq(issueFieldValue.fieldId, fieldId)),
+    db.delete(issueFieldOption).where(eq(issueFieldOption.fieldId, fieldId)),
+  ];
 }
 
 // Clears the members a narrowed scope no longer allows, leaving the rest in place.
 // An agent is a member whose user id backs an ai_agent row.
-async function clearMembersOutOfScope(
-  tx: Transaction,
-  fieldId: number,
-  scope: MemberScope,
-): Promise<void> {
-  if (scope === 'all') return;
+function clearMembersOutOfScope(db: Db, fieldId: number, scope: MemberScope) {
   const isAgent = sql`EXISTS (SELECT 1 FROM ${aiAgent} WHERE ${aiAgent.userId} = ${issueFieldValue.valueUserId})`;
-  await tx
+  return db
     .update(issueFieldValue)
     .set({ valueUserId: null })
     .where(
@@ -228,12 +242,12 @@ async function clearMembersOutOfScope(
 // Writes the option list a select field should end up with. An option that arrives
 // with an id is renamed in place, so the issues holding it keep it; one that is left
 // out is deleted, and its selections go with it.
-async function syncOptions(
-  tx: Transaction,
+function syncOptions(
+  db: Db,
   fieldId: number,
   existing: CustomFieldOptionRow[],
   next: { id?: number; value: string }[],
-): Promise<void> {
+) {
   const values = next.map((o) => o.value);
   if (new Set(values).size !== values.length) {
     throw new HttpError(400, 'Option values must be unique');
@@ -243,19 +257,25 @@ async function syncOptions(
     next.map((o) => o.id).filter((id): id is number => id != null && byId.has(id)),
   );
   const removed = existing.filter((o) => !kept.has(o.id)).map((o) => o.id);
-  if (removed.length > 0) {
-    await tx.delete(customFieldOption).where(inArray(customFieldOption.id, removed));
+  const statements: BatchStatement[] = [];
+  for (const ids of chunk(removed)) {
+    statements.push(db.delete(customFieldOption).where(inArray(customFieldOption.id, ids)));
   }
   for (const [position, option] of next.entries()) {
     if (option.id != null && kept.has(option.id)) {
-      await tx
-        .update(customFieldOption)
-        .set({ value: option.value, position })
-        .where(eq(customFieldOption.id, option.id));
+      statements.push(
+        db
+          .update(customFieldOption)
+          .set({ value: option.value, position })
+          .where(eq(customFieldOption.id, option.id)),
+      );
     } else {
-      await tx.insert(customFieldOption).values({ fieldId, value: option.value, position });
+      statements.push(
+        db.insert(customFieldOption).values({ fieldId, value: option.value, position }),
+      );
     }
   }
+  return statements;
 }
 
 // Updates a field, scoped to its project. Returns null when no field of that id
@@ -264,6 +284,7 @@ async function syncOptions(
 // a member scope clears the ones it no longer allows, and dropping an option clears
 // the selections of it.
 export async function updateCustomField(
+  db: Db,
   projectId: number,
   id: number,
   patch: {
@@ -274,7 +295,7 @@ export async function updateCustomField(
     options?: { id?: number; value: string }[];
   },
 ): Promise<CustomFieldRow | null> {
-  const current = await getCustomFieldById(projectId, id);
+  const current = await getCustomFieldById(db, projectId, id);
   if (!current) return null;
 
   const fieldType = patch.fieldType ?? current.fieldType;
@@ -286,8 +307,10 @@ export async function updateCustomField(
     memberScope = patch.memberScope ?? (typeChanged ? 'all' : current.memberScope);
   }
 
-  await db.transaction(async (tx) => {
-    await tx
+  // The statements are known once `current` is read, so they go in one atomic batch: a
+  // rejected option list (duplicate value) leaves the field untouched.
+  const statements: BatchStatement[] = [
+    db
       .update(customField)
       .set({
         name: patch.name ?? current.name,
@@ -295,33 +318,33 @@ export async function updateCustomField(
         fieldType,
         memberScope,
       })
-      .where(and(eq(customField.id, id), eq(customField.projectId, projectId)));
-
-    if (typeChanged) {
-      await clearFieldValues(tx, id);
-      if (!holdsOptions(fieldType)) {
-        await tx.delete(customFieldOption).where(eq(customFieldOption.fieldId, id));
-      }
-    } else if (memberScope != null && memberScope !== current.memberScope) {
-      await clearMembersOutOfScope(tx, id, memberScope);
+      .where(and(eq(customField.id, id), eq(customField.projectId, projectId))),
+  ];
+  if (typeChanged) {
+    statements.push(...clearFieldValues(db, id));
+    if (!holdsOptions(fieldType)) {
+      statements.push(db.delete(customFieldOption).where(eq(customFieldOption.fieldId, id)));
     }
+  } else if (memberScope != null && memberScope !== current.memberScope) {
+    if (memberScope !== 'all') statements.push(clearMembersOutOfScope(db, id, memberScope));
+  }
 
-    // A field that no longer takes agents drops its agent triggers: kept, they would
-    // arm again on their own once the field takes agents anew.
-    if (fieldType !== 'member' || memberScope === 'humans') {
-      await tx.delete(agentFieldTrigger).where(eq(agentFieldTrigger.fieldId, id));
-    }
+  // A field that no longer takes agents drops its agent triggers: kept, they would
+  // arm again on their own once the field takes agents anew.
+  if (fieldType !== 'member' || memberScope === 'humans') {
+    statements.push(db.delete(agentFieldTrigger).where(eq(agentFieldTrigger.fieldId, id)));
+  }
 
-    if (patch.options && holdsOptions(fieldType)) {
-      await syncOptions(tx, id, current.options, patch.options);
-    }
-  });
+  if (patch.options && holdsOptions(fieldType)) {
+    statements.push(...syncOptions(db, id, current.options, patch.options));
+  }
+  await batchAll(db, statements);
 
-  return getCustomFieldById(projectId, id);
+  return getCustomFieldById(db, projectId, id);
 }
 
 // Deletes a field, scoped to its project. Returns true when a row was removed.
-export async function deleteCustomField(projectId: number, id: number): Promise<boolean> {
+export async function deleteCustomField(db: Db, projectId: number, id: number): Promise<boolean> {
   const deleted = await db
     .delete(customField)
     .where(and(eq(customField.id, id), eq(customField.projectId, projectId)))

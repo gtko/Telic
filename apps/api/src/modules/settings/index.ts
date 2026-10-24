@@ -1,3 +1,4 @@
+import { dbContext } from '#shared/db-context';
 import { Elysia } from 'elysia';
 import { requireUser } from '#shared/access';
 import { authContext } from '#shared/auth-context';
@@ -22,8 +23,9 @@ export const settingsRoutes = new Elysia({
   name: 'settings',
   detail: { tags: ['Settings'] },
 })
+  .use(dbContext)
   .use(authContext)
-  .get('/settings/storage', () => getStorageSettings(), {
+  .get('/settings/storage', ({ db }) => getStorageSettings(db), {
     response: { 200: StorageSettingsSchema, ...errors(401) },
     detail: {
       summary: 'Get storage limits',
@@ -31,7 +33,7 @@ export const settingsRoutes = new Elysia({
     },
   })
 
-  .get('/settings/hotkeys', () => getHotkeySettings(), {
+  .get('/settings/hotkeys', ({ db }) => getHotkeySettings(db), {
     response: { 200: HotkeyCombosSchema, ...errors(401) },
     detail: {
       summary: 'Get instance keyboard shortcuts',
@@ -56,7 +58,7 @@ export const settingsRoutes = new Elysia({
   // pre-migration database dump and what the migrations did to the instance's data.
   // The notes come from the release feed merged over the shipped changelog; the feed
   // is cached, so a session rarely waits on it.
-  .get('/settings/whats-new', ({ user }) => getWhatsNew(requireUser(user)), {
+  .get('/settings/whats-new', ({ db, user }) => getWhatsNew(db, requireUser(user)), {
     response: { 200: WhatsNewSchema, ...errors(401) },
     detail: {
       summary: "Get the release's what's-new screen",
@@ -67,8 +69,8 @@ export const settingsRoutes = new Elysia({
 
   .post(
     '/settings/whats-new/seen',
-    async ({ user }) => {
-      await markWhatsNewSeen(requireUser(user).id);
+    async ({ db, user }) => {
+      await markWhatsNewSeen(db, requireUser(user).id);
       return { version: getAppVersion() };
     },
     {

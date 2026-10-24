@@ -1,5 +1,5 @@
 import { sendEmail, emailBody } from '@repo/mailer';
-import { getInstanceEmailConfig } from '@repo/db';
+import { getInstanceEmailConfig, type Db } from '@repo/db';
 
 // Authentication email: password reset, address verification, magic link. It uses
 // the instance mail provider configured in god mode, which is separate from the
@@ -9,13 +9,16 @@ import { getInstanceEmailConfig } from '@repo/db';
 // provider is configured, or the provider rejects the message, this logs and
 // returns false. The caller keeps working — a reset link that cannot be delivered
 // must not turn into a failed sign-in flow that leaks whether an account exists.
-export async function sendAuthEmail(input: {
-  to: string;
-  subject: string;
-  text: string;
-  url?: string;
-}): Promise<boolean> {
-  const config = await getInstanceEmailConfig();
+export async function sendAuthEmail(
+  db: Db,
+  input: {
+    to: string;
+    subject: string;
+    text: string;
+    url?: string;
+  },
+): Promise<boolean> {
+  const config = await getInstanceEmailConfig(db);
   if (!config) {
     console.warn('[auth] no email provider configured, dropping mail:', input.subject);
     return false;
