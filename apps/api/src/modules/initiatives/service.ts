@@ -1,5 +1,15 @@
-import { db, initiative, initiativeLabel, issue, label, projectColumn, user } from '@repo/db';
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import {
+  type Db,
+  batchAll,
+  chunk,
+  initiative,
+  initiativeLabel,
+  issue,
+  label,
+  projectColumn,
+  user,
+} from '@repo/db';
+import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
 import { labelNames, rowSide } from '#modules/issues/activity';
 import { getMembership } from '#modules/members/service';
 import { HttpError, iso, num } from '#shared/lib';
@@ -37,7 +47,10 @@ export interface InitiativeRow {
 
 // Issue counts per initiative, grouped by the linked issues' state type. Empty
 // entries (an initiative with no issues) are simply absent from the map.
-async function countsFor(initiativeIds: number[]): Promise<Map<number, InitiativeProgress>> {
+async function countsFor(
+  db: Db,
+  initiativeIds: number[],
+): Promise<Map<number, InitiativeProgress>> {
   const out = new Map<number, InitiativeProgress>();
   if (initiativeIds.length === 0) return out;
   const rows = await db
@@ -63,7 +76,7 @@ async function countsFor(initiativeIds: number[]): Promise<Map<number, Initiativ
 }
 
 // Label ids per initiative, in one query.
-async function labelsFor(initiativeIds: number[]): Promise<Map<number, number[]>> {
+async function labelsFor(db: Db, initiativeIds: number[]): Promise<Map<number, number[]>> {
   const out = new Map<number, number[]>();
   if (initiativeIds.length === 0) return out;
   const rows = await db
@@ -147,6 +160,7 @@ function orderExpr(sort: InitiativeSort) {
 }
 
 export async function listInitiatives(
+  db: Db,
   projectId: number,
   opts: ListInitiativesOpts,
 ): Promise<InitiativeListPage> {
@@ -155,7 +169,7 @@ export async function listInitiatives(
     conds.push(inArray(initiative.status, opts.statuses));
   }
   if (opts.search && opts.search.trim()) {
-    conds.push(ilike(initiative.title, `%${opts.search.trim()}%`));
+    conds.push(like(initiative.title, `%${opts.search.trim()}%`));
   }
   const where = and(...conds);
 
@@ -181,7 +195,7 @@ export async function listInitiatives(
     .where(where);
 
   const ids = rows.map((r) => r.id);
-  const [counts, labels] = await Promise.all([countsFor(ids), labelsFor(ids)]);
+  const [counts, labels] = await Promise.all([countsFor(db, ids), labelsFor(db, ids)]);
   return {
     items: rows.map((row) =>
       mapInitiative(row, labels.get(row.id) ?? [], counts.get(row.id) ?? EMPTY_PROGRESS),
@@ -203,13 +217,14 @@ const LINKABLE_STATUSES = ['proposed', 'planned', 'active'];
 // The initiatives as picker options: title and status only, without the progress and
 // health the list computes per row.
 export async function listInitiativeOptions(
+  db: Db,
   projectId: number,
   { search, include }: { search?: string; include?: number },
 ): Promise<InitiativeOption[]> {
   const title = search?.trim();
   const linkable = and(
     inArray(initiative.status, LINKABLE_STATUSES),
-    title ? ilike(initiative.title, `%${title}%`) : undefined,
+    title ? like(initiative.title, `%${title}%`) : undefined,
   );
   // The included one is ordered first so the row cap can never drop it: it is what
   // labels the picker trigger.
@@ -239,7 +254,10 @@ export interface InitiativeStatusCounts {
 
 // Per-status row counts for the whole project, for the list's status tabs. Kept
 // separate from listInitiatives so the tab counts stay correct under paging.
-export async function initiativeStatusCounts(projectId: number): Promise<InitiativeStatusCounts> {
+export async function initiativeStatusCounts(
+  db: Db,
+  projectId: number,
+): Promise<InitiativeStatusCounts> {
   const rows = await db
     .select({ status: initiative.status, c: sql<number>`count(*)` })
     .from(initiative)
@@ -265,16 +283,16 @@ export async function initiativeStatusCounts(projectId: number): Promise<Initiat
   return out;
 }
 
-export async function getInitiative(id: number): Promise<InitiativeRow | null> {
+export async function getInitiative(db: Db, id: number): Promise<InitiativeRow | null> {
   const rows = await db.select().from(initiative).where(eq(initiative.id, id));
   if (!rows[0]) return null;
-  const [counts, labels] = await Promise.all([countsFor([id]), labelsFor([id])]);
+  const [counts, labels] = await Promise.all([countsFor(db, [id]), labelsFor(db, [id])]);
   return mapInitiative(rows[0], labels.get(id) ?? [], counts.get(id) ?? EMPTY_PROGRESS);
 }
 
 // The project an initiative belongs to, or null if it does not exist. Used by the
 // access check on routes that address an initiative by its own id.
-export async function getInitiativeProjectId(id: number): Promise<number | null> {
+export async function getInitiativeProjectId(db: Db, id: number): Promise<number | null> {
   const rows = await db
     .select({ projectId: initiative.projectId })
     .from(initiative)
@@ -294,16 +312,21 @@ export interface NewInitiativeInput {
 }
 
 async function assertInitiativeOwner(
+  db: Db,
   projectId: number,
   ownerUserId?: string | null,
 ): Promise<void> {
   if (!ownerUserId) return;
-  if (!(await getMembership(projectId, ownerUserId))) {
+  if (!(await getMembership(db, projectId, ownerUserId))) {
     throw new HttpError(400, 'Initiative owner must be a project member');
   }
 }
 
-async function assertInitiativeLabels(projectId: number, labelIds?: number[]): Promise<void> {
+async function assertInitiativeLabels(
+  db: Db,
+  projectId: number,
+  labelIds?: number[],
+): Promise<void> {
   const ids = [...new Set(labelIds ?? [])];
   if (ids.length === 0) return;
   const rows = await db
@@ -323,26 +346,24 @@ function assertDateOrder(startDate?: string | null, targetDate?: string | null) 
 }
 
 async function assertInitiativeReferences(
+  db: Db,
   projectId: number,
   input: { ownerUserId?: string | null; labelIds?: number[] },
 ): Promise<void> {
   await Promise.all([
-    assertInitiativeOwner(projectId, input.ownerUserId),
-    assertInitiativeLabels(projectId, input.labelIds),
+    assertInitiativeOwner(db, projectId, input.ownerUserId),
+    assertInitiativeLabels(db, projectId, input.labelIds),
   ]);
 }
 
 export async function createInitiative(
+  db: Db,
   projectId: number,
   input: NewInitiativeInput,
   actorUserId?: string | null,
 ): Promise<InitiativeRow> {
-  await assertInitiativeReferences(projectId, input);
+  await assertInitiativeReferences(db, projectId, input);
   assertDateOrder(input.startDate, input.targetDate);
-  const [posRow] = await db
-    .select({ pos: sql<number>`COALESCE(MAX(${initiative.position}), 0) + 1000` })
-    .from(initiative)
-    .where(eq(initiative.projectId, projectId));
   const [row] = await db
     .insert(initiative)
     .values({
@@ -354,13 +375,14 @@ export async function createInitiative(
       priority: input.priority ?? null,
       startDate: input.startDate ?? null,
       targetDate: input.targetDate ?? null,
-      position: Number(posRow.pos),
+      // computed by the INSERT itself: simultaneous creations never share a position
+      position: sql`(select coalesce(max(position), 0) + 1000 from ${initiative} where project_id = ${projectId})`,
     })
     .returning({ id: initiative.id });
-  await recordActivity(row.id, [{ action: 'created' }], actorUserId);
+  await recordActivity(db, row.id, [{ action: 'created' }], actorUserId);
   if (input.labelIds?.length)
-    await setInitiativeLabels(projectId, row.id, input.labelIds, actorUserId);
-  return (await getInitiative(row.id))!;
+    await setInitiativeLabels(db, projectId, row.id, input.labelIds, actorUserId);
+  return (await getInitiative(db, row.id))!;
 }
 
 export interface InitiativePatch {
@@ -391,6 +413,7 @@ function snapshot(row: typeof initiative.$inferSelect): InitiativeSnapshot {
 // project and asserted permission). Returns null if the initiative does not
 // exist, which the route maps to a 404.
 export async function updateInitiative(
+  db: Db,
   id: number,
   patch: InitiativePatch,
   actorUserId?: string | null,
@@ -398,7 +421,7 @@ export async function updateInitiative(
   const beforeRows = await db.select().from(initiative).where(eq(initiative.id, id));
   const before = beforeRows[0];
   if (!before) return null;
-  await assertInitiativeReferences(before.projectId, patch);
+  await assertInitiativeReferences(db, before.projectId, patch);
   // Each date is checked against the effective other one: a patch sets one date
   // and leaves the stored value of the other in force.
   assertDateOrder(
@@ -416,25 +439,26 @@ export async function updateInitiative(
   if (patch.targetDate !== undefined) set.targetDate = patch.targetDate;
 
   if (Object.keys(set).length > 0) {
-    set.updatedAt = sql`now()` as unknown as Date;
+    set.updatedAt = new Date();
     const [after] = await db.update(initiative).set(set).where(eq(initiative.id, id)).returning();
-    await logInitiativeUpdate(snapshot(before), snapshot(after), actorUserId);
+    await logInitiativeUpdate(db, snapshot(before), snapshot(after), actorUserId);
   }
   if (patch.labelIds !== undefined) {
-    await setInitiativeLabels(before.projectId, id, patch.labelIds, actorUserId);
+    await setInitiativeLabels(db, before.projectId, id, patch.labelIds, actorUserId);
   }
-  return getInitiative(id);
+  return getInitiative(db, id);
 }
 
 // Linked issues keep existing (issue.initiative_id is set null by the FK); the
 // initiative's own activity rows and label links cascade.
-export async function deleteInitiative(id: number): Promise<void> {
+export async function deleteInitiative(db: Db, id: number): Promise<void> {
   await db.delete(initiative).where(eq(initiative.id, id));
 }
 
 // Replaces the initiative's full label set (not an add/remove diff) and logs the
 // added/removed labels to the activity feed.
 async function setInitiativeLabels(
+  db: Db,
   projectId: number,
   initiativeId: number,
   labelIds: number[],
@@ -447,28 +471,28 @@ async function setInitiativeLabels(
   const before = beforeRows.map((r) => r.labelId);
   const next = [...new Set(labelIds)];
 
-  await db.delete(initiativeLabel).where(eq(initiativeLabel.initiativeId, initiativeId));
-  if (next.length) {
-    await db
-      .insert(initiativeLabel)
-      .values(next.map((labelId) => ({ initiativeId, labelId })))
-      .onConflictDoNothing();
-  }
+  // Delete + inserts in one atomic batch: the label set is never seen half-replaced.
+  await batchAll(db, [
+    db.delete(initiativeLabel).where(eq(initiativeLabel.initiativeId, initiativeId)),
+    ...chunk(next, 45).map((ids) =>
+      db
+        .insert(initiativeLabel)
+        .values(ids.map((labelId) => ({ initiativeId, labelId })))
+        .onConflictDoNothing(),
+    ),
+  ]);
 
   const added = next.filter((x) => !before.includes(x));
   const removed = before.filter((x) => !next.includes(x));
   if (added.length === 0 && removed.length === 0) return;
 
-  await db
-    .update(initiative)
-    .set({ updatedAt: sql`now()` })
-    .where(eq(initiative.id, initiativeId));
+  await db.update(initiative).set({ updatedAt: new Date() }).where(eq(initiative.id, initiativeId));
 
-  const names = await labelNames(projectId, [...added, ...removed]);
+  const names = await labelNames(db, projectId, [...added, ...removed]);
   const events = [];
   for (const labelId of added)
     events.push({ action: 'label_add', to: rowSide(names.get(labelId), labelId) });
   for (const labelId of removed)
     events.push({ action: 'label_remove', from: rowSide(names.get(labelId), labelId) });
-  await recordActivity(initiativeId, events, actorUserId);
+  await recordActivity(db, initiativeId, events, actorUserId);
 }

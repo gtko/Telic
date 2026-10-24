@@ -87,20 +87,20 @@ export const initiativeRoutes = new Elysia({
     initiative: entityGuard(
       'initiatives',
       'Initiative not found',
-      (p) => getInitiativeProjectId(Number(p.initiativeId)),
+      (p, db) => getInitiativeProjectId(db, Number(p.initiativeId)),
       'initiatives',
     ),
     initiativeAttachment: entityGuard(
       'initiatives',
       'Attachment not found',
-      (p) => getInitiativeAttachmentProjectId(p.publicId),
+      (p, db) => getInitiativeAttachmentProjectId(db, p.publicId),
       'initiatives',
     ),
   })
 
   .get(
     '/projects/:projectKey/initiatives',
-    ({ project, query }) => {
+    ({ db, project, query }) => {
       const statuses = query.status
         ? query.status
             .split(',')
@@ -108,7 +108,7 @@ export const initiativeRoutes = new Elysia({
             .filter(Boolean)
         : undefined;
       return paginate(query, (window) =>
-        listInitiatives(project.id, {
+        listInitiatives(db, project.id, {
           statuses,
           search: query.search,
           sort: query.sort,
@@ -134,7 +134,7 @@ export const initiativeRoutes = new Elysia({
   // needs the titles, not the initiative pages the `initiatives` resource gates.
   .get(
     '/projects/:projectKey/initiatives/options',
-    async ({ project, query }) => listInitiativeOptions(project.id, query),
+    async ({ db, project, query }) => listInitiativeOptions(db, project.id, query),
     {
       query: initiativeOptionsQuery,
       permission: ['work_items', 'read'],
@@ -149,7 +149,7 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/initiatives/counts',
-    async ({ project }) => initiativeStatusCounts(project.id),
+    async ({ db, project }) => initiativeStatusCounts(db, project.id),
     {
       permission: ['initiatives', 'read'],
       feature: 'initiatives',
@@ -163,9 +163,9 @@ export const initiativeRoutes = new Elysia({
 
   .post(
     '/projects/:projectKey/initiatives',
-    async ({ project, body, user, set }) => {
+    async ({ db, project, body, user, set }) => {
       set.status = 201;
-      return createInitiative(project.id, body, requireUser(user).id);
+      return createInitiative(db, project.id, body, requireUser(user).id);
     },
     {
       body: createInitiativeBody,
@@ -182,8 +182,8 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/initiatives/:initiativeId',
-    async ({ params }) => {
-      const found = await getInitiative(params.initiativeId);
+    async ({ db, params }) => {
+      const found = await getInitiative(db, params.initiativeId);
       if (!found) throw new HttpError(404, 'Initiative not found');
       return found;
     },
@@ -201,9 +201,9 @@ export const initiativeRoutes = new Elysia({
 
   .patch(
     '/initiatives/:initiativeId',
-    async ({ params, body, user }) => {
+    async ({ db, params, body, user }) => {
       const actorUserId = requireUser(user).id;
-      const updated = await updateInitiative(params.initiativeId, body, actorUserId);
+      const updated = await updateInitiative(db, params.initiativeId, body, actorUserId);
       if (!updated) throw new HttpError(404, 'Initiative not found');
       return updated;
     },
@@ -223,11 +223,11 @@ export const initiativeRoutes = new Elysia({
 
   .delete(
     '/initiatives/:initiativeId',
-    async ({ params }) => {
+    async ({ db, params }) => {
       // The rows cascade with the initiative; the stored bytes do not, so they are
       // read while they still exist and dropped afterwards.
-      const keys = await initiativeAttachmentKeys(params.initiativeId);
-      await deleteInitiative(params.initiativeId);
+      const keys = await initiativeAttachmentKeys(db, params.initiativeId);
+      await deleteInitiative(db, params.initiativeId);
       await deleteObjects(keys);
       return noContent();
     },
@@ -245,7 +245,7 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/initiatives/:initiativeId/feed',
-    async ({ params, query }) => {
+    async ({ db, params, query }) => {
       const limit = query.limit != null ? Number(query.limit) : undefined;
       let before = null;
       if (query.cursor) {
@@ -255,7 +255,7 @@ export const initiativeRoutes = new Elysia({
           // Ignore a malformed cursor and serve the first page.
         }
       }
-      return listFeed(params.initiativeId, { before, limit });
+      return listFeed(db, params.initiativeId, { before, limit });
     },
     {
       params: initiativeParams,
@@ -272,7 +272,8 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/initiatives/:initiativeId/attachments',
-    async ({ params }) => (await listInitiativeAttachments(params.initiativeId)).map(attachmentDto),
+    async ({ db, params }) =>
+      (await listInitiativeAttachments(db, params.initiativeId)).map(attachmentDto),
     {
       params: initiativeParams,
       initiative: 'read',
@@ -287,8 +288,8 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/initiatives/:initiativeId/images',
-    async ({ params }) =>
-      viewAttachments(await listInitiativeAttachments(params.initiativeId), attachmentDto),
+    async ({ db, params }) =>
+      viewAttachments(await listInitiativeAttachments(db, params.initiativeId), attachmentDto),
     {
       params: initiativeParams,
       initiative: 'read',
@@ -307,21 +308,21 @@ export const initiativeRoutes = new Elysia({
   // object store, and records the metadata.
   .post(
     '/initiatives/:initiativeId/attachments',
-    async ({ params, body, set, projectId }) => {
+    async ({ db, params, body, set, projectId }) => {
       const file = body.file;
       if (!(file instanceof File)) throw new HttpError(400, 'No file uploaded (form field "file")');
       if (file.size === 0) throw new HttpError(400, 'Uploaded file is empty');
 
       const filename = safeAttachmentFilename(file.name);
       const contentType = file.type || 'application/octet-stream';
-      await assertAttachmentUploadAllowed(projectId, file.size, contentType);
+      await assertAttachmentUploadAllowed(db, projectId, file.size, contentType);
 
       const key = attachmentObjectKey(projectId, 'initiatives', params.initiativeId, filename);
       await storeAttachmentObject(key, Buffer.from(await file.arrayBuffer()), contentType);
 
       let row;
       try {
-        row = await createInitiativeAttachment({
+        row = await createInitiativeAttachment(db, {
           projectId,
           initiativeId: params.initiativeId,
           s3Key: key,
@@ -347,10 +348,10 @@ export const initiativeRoutes = new Elysia({
 
   .delete(
     '/initiative-attachments/:publicId',
-    async ({ params }) => {
-      const row = await deleteInitiativeAttachment(params.publicId);
+    async ({ db, params }) => {
+      const row = await deleteInitiativeAttachment(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
-      await removeInitiativeAttachmentEmbeds(row.initiativeId, row.publicId);
+      await removeInitiativeAttachmentEmbeds(db, row.initiativeId, row.publicId);
       // Row is already gone; a failed object delete only orphans bytes, so don't
       // fail the request over it.
       await deleteAttachmentObject(row.s3Key);
@@ -369,8 +370,8 @@ export const initiativeRoutes = new Elysia({
   // with the headers that keep attacker-controlled bytes inert.
   .get(
     '/initiative-attachments/:publicId/raw',
-    async ({ params, query, request }) => {
-      const row = await getInitiativeAttachment(params.publicId);
+    async ({ db, params, query, request }) => {
+      const row = await getInitiativeAttachment(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
 
       return attachmentObjectResponse({

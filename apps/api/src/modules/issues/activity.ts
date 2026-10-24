@@ -1,5 +1,8 @@
 import {
-  db,
+  type Db,
+  type BatchStatement,
+  batchAll,
+  chunk,
   issue,
   issueActivity,
   user,
@@ -124,7 +127,11 @@ function feedFilterCondition(filter?: FeedFilter) {
 // pages. cursor_ts is created_at as full-precision text so the returned nextCursor
 // round-trips without the millisecond truncation iso() would apply. limit is clamped
 // to 1..100.
-export async function listFeed(issueId: number, opts: FeedPageOptions = {}): Promise<FeedPage> {
+export async function listFeed(
+  db: Db,
+  issueId: number,
+  opts: FeedPageOptions = {},
+): Promise<FeedPage> {
   const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
   const cursor = opts.cursor ?? null;
   const ascending = opts.order === 'asc';
@@ -143,7 +150,7 @@ export async function listFeed(issueId: number, opts: FeedPageOptions = {}): Pro
       payload: issueActivity.payload,
       createdAt: issueActivity.createdAt,
       editedAt: issueActivity.editedAt,
-      cursorTs: sql<string>`${issueActivity.createdAt}::text`,
+      cursorTs: sql<string>`CAST(${issueActivity.createdAt} AS TEXT)`,
     })
     .from(issueActivity)
     .where(
@@ -152,7 +159,7 @@ export async function listFeed(issueId: number, opts: FeedPageOptions = {}): Pro
         isNull(issueActivity.replyToId),
         feedFilterCondition(opts.filter),
         cursor
-          ? sql`(${issueActivity.createdAt}, ${issueActivity.id}) ${pastCursor} (${cursor.ts}::timestamptz, ${cursor.id}::integer)`
+          ? sql`(${issueActivity.createdAt}, ${issueActivity.id}) ${pastCursor} (CAST(${cursor.ts} AS INTEGER), CAST(${cursor.id} AS INTEGER))`
           : undefined,
       ),
     )
@@ -163,7 +170,10 @@ export async function listFeed(issueId: number, opts: FeedPageOptions = {}): Pro
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
   const items = page.map(mapFeedItem);
-  const replies = await listReplies(items.map((item) => item.id));
+  const replies = await listReplies(
+    db,
+    items.map((item) => item.id),
+  );
   return {
     items: [...items, ...replies],
     nextCursor: hasMore && last ? { ts: last.cursorTs, id: last.id } : null,
@@ -179,18 +189,16 @@ export interface FeedCounts {
   worklog: number;
 }
 
-export async function countFeed(issueId: number): Promise<FeedCounts> {
+export async function countFeed(db: Db, issueId: number): Promise<FeedCounts> {
   const [counts] = await db
     .select({
-      comments: sql<number>`count(*) FILTER (WHERE ${issueActivity.kind} = 'comment')`.mapWith(
-        Number,
-      ),
+      comments: sql<number>`coalesce(sum(${issueActivity.kind} = 'comment'), 0)`.mapWith(Number),
       worklog:
-        sql<number>`count(*) FILTER (WHERE ${issueActivity.kind} = 'activity' AND ${issueActivity.action} = 'worklog')`.mapWith(
+        sql<number>`coalesce(sum(${issueActivity.kind} = 'activity' AND ${issueActivity.action} = 'worklog'), 0)`.mapWith(
           Number,
         ),
       history:
-        sql<number>`count(*) FILTER (WHERE ${issueActivity.kind} = 'activity' AND ${issueActivity.action} <> 'worklog')`.mapWith(
+        sql<number>`coalesce(sum(${issueActivity.kind} = 'activity' AND ${issueActivity.action} <> 'worklog'), 0)`.mapWith(
           Number,
         ),
     })
@@ -203,7 +211,7 @@ export async function countFeed(issueId: number): Promise<FeedCounts> {
 // Every reply under the given entries, oldest first, read one level at a time until
 // a level has none. A thread is a handful of comments deep, so the loop is short and
 // each level is one query.
-async function listReplies(parentIds: number[]): Promise<FeedItemRow[]> {
+async function listReplies(db: Db, parentIds: number[]): Promise<FeedItemRow[]> {
   const replies: FeedItemRow[] = [];
   let level = parentIds;
   while (level.length > 0) {
@@ -225,6 +233,7 @@ async function listReplies(parentIds: number[]): Promise<FeedItemRow[]> {
 // status change belongs to the stretch that change opens, which is what the
 // half-open range gives.
 export async function listFeedRange(
+  db: Db,
   issueId: number,
   from: string,
   to?: string | null,
@@ -271,11 +280,12 @@ export interface GroupedFeedPage {
 // spans a page boundary is served in both, each time with the entries of that page. A
 // stretch in which nothing was written carries no entries and so gets no group.
 export async function listGroupedFeed(
+  db: Db,
   issueId: number,
   opts: FeedPageOptions = {},
 ): Promise<GroupedFeedPage> {
-  const page = await listFeed(issueId, opts);
-  const timeline = page.items.length ? await listStatusTimeline(issueId) : [];
+  const page = await listFeed(db, issueId, opts);
+  const timeline = page.items.length ? await listStatusTimeline(db, issueId) : [];
   if (timeline.length === 0) return { groups: [], nextCursor: page.nextCursor };
 
   const seen = new Set<string | null>();
@@ -321,15 +331,18 @@ export async function listGroupedFeed(
   return { groups, nextCursor: page.nextCursor };
 }
 
-export async function createComment(input: {
-  issueId: number;
-  actorUserId?: string | null;
-  body: string;
-  // The comment being replied to. It has to be a comment on the same issue.
-  replyToId?: number | null;
-}): Promise<FeedItemRow> {
+export async function createComment(
+  db: Db,
+  input: {
+    issueId: number;
+    actorUserId?: string | null;
+    body: string;
+    // The comment being replied to. It has to be a comment on the same issue.
+    replyToId?: number | null;
+  },
+): Promise<FeedItemRow> {
   const actorUserId = input.actorUserId ?? null;
-  const actorName = await userName(actorUserId);
+  const actorName = await userName(db, actorUserId);
   const replyToId = input.replyToId ?? null;
   if (replyToId != null) {
     const [parent] = await db
@@ -358,14 +371,15 @@ export async function createComment(input: {
     .where(eq(issue.id, input.issueId));
   const projectId = projectRows[0]?.projectId;
   if (projectId != null) {
-    await emitCommentEvent(projectId, 'comment.created', comment, actorUserId);
+    await emitCommentEvent(db, projectId, 'comment.created', comment, actorUserId);
     // Resolved once: the agent halves start runs, the member half is notified.
     const mentioned = await resolveMentionHandles(
+      db,
       projectId,
       parseMentionHandles(comment.body ?? ''),
     );
-    await enqueueMentionRuns(projectId, comment, mentioned.agentUserIds);
-    await notifyComment(projectId, comment, mentioned);
+    await enqueueMentionRuns(db, projectId, comment, mentioned.agentUserIds);
+    await notifyComment(db, projectId, comment, mentioned);
   }
 
   return comment;
@@ -376,6 +390,7 @@ export async function createComment(input: {
 // comment rows count — an activity entry is a change log, not something to edit or
 // delete. Null when there is no such comment.
 export async function getCommentRef(
+  db: Db,
   commentId: number,
 ): Promise<{ issueId: number; projectId: number; actorUserId: string | null } | null> {
   const rows = await db
@@ -399,6 +414,7 @@ export async function getCommentRef(
 // notification); a handle the comment already named is not told again. Who may
 // change whose is settled by the route guard.
 export async function updateComment(
+  db: Db,
   commentId: number,
   body: string,
   actorUserId: string | null,
@@ -417,17 +433,22 @@ export async function updateComment(
   if (!row) throw new HttpError(404, 'Comment not found');
   const comment = mapFeedItem(row);
 
-  await recordActivity(comment.issueId, [{ action: 'comment_edited' }], actorUserId);
-  await emitCommentEvent(projectId, 'comment.updated', comment, actorUserId);
+  await recordActivity(db, comment.issueId, [{ action: 'comment_edited' }], actorUserId);
+  await emitCommentEvent(db, projectId, 'comment.updated', comment, actorUserId);
 
   const added = addedMentionHandles(before.body ?? '', body);
   if (added.length > 0) {
-    const mentioned = await resolveMentionHandles(projectId, added);
+    const mentioned = await resolveMentionHandles(db, projectId, added);
     if (mentioned.agentUserIds.length > 0)
       // replyToId is dropped: an edit reaches only the agents it newly names, not
       // the author of the comment being answered, who a create would reach.
-      await enqueueMentionRuns(projectId, { ...comment, replyToId: null }, mentioned.agentUserIds);
-    await notifyEditedCommentMentions(projectId, comment, mentioned);
+      await enqueueMentionRuns(
+        db,
+        projectId,
+        { ...comment, replyToId: null },
+        mentioned.agentUserIds,
+      );
+    await notifyEditedCommentMentions(db, projectId, comment, mentioned);
   }
   return comment;
 }
@@ -436,6 +457,7 @@ export async function updateComment(
 // log keeps a comment_deleted entry, and subscribed webhooks receive the comment as
 // it read. Returns false when there is no such comment.
 export async function deleteComment(
+  db: Db,
   commentId: number,
   actorUserId: string | null,
   projectId: number,
@@ -446,8 +468,8 @@ export async function deleteComment(
     .where(and(eq(issueActivity.id, commentId), eq(issueActivity.kind, 'comment')));
   if (!before) return false;
   await db.delete(issueActivity).where(eq(issueActivity.id, commentId));
-  await recordActivity(before.issueId as number, [{ action: 'comment_deleted' }], actorUserId);
-  await emitCommentEvent(projectId, 'comment.deleted', mapFeedItem(before), actorUserId);
+  await recordActivity(db, before.issueId as number, [{ action: 'comment_deleted' }], actorUserId);
+  await emitCommentEvent(db, projectId, 'comment.deleted', mapFeedItem(before), actorUserId);
   return true;
 }
 
@@ -459,6 +481,7 @@ export async function deleteComment(
 // on it. Comments authored by an agent's bot user never trigger runs, which stops
 // agents from setting each other (or themselves) off.
 async function enqueueMentionRuns(
+  db: Db,
   projectId: number,
   comment: FeedItemRow,
   mentionedAgentUserIds: string[],
@@ -466,7 +489,7 @@ async function enqueueMentionRuns(
   if (mentionedAgentUserIds.length === 0 && comment.replyToId == null) return;
   // A comment an agent wrote starts no run of its own, which stops agent-to-agent
   // mention loops.
-  if (comment.actorUserId && (await isAgentUser(comment.actorUserId))) return;
+  if (comment.actorUserId && (await isAgentUser(db, comment.actorUserId))) return;
   const reachedUserIds = new Set(mentionedAgentUserIds);
   if (comment.replyToId != null) {
     const [parent] = await db
@@ -476,12 +499,13 @@ async function enqueueMentionRuns(
     if (parent?.actorUserId) reachedUserIds.add(parent.actorUserId);
   }
   const agents = await listMentionTriggerAgents(
+    db,
     projectId,
     [...reachedUserIds],
     comment.actorUserId,
   );
   for (const agent of agents) {
-    await enqueueAgentRun({
+    await enqueueAgentRun(db, {
       agentId: agent.id,
       projectId,
       issueId: comment.issueId,
@@ -536,46 +560,50 @@ export function actorId(actor: ActivityActor): string | null {
   return typeof actor === 'string' ? actor : null;
 }
 
-// What a write runs on: the pool, or the transaction the caller is inside.
-type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
-
 // Records the given events for an issue. actor_name is snapshotted from the actor
 // so the entry survives the user being renamed or deleted.
 export async function recordActivity(
+  db: Db,
   issueId: number,
   events: ActivityInput[],
   actor?: ActivityActor,
 ): Promise<{ id: number; action: string | null }[]> {
   return recordActivityEntries(
+    db,
     events.map((event) => ({ issueId, event })),
     actor,
   );
 }
 
-// Records one event for a set of issues in a single insert. For the writes that
-// change many issues at once (deleting a column reassigns all of its issues),
-// where a recordActivity per issue would be a query each.
+// Records one event for a set of issues. For the writes that change many issues at once
+// (deleting a column reassigns all of its issues), where a recordActivity per issue
+// would be a query each.
 export async function recordActivityForIssues(
+  db: Db,
   issueIds: number[],
   event: ActivityInput,
   actor?: ActivityActor,
 ): Promise<void> {
   await recordActivityEntries(
+    db,
     issueIds.map((issueId) => ({ issueId, event })),
     actor,
   );
 }
 
-// Records a set of (issue, event) pairs in one insert, for a write that logs a
-// different event on each of the issues it touches — linking two issues writes the
-// relation to both, each from its own side. `on` runs it inside the caller's
-// transaction. The actor name snapshot is a sub-select, so this stays one query.
-export async function recordActivityEntries(
+// Rows per INSERT: an entry binds 6 parameters and D1 allows 100 per statement.
+const ACTIVITY_ROWS_PER_STATEMENT = 15;
+
+// The INSERT statements recording a set of (issue, event) pairs, not yet run: a write
+// that logs a different event on each of the issues it touches (linking two issues
+// writes the relation to both, each from its own side) adds them to its own
+// `db.batch`, so the entries land or fail with the write. The actor name snapshot is a
+// sub-select. One statement per 15 entries, the D1 limit on bound parameters.
+export function activityStatements(
+  db: Db,
   entries: { issueId: number; event: ActivityInput }[],
   actor?: ActivityActor,
-  on: Executor = db,
-): Promise<{ id: number; action: string | null }[]> {
-  if (!entries.length) return [];
+): BatchStatement[] {
   const resolvedActorId = actorId(actor);
   const actorName =
     actor && typeof actor === 'object'
@@ -585,23 +613,36 @@ export async function recordActivityEntries(
             string | null
           >`(select ${user.name} from ${user} where ${user.id} = ${resolvedActorId})`
         : null;
-  return on
-    .insert(issueActivity)
-    .values(
-      entries.map(({ issueId, event: { action, ...payload } }) => ({
-        issueId,
-        kind: 'activity' as const,
-        actorUserId: resolvedActorId,
-        actorName,
-        action,
-        payload,
-      })),
-    )
-    .returning({ id: issueActivity.id, action: issueActivity.action });
+  return chunk(entries, ACTIVITY_ROWS_PER_STATEMENT).map((rows) =>
+    db
+      .insert(issueActivity)
+      .values(
+        rows.map(({ issueId, event: { action, ...payload } }) => ({
+          issueId,
+          kind: 'activity' as const,
+          actorUserId: resolvedActorId,
+          actorName,
+          action,
+          payload,
+        })),
+      )
+      .returning({ id: issueActivity.id, action: issueActivity.action }),
+  );
+}
+
+// Records a set of (issue, event) pairs, in one atomic batch.
+export async function recordActivityEntries(
+  db: Db,
+  entries: { issueId: number; event: ActivityInput }[],
+  actor?: ActivityActor,
+): Promise<{ id: number; action: string | null }[]> {
+  if (!entries.length) return [];
+  const results = await batchAll(db, activityStatements(db, entries, actor));
+  return (results as { id: number; action: string | null }[][]).flat();
 }
 
 // The sides that read their text from the row they name, looked up at change time.
-async function columnSide(id: number | null): Promise<ActivitySide | undefined> {
+async function columnSide(db: Db, id: number | null): Promise<ActivitySide | undefined> {
   if (id == null) return undefined;
   const rows = await db
     .select({ id: projectColumn.id, name: projectColumn.name, stateType: projectColumn.stateType })
@@ -609,7 +650,7 @@ async function columnSide(id: number | null): Promise<ActivitySide | undefined> 
     .where(eq(projectColumn.id, id));
   return rows[0] ? statusSide(rows[0]) : undefined;
 }
-async function typeSide(id: number | null): Promise<ActivitySide | undefined> {
+async function typeSide(db: Db, id: number | null): Promise<ActivitySide | undefined> {
   if (id == null) return undefined;
   const rows = await db
     .select({ name: issueType.name })
@@ -617,7 +658,7 @@ async function typeSide(id: number | null): Promise<ActivitySide | undefined> {
     .where(eq(issueType.id, id));
   return rowSide(rows[0]?.name, id);
 }
-async function initiativeSide(id: number | null): Promise<ActivitySide | undefined> {
+async function initiativeSide(db: Db, id: number | null): Promise<ActivitySide | undefined> {
   if (id == null) return undefined;
   const rows = await db
     .select({ title: initiative.title })
@@ -625,15 +666,15 @@ async function initiativeSide(id: number | null): Promise<ActivitySide | undefin
     .where(eq(initiative.id, id));
   return rowSide(rows[0]?.title, id);
 }
-async function cycleSide(id: number | null): Promise<ActivitySide | undefined> {
+async function cycleSide(db: Db, id: number | null): Promise<ActivitySide | undefined> {
   if (id == null) return undefined;
   const rows = await db.select({ name: cycle.name }).from(cycle).where(eq(cycle.id, id));
   return rowSide(rows[0]?.name, id);
 }
-export async function userSide(id: string | null): Promise<ActivitySide | undefined> {
-  return rowSide(await userName(id), id);
+export async function userSide(db: Db, id: string | null): Promise<ActivitySide | undefined> {
+  return rowSide(await userName(db, id), id);
 }
-export async function userName(id: string | null): Promise<string | null> {
+export async function userName(db: Db, id: string | null): Promise<string | null> {
   if (id == null) return null;
   const rows = await db.select({ name: user.name }).from(user).where(eq(user.id, id));
   return rows[0]?.name ?? null;
@@ -641,7 +682,11 @@ export async function userName(id: string | null): Promise<string | null> {
 // Name snapshots for a set of labels in one query, resolved at change time so a log
 // entry keeps reading correctly after a label is renamed or deleted. An id outside
 // projectId, or with no label at all, is absent from the map.
-export async function labelNames(projectId: number, ids: number[]): Promise<Map<number, string>> {
+export async function labelNames(
+  db: Db,
+  projectId: number,
+  ids: number[],
+): Promise<Map<number, string>> {
   const out = new Map<number, string>();
   if (ids.length === 0) return out;
   const rows = await db
@@ -689,6 +734,7 @@ function estimateTimeText(minutes: number | null): string | null {
 // shown in a popover in the feed). Position is intentionally not logged —
 // reordering within a column is not a meaningful change.
 export async function logIssueUpdate(
+  db: Db,
   before: IssueSnapshot,
   after: IssueSnapshot,
   actor?: ActivityActor,
@@ -701,38 +747,38 @@ export async function logIssueUpdate(
   if (before.columnId !== after.columnId)
     events.push({
       action: 'status',
-      from: await columnSide(before.columnId),
-      to: await columnSide(after.columnId),
+      from: await columnSide(db, before.columnId),
+      to: await columnSide(db, after.columnId),
     });
   if (before.typeId !== after.typeId)
     events.push({
       action: 'type',
-      from: await typeSide(before.typeId),
-      to: await typeSide(after.typeId),
+      from: await typeSide(db, before.typeId),
+      to: await typeSide(db, after.typeId),
     });
   if (before.initiativeId !== after.initiativeId)
     events.push({
       action: 'initiative',
-      from: await initiativeSide(before.initiativeId),
-      to: await initiativeSide(after.initiativeId),
+      from: await initiativeSide(db, before.initiativeId),
+      to: await initiativeSide(db, after.initiativeId),
     });
   if (before.cycleId !== after.cycleId)
     events.push({
       action: 'cycle',
-      from: await cycleSide(before.cycleId),
-      to: await cycleSide(after.cycleId),
+      from: await cycleSide(db, before.cycleId),
+      to: await cycleSide(db, after.cycleId),
     });
   if (before.assigneeUserId !== after.assigneeUserId)
     events.push({
       action: 'assignee',
-      from: await userSide(before.assigneeUserId),
-      to: await userSide(after.assigneeUserId),
+      from: await userSide(db, before.assigneeUserId),
+      to: await userSide(db, after.assigneeUserId),
     });
   if (before.delegateUserId !== after.delegateUserId)
     events.push({
       action: 'delegate',
-      from: await userSide(before.delegateUserId),
-      to: await userSide(after.delegateUserId),
+      from: await userSide(db, before.delegateUserId),
+      to: await userSide(db, after.delegateUserId),
     });
   if ((before.priority ?? '') !== (after.priority ?? ''))
     events.push({
@@ -766,7 +812,7 @@ export async function logIssueUpdate(
       from: textSide(before.dueDate),
       to: textSide(after.dueDate),
     });
-  const inserted = await recordActivity(after.id, events, actor);
+  const inserted = await recordActivity(db, after.id, events, actor);
 
   // Inbox notifications for the events with a dedicated notification type: a new
   // assignee, a status change, and the mentions a rewritten description added. Each
@@ -783,7 +829,7 @@ export async function logIssueUpdate(
 
   const idByAction = new Map(inserted.map((r) => [r.action, r.id]));
   if (assigneeChanged || statusChanged) {
-    await notifyIssueChange({
+    await notifyIssueChange(db, {
       projectId: row.projectId,
       issueId: after.id,
       actorUserId: actorId(actor),
@@ -794,7 +840,7 @@ export async function logIssueUpdate(
     });
   }
   if (descriptionChanged) {
-    await notifyTextMentions({
+    await notifyTextMentions(db, {
       projectId: row.projectId,
       issueId: after.id,
       actorUserId: actorId(actor),

@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   project,
   projectMember,
   projectColumn,
@@ -224,12 +224,16 @@ function remapActionEffect(effect: unknown, maps: CopyIdMaps): unknown {
 // configuration, but none of its issues. The creator becomes the new project's owner.
 //
 // Pure-database entities (states, types, labels, custom fields, views, dashboards,
-// documents, actions, settings, webhooks) are copied in one transaction, recording
+// documents, actions, settings, webhooks) are copied step by step (D1 has no interactive transaction), recording
 // old id → new id so the ids that views and actions reference are remapped to the
-// copied entities. A document's assets are cloned in the object store inside that
-// transaction and removed again if it rolls back. The team's agents are attached to
+// copied entities. A document's assets are cloned in the object store as the copy goes and
+// removed again if it fails (the half-built project is deleted). The team's agents are attached to
 // the new project after it commits, through the same service function the UI uses.
+// Headroom under D1's 1000 queries per invocation for the fixed reads and writes.
+const MAX_COPY_QUERIES = 850;
+
 export async function copyProject(
+  db: Db,
   sourceProjectId: number,
   input: { key: string; name: string; description?: string },
   ownerId: string,
@@ -249,21 +253,31 @@ export async function copyProject(
 
   const copiedDocumentAssetKeys: string[] = [];
 
-  const source = await getProjectById(sourceProjectId);
+  const source = await getProjectById(db, sourceProjectId);
   if (!source) throw new HttpError(404, 'Project not found');
-  const ownerTeam = await targetTeam(ownerId, teamId);
-  // What a new project starts with, set instance-wide in god mode. Read before the
-  // transaction opens so the settings lookup is not part of it.
-  const defaults = await getProjectDefaults();
+  const ownerTeam = await targetTeam(db, ownerId, teamId);
+  // What a new project starts with, set instance-wide in god mode. Read before
+  // any write starts.
+  const defaults = await getProjectDefaults(db);
   // Agents, integration credentials and roles belong to the team, so what references
   // them survives the copy only when it stays in the same team.
   const sameTeam = ownerTeam.id === source.teamId;
-  const copyTransaction = db.transaction(async (tx) => {
+  let createdProjectId: number | null = null;
+  // D1 allows 1000 queries per invocation and the copy issues about one per copied row
+  // (plus the fixed reads), so a source too large to fit is refused up front instead of
+  // dying half-way through the invocation.
+  let queries = 0;
+  const spend = (count: number) => {
+    queries += count;
+    if (queries > MAX_COPY_QUERIES)
+      throw new HttpError(413, 'This project has too much configuration to copy in one go');
+  };
+  const copyProjectData = async (): Promise<ProjectRow> => {
     // The optional sections the source project shows and the estimate kinds it
     // carries are part of its configuration, so the copy starts with the same ones.
     // mcpEnabled is not carried: a new project enters its team's MCP reach on the
     // instance default, the same way a created one does.
-    const [sourceFeatures] = await tx
+    const [sourceFeatures] = await db
       .select({
         initiativesEnabled: project.initiativesEnabled,
         dashboardsEnabled: project.dashboardsEnabled,
@@ -280,7 +294,7 @@ export async function copyProject(
       .from(project)
       .where(eq(project.id, sourceProjectId));
 
-    const [row] = await tx
+    const [row] = await db
       .insert(project)
       .values({
         teamId: ownerTeam.id,
@@ -297,23 +311,25 @@ export async function copyProject(
       teamSlug: ownerTeam.slug,
       teamMcpEnabled: ownerTeam.mcpEnabled,
     });
-    await joinTeamAsCreator(tx, ownerTeam.id, ownerId);
-    await tx.insert(projectMember).values({ projectId: proj.id, userId: ownerId, role: 'owner' });
+    createdProjectId = proj.id;
+    await joinTeamAsCreator(db, ownerTeam.id, ownerId);
+    await db.insert(projectMember).values({ projectId: proj.id, userId: ownerId, role: 'owner' });
 
     // States (columns). When copied, every source column is carried over so views,
     // actions and issues have somewhere to map to. When not copied, the project is
     // seeded with the default columns instead, so it is still usable (a project with
     // no state has nowhere to put an issue).
     if (inc.states) {
-      const columnRows = await tx
+      const columnRows = await db
         .select()
         .from(projectColumn)
         .where(eq(projectColumn.projectId, sourceProjectId))
         .orderBy(projectColumn.position);
       // autoAssignUserId is left unset: the copy starts with only its owner as a
       // member, so a carried-over member would not be one there.
+      spend(columnRows.length);
       for (const col of columnRows) {
-        const [created] = await tx
+        const [created] = await db
           .insert(projectColumn)
           .values({
             projectId: proj.id,
@@ -329,7 +345,7 @@ export async function copyProject(
       }
     } else {
       for (const [position, column] of DEFAULT_COLUMNS.entries()) {
-        await tx.insert(projectColumn).values({
+        await db.insert(projectColumn).values({
           projectId: proj.id,
           name: column.name,
           stateType: column.stateType,
@@ -340,13 +356,14 @@ export async function copyProject(
     }
 
     if (inc.issueTypes) {
-      const typeRows = await tx
+      const typeRows = await db
         .select()
         .from(issueType)
         .where(eq(issueType.projectId, sourceProjectId))
         .orderBy(issueType.position);
+      spend(typeRows.length);
       for (const t of typeRows) {
-        const [created] = await tx
+        const [created] = await db
           .insert(issueType)
           .values({
             projectId: proj.id,
@@ -364,21 +381,23 @@ export async function copyProject(
     if (inc.labels) {
       // Label groups are copied before labels so each copied label's group_id can be
       // remapped to the new group.
-      const labelGroupRows = await tx
+      const labelGroupRows = await db
         .select()
         .from(labelGroup)
         .where(eq(labelGroup.projectId, sourceProjectId));
+      spend(labelGroupRows.length);
       for (const g of labelGroupRows) {
-        const [created] = await tx
+        const [created] = await db
           .insert(labelGroup)
           .values({ projectId: proj.id, name: g.name, color: g.color })
           .returning({ id: labelGroup.id });
         maps.labelGroup.set(g.id, created.id);
       }
 
-      const labelRows = await tx.select().from(label).where(eq(label.projectId, sourceProjectId));
+      const labelRows = await db.select().from(label).where(eq(label.projectId, sourceProjectId));
+      spend(labelRows.length);
       for (const l of labelRows) {
-        const [created] = await tx
+        const [created] = await db
           .insert(label)
           .values({
             projectId: proj.id,
@@ -394,13 +413,14 @@ export async function copyProject(
     // Type-scoped custom fields (with their options). Project-wide fields
     // (issue_type_id NULL) are not copied.
     if (inc.customFields && maps.type.size > 0) {
-      const fieldRows = await tx
+      const fieldRows = await db
         .select()
         .from(customField)
         .where(inArray(customField.issueTypeId, Array.from(maps.type.keys())))
         .orderBy(customField.position);
+      spend(fieldRows.length);
       for (const f of fieldRows) {
-        const [created] = await tx
+        const [created] = await db
           .insert(customField)
           .values({
             projectId: proj.id,
@@ -413,13 +433,14 @@ export async function copyProject(
           .returning({ id: customField.id });
         maps.field.set(f.id, created.id);
 
-        const optionRows = await tx
+        const optionRows = await db
           .select()
           .from(customFieldOption)
           .where(eq(customFieldOption.fieldId, f.id))
           .orderBy(customFieldOption.position);
+        spend(optionRows.length);
         for (const o of optionRows) {
-          const [newOption] = await tx
+          const [newOption] = await db
             .insert(customFieldOption)
             .values({ fieldId: created.id, value: o.value, color: o.color, position: o.position })
             .returning({ id: customFieldOption.id });
@@ -430,13 +451,14 @@ export async function copyProject(
 
     // Views: their filters reference the ids captured above.
     if (inc.views) {
-      const viewRows = await tx
+      const viewRows = await db
         .select()
         .from(projectView)
         .where(eq(projectView.projectId, sourceProjectId))
         .orderBy(projectView.position, projectView.id);
+      spend(viewRows.length);
       for (const v of viewRows) {
-        await tx.insert(projectView).values({
+        await db.insert(projectView).values({
           projectId: proj.id,
           name: v.name,
           icon: v.icon,
@@ -452,13 +474,14 @@ export async function copyProject(
     // re-set); the metric widgets, which are project-scoped and id-agnostic, work
     // unchanged.
     if (inc.dashboards) {
-      const dashboardRows = await tx
+      const dashboardRows = await db
         .select()
         .from(projectDashboard)
         .where(eq(projectDashboard.projectId, sourceProjectId))
         .orderBy(projectDashboard.position, projectDashboard.id);
+      spend(dashboardRows.length);
       for (const d of dashboardRows) {
-        await tx.insert(projectDashboard).values({
+        await db.insert(projectDashboard).values({
           projectId: proj.id,
           name: d.name,
           icon: d.icon,
@@ -469,7 +492,7 @@ export async function copyProject(
     }
 
     if (inc.documents) {
-      const documentRows = await tx
+      const documentRows = await db
         .select()
         .from(projectDocument)
         .where(
@@ -479,10 +502,11 @@ export async function copyProject(
           ),
         )
         .orderBy(projectDocument.position, projectDocument.id);
+      spend(documentRows.length * 2);
       const documentMap = new Map<number, number>();
       for (const d of documentRows) {
         assertValidDocumentContentJson(d.contentJson);
-        const [created] = await tx
+        const [created] = await db
           .insert(projectDocument)
           .values({
             projectId: proj.id,
@@ -508,23 +532,24 @@ export async function copyProject(
         const id = documentMap.get(d.id);
         const parentId = documentMap.get(d.parentId);
         if (id == null || parentId == null) continue;
-        await tx.update(projectDocument).set({ parentId }).where(eq(projectDocument.id, id));
+        await db.update(projectDocument).set({ parentId }).where(eq(projectDocument.id, id));
       }
       const sourceDocumentIds = documentRows.map((document) => document.id);
       if (sourceDocumentIds.length > 0) {
-        const assetRows = await tx
+        const assetRows = await db
           .select()
           .from(documentAsset)
           .where(inArray(documentAsset.documentId, sourceDocumentIds));
         await assertAttachmentStorageCapacity(
+          db,
           proj.id,
           assetRows.reduce((total, asset) => total + asset.sizeBytes, 0),
           0,
-          tx,
         );
         for (const asset of assetRows) {
-          await assertAttachmentFileAllowed(asset.sizeBytes, asset.contentType);
+          await assertAttachmentFileAllowed(db, asset.sizeBytes, asset.contentType);
         }
+        spend(assetRows.length * 2 + documentRows.length);
         const assetIdsByDocument = new Map<number, Map<string, string>>();
         for (const asset of assetRows) {
           const targetDocumentId = documentMap.get(asset.documentId);
@@ -532,7 +557,7 @@ export async function copyProject(
           const key = attachmentObjectKey(proj.id, 'documents', targetDocumentId, asset.filename);
           await cloneAttachmentObject(asset.s3Key, key, asset.contentType);
           copiedDocumentAssetKeys.push(key);
-          const [copy] = await tx
+          const [copy] = await db
             .insert(documentAsset)
             .values({
               documentId: targetDocumentId,
@@ -551,7 +576,7 @@ export async function copyProject(
           const targetDocumentId = documentMap.get(source.id);
           const publicIds = assetIdsByDocument.get(source.id);
           if (targetDocumentId == null || !publicIds || publicIds.size === 0) continue;
-          await tx
+          await db
             .update(projectDocument)
             .set({
               content: replaceAssetReferences(
@@ -577,13 +602,14 @@ export async function copyProject(
     // Actions: their condition (a FilterSet) and effect (a partial patch) hold ids
     // captured above, so they are remapped to the copied entities.
     if (inc.actions) {
-      const actionRows = await tx
+      const actionRows = await db
         .select()
         .from(projectAction)
         .where(eq(projectAction.projectId, sourceProjectId))
         .orderBy(projectAction.position, projectAction.id);
+      spend(actionRows.length);
       for (const a of actionRows) {
-        await tx.insert(projectAction).values({
+        await db.insert(projectAction).values({
           projectId: proj.id,
           name: a.name,
           icon: a.icon,
@@ -602,13 +628,14 @@ export async function copyProject(
     // ambiguous) plus column ids of the source project. The copy starts
     // unconfigured instead.
     if (inc.configuration) {
-      const settingRows = await tx
+      const settingRows = await db
         .select()
         .from(projectSetting)
         .where(eq(projectSetting.projectId, sourceProjectId));
+      spend(settingRows.length);
       for (const s of settingRows) {
         if (s.key === GIT_SETTING_KEY) continue;
-        await tx.insert(projectSetting).values({ projectId: proj.id, key: s.key, value: s.value });
+        await db.insert(projectSetting).values({ projectId: proj.id, key: s.key, value: s.value });
       }
     }
 
@@ -617,13 +644,14 @@ export async function copyProject(
     // verify that signature until it is given the new secret, so the copy starts
     // inactive and its owner enables it.
     if (inc.webhooks) {
-      const webhookRows = await tx
+      const webhookRows = await db
         .select()
         .from(webhook)
         .where(eq(webhook.projectId, sourceProjectId))
         .orderBy(webhook.id);
+      spend(webhookRows.length);
       for (const w of webhookRows) {
-        await tx.insert(webhook).values({
+        await db.insert(webhook).values({
           projectId: proj.id,
           url: w.url,
           secret: generateSecret(),
@@ -634,11 +662,19 @@ export async function copyProject(
     }
 
     return proj;
-  });
+  };
   let newProject: ProjectRow;
   try {
-    newProject = await copyTransaction;
+    newProject = await copyProjectData();
   } catch (error) {
+    // D1 has no interactive transaction: the copy is built step by step and a failure
+    // removes what was built. Every project-scoped foreign key cascades on project_id,
+    // so deleting the new project row removes all the entities copied into it.
+    if (createdProjectId !== null)
+      await db
+        .delete(project)
+        .where(eq(project.id, createdProjectId))
+        .catch(() => undefined);
     await Promise.all(copiedDocumentAssetKeys.map(deleteAttachmentObject));
     throw error;
   }
@@ -649,13 +685,14 @@ export async function copyProject(
   // would mean a new bot user and a new API key for something the operator did not ask
   // for, and its skills and configured tools would be missing anyway.
   if (inc.agents && sameTeam) {
-    for (const a of await listAgents(source.teamId, sourceProjectId)) {
+    for (const a of await listAgents(db, source.teamId, sourceProjectId)) {
       // The member fields the agent reacts to, remapped onto the copies.
       const fieldTriggers = a.fieldTriggers.flatMap((trigger) => {
         const fieldId = maps.field.get(trigger.fieldId);
         return fieldId == null ? [] : [{ fieldId, delaySec: trigger.delaySec }];
       });
       await updateAgent(
+        db,
         a.id,
         ownerTeam.id,
         {
@@ -675,8 +712,8 @@ export async function copyProject(
   // its own cadence rather than inheriting a past due time. The options go through the
   // extension with the id maps, for the ids they hold.
   if (inc.schedules && sameTeam) {
-    for (const s of await listAllAgentSchedules(sourceProjectId, ownerId)) {
-      await createAgentSchedule({
+    for (const s of await listAllAgentSchedules(db, sourceProjectId, ownerId)) {
+      await createAgentSchedule(db, {
         projectId: newProject.id,
         agentId: s.agentId,
         actorUserId: ownerId,

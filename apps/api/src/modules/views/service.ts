@@ -1,4 +1,4 @@
-import { db, projectView, projectViewFavorite } from '@repo/db';
+import { batchAll, type Db, projectView, projectViewFavorite } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { iso, num } from '#shared/lib';
 
@@ -39,7 +39,7 @@ export interface UserViewRow extends ViewRow {
   favorite: boolean;
 }
 
-export async function listViews(projectId: number, userId: string): Promise<UserViewRow[]> {
+export async function listViews(db: Db, projectId: number, userId: string): Promise<UserViewRow[]> {
   const rows = await db
     .select({ row: projectView, favoriteUserId: projectViewFavorite.userId })
     .from(projectView)
@@ -55,7 +55,7 @@ export async function listViews(projectId: number, userId: string): Promise<User
   }));
 }
 
-export async function isFavoriteView(viewId: number, userId: string): Promise<boolean> {
+export async function isFavoriteView(db: Db, viewId: number, userId: string): Promise<boolean> {
   const rows = await db
     .select({ viewId: projectViewFavorite.viewId })
     .from(projectViewFavorite)
@@ -63,27 +63,27 @@ export async function isFavoriteView(viewId: number, userId: string): Promise<bo
   return rows.length > 0;
 }
 
-export async function addFavoriteView(viewId: number, userId: string): Promise<void> {
+export async function addFavoriteView(db: Db, viewId: number, userId: string): Promise<void> {
   await db.insert(projectViewFavorite).values({ viewId, userId }).onConflictDoNothing();
 }
 
-export async function removeFavoriteView(viewId: number, userId: string): Promise<void> {
+export async function removeFavoriteView(db: Db, viewId: number, userId: string): Promise<void> {
   await db
     .delete(projectViewFavorite)
     .where(and(eq(projectViewFavorite.viewId, viewId), eq(projectViewFavorite.userId, userId)));
 }
 
-export async function createView(input: {
-  projectId: number;
-  name: string;
-  icon?: string | null;
-  filters?: unknown;
-  display?: unknown;
-}): Promise<ViewRow> {
-  const [{ pos }] = await db
-    .select({ pos: sql<number>`COALESCE(MAX(${projectView.position}) + 1, 0)` })
-    .from(projectView)
-    .where(eq(projectView.projectId, input.projectId));
+export async function createView(
+  db: Db,
+  input: {
+    projectId: number;
+    name: string;
+    icon?: string | null;
+    filters?: unknown;
+    display?: unknown;
+  },
+): Promise<ViewRow> {
+  // The position is computed by the INSERT itself, so simultaneous creations never share one.
   const [row] = await db
     .insert(projectView)
     .values({
@@ -92,18 +92,19 @@ export async function createView(input: {
       icon: input.icon ?? null,
       filters: input.filters ?? {},
       display: input.display ?? {},
-      position: Number(pos),
+      position: sql`(select coalesce(max(position) + 1, 0) from ${projectView} where project_id = ${input.projectId})`,
     })
     .returning();
   return mapView(row);
 }
 
-export async function getView(id: number): Promise<ViewRow | null> {
+export async function getView(db: Db, id: number): Promise<ViewRow | null> {
   const rows = await db.select().from(projectView).where(eq(projectView.id, id));
   return rows[0] ? mapView(rows[0]) : null;
 }
 
 export async function updateView(
+  db: Db,
   id: number,
   patch: { name?: string; icon?: string | null; filters?: unknown; display?: unknown },
 ): Promise<ViewRow | null> {
@@ -112,27 +113,29 @@ export async function updateView(
   if (patch.icon !== undefined) set.icon = patch.icon;
   if (patch.filters !== undefined) set.filters = patch.filters;
   if (patch.display !== undefined) set.display = patch.display;
-  if (Object.keys(set).length === 0) return getView(id);
+  if (Object.keys(set).length === 0) return getView(db, id);
   const [row] = await db.update(projectView).set(set).where(eq(projectView.id, id)).returning();
   return row ? mapView(row) : null;
 }
 
-export async function deleteView(id: number): Promise<void> {
+export async function deleteView(db: Db, id: number): Promise<void> {
   await db.delete(projectView).where(eq(projectView.id, id));
 }
 
 export async function reorderViews(
+  db: Db,
   projectId: number,
   orderedIds: number[],
   userId: string,
 ): Promise<UserViewRow[]> {
-  await db.transaction(async (tx) => {
-    for (const [position, id] of orderedIds.entries()) {
-      await tx
+  await batchAll(
+    db,
+    orderedIds.map((id, position) =>
+      db
         .update(projectView)
         .set({ position })
-        .where(and(eq(projectView.id, id), eq(projectView.projectId, projectId)));
-    }
-  });
-  return listViews(projectId, userId);
+        .where(and(eq(projectView.id, id), eq(projectView.projectId, projectId))),
+    ),
+  );
+  return listViews(db, projectId, userId);
 }

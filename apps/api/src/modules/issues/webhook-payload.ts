@@ -1,4 +1,4 @@
-import { db, issue, issueType, label, project, projectColumn, team, user } from '@repo/db';
+import { type Db, issue, issueType, label, project, projectColumn, team, user } from '@repo/db';
 import { eq, inArray } from 'drizzle-orm';
 import { emitWebhookEvents } from '#modules/webhooks/emit';
 import type { WebhookEventType } from '#modules/webhooks/service';
@@ -18,6 +18,7 @@ function byIds<K, R>(ids: K[], query: (ids: K[]) => Promise<R[]>): Promise<R[]> 
 
 // The issue's page URL per project, keyed by project id.
 async function projectUrls(
+  db: Db,
   projectIds: number[],
 ): Promise<Map<number, (seq: number) => string | null>> {
   const rows = await byIds(projectIds, (ids) =>
@@ -35,7 +36,7 @@ async function projectUrls(
   );
 }
 
-export async function issuePayloads(issues: IssueRow[]) {
+export async function issuePayloads(db: Db, issues: IssueRow[]) {
   const [columns, users, types, labels, urls] = await Promise.all([
     byIds(
       issues.map((i) => i.columnId),
@@ -65,7 +66,10 @@ export async function issuePayloads(issues: IssueRow[]) {
           .from(label)
           .where(inArray(label.id, ids)),
     ),
-    projectUrls(issues.map((i) => i.projectId)),
+    projectUrls(
+      db,
+      issues.map((i) => i.projectId),
+    ),
   ]);
   const columnById = new Map(columns.map((c) => [c.id, c]));
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -87,36 +91,47 @@ export async function issuePayloads(issues: IssueRow[]) {
 // Emits one issue event per issue. The payloads are built only when a webhook of the
 // project subscribes to eventType.
 export async function emitIssueEvents(
+  db: Db,
   projectId: number,
   eventType: WebhookEventType,
   load: () => Promise<IssueRow[]>,
   actor: ActivityActor,
 ): Promise<void> {
-  await emitWebhookEvents(projectId, eventType, async () => issuePayloads(await load()), actor);
+  await emitWebhookEvents(
+    db,
+    projectId,
+    eventType,
+    async () => issuePayloads(db, await load()),
+    actor,
+  );
 }
 
 export async function emitIssueEvent(
+  db: Db,
   eventType: WebhookEventType,
   row: IssueRow,
   actor: ActivityActor,
   extra: Record<string, unknown> = {},
 ): Promise<void> {
   await emitWebhookEvents(
+    db,
     row.projectId,
     eventType,
-    async () => (await issuePayloads([row])).map((payload) => ({ ...payload, ...extra })),
+    async () => (await issuePayloads(db, [row])).map((payload) => ({ ...payload, ...extra })),
     actor,
   );
 }
 
 // A comment payload names the issue it is on, so a receiver can link to it.
 export async function emitCommentEvent(
+  db: Db,
   projectId: number,
   eventType: WebhookEventType,
   comment: FeedItemRow,
   actor: ActivityActor,
 ): Promise<void> {
   await emitWebhookEvents(
+    db,
     projectId,
     eventType,
     async () => {

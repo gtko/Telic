@@ -25,8 +25,8 @@ export const issueTemplateRoutes = new Elysia({
   .use(guards)
   .get(
     '/projects/:projectKey/issue-templates',
-    async ({ project }) => {
-      return listIssueTemplates(project.id);
+    async ({ db, project }) => {
+      return listIssueTemplates(db, project.id);
     },
     {
       permission: ['issue_templates', 'read'],
@@ -41,9 +41,9 @@ export const issueTemplateRoutes = new Elysia({
 
   .post(
     '/projects/:projectKey/issue-templates',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       set.status = 201;
-      return createIssueTemplate(project.id, body);
+      return createIssueTemplate(db, project.id, body);
     },
     {
       body: createIssueTemplateBody,
@@ -61,8 +61,8 @@ export const issueTemplateRoutes = new Elysia({
 
   .patch(
     '/projects/:projectKey/issue-templates/:templateId',
-    async ({ project, params, body }) => {
-      const template = await updateIssueTemplate(project.id, params.templateId, body);
+    async ({ db, project, params, body }) => {
+      const template = await updateIssueTemplate(db, project.id, params.templateId, body);
       if (!template) throw new HttpError(404, 'Issue template not found');
       return template;
     },
@@ -83,8 +83,8 @@ export const issueTemplateRoutes = new Elysia({
 
   .delete(
     '/projects/:projectKey/issue-templates/:templateId',
-    async ({ project, params }) => {
-      const deleted = await deleteIssueTemplate(project.id, params.templateId);
+    async ({ db, project, params }) => {
+      const deleted = await deleteIssueTemplate(db, project.id, params.templateId);
       if (!deleted) throw new HttpError(404, 'Issue template not found');
       return noContent();
     },
