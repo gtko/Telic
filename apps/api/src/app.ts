@@ -80,6 +80,22 @@ function isCrossSiteCookieRequest(request: Request, env: Env): boolean {
   return site !== null && site !== 'same-origin' && site !== 'none';
 }
 
+// workerd refuses `new Response(<body>)` while the module loads, and @elysiajs/swagger builds its
+// docs page that way. Inside `build`, the page becomes a handler that builds the response per request.
+function lazyPageResponse<A extends unknown[], R>(build: (...args: A) => R): (...args: A) => R {
+  return (...args) => {
+    const Native = globalThis.Response;
+    globalThis.Response = function (body?: BodyInit | null, init?: ResponseInit) {
+      return () => new Native(body, init);
+    } as unknown as typeof Response;
+    try {
+      return build(...args);
+    } finally {
+      globalThis.Response = Native;
+    }
+  };
+}
+
 // The assembled Elysia app. `worker.ts` serves it from the Worker's fetch handler; tests import
 // it and pass it to Eden Treaty to drive routes in memory (no network). It is compiled ahead of
 // time (see the end of the file), which is how Elysia runs where `new Function` is not allowed.
@@ -115,7 +131,7 @@ export const app = new Elysia({ adapter: CloudflareAdapter })
   // so the UI at /docs and the spec at /docs/json are reachable without a
   // session. The spec is generated from the `t` schemas on every route.
   .use(
-    swagger({
+    lazyPageResponse(swagger)({
       path: '/docs',
       // Render with Scalar's own "default" theme to match the better-auth reference
       // at /api/auth/reference. `customCss: ""` drops the gradient theme that
