@@ -427,6 +427,47 @@ mountMcp(app);
 // import this module without a cycle, so the reference is passed here.
 setMcpApp(app);
 
+// Two differences between the composed handler and the dynamic one, patched on each route's body
+// validator on first lookup. The dynamic one runs Check/Decode on an absent optional body and rejects
+// it, and it does not strip properties the schema lacks before validating. It also reads the Decode
+// result as `decoded?.value ?? decoded`, so a body with a `value` property (a custom field value)
+// would be replaced by that property alone.
+type BodyValidator = {
+  isOptional?: boolean;
+  Check(v: unknown): boolean;
+  Clean?(v: unknown): unknown;
+  Decode?(v: unknown): unknown;
+};
+type DynamicRoute = { store: { validator?: { createBody?: () => BodyValidator | undefined } } };
+const dynamicRouter = (
+  app.router as unknown as { dynamic: { find(method: string, path: string): DynamicRoute | null } }
+).dynamic;
+const findRoute = dynamicRouter.find.bind(dynamicRouter);
+const patchedValidators = new WeakSet<object>();
+dynamicRouter.find = (method, path) => {
+  const route = findRoute(method, path);
+  const validator = route?.store.validator;
+  if (validator && !patchedValidators.has(validator)) {
+    patchedValidators.add(validator);
+    const body = validator.createBody?.();
+    if (body) {
+      const { Check, Clean, Decode, isOptional } = body;
+      body.Check = (v) => {
+        if (v === undefined) return !!isOptional || Check.call(body, v);
+        return Check.call(body, Clean ? Clean.call(body, v) : v);
+      };
+      if (Decode) {
+        body.Decode = (v) => {
+          if (v === undefined) return v;
+          const decoded = Decode.call(body, Clean ? Clean.call(body, v) : v);
+          return decoded === undefined || decoded === null ? decoded : { value: decoded };
+        };
+      }
+    }
+  }
+  return route;
+};
+
 // Elysia's Cloudflare adapter does not compile on the first request (no `new Function` in a
 // Worker), so the routes, the MCP endpoint included, are compiled here, once the chain is
 // complete.
