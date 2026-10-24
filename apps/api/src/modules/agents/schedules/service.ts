@@ -5,7 +5,8 @@ import { getTeamLimits } from '#shared/limits';
 import { minCronIntervalSeconds, nextCronRun } from './cron';
 import { isScheduleSupported, type ScheduleOptions } from './extension';
 import { agentWorksInProject, canTriggerAgent, isTriggerableBy } from '../core/service';
-import { contextTokensOf, executionState } from '../core/run-queue';
+import { contextTokensOf, executionState, sendRunMessage } from '../core/run-queue';
+import type { AgentRuntime, RunQueueLike } from '../core/runtime/bindings';
 import { deleteThreadsWhere } from '../core/runtime/memory';
 
 export type AgentScheduleStatus = 'active' | 'paused';
@@ -149,8 +150,8 @@ export async function getAgentSchedule(
 // A schedule is a trigger like a mention, so it obeys the same rule: an agent scoped
 // to its owner takes tasks from that member only, otherwise anyone in the project
 // could send a task to someone else's runner.
-async function assertTriggerable(agentId: number, actorUserId: string): Promise<void> {
-  if (!(await canTriggerAgent(agentId, actorUserId))) {
+async function assertTriggerable(db: Db, agentId: number, actorUserId: string): Promise<void> {
+  if (!(await canTriggerAgent(db, agentId, actorUserId))) {
     throw new HttpError(403, 'This agent only takes tasks from its owner');
   }
 }
@@ -265,8 +266,8 @@ export async function createAgentSchedule(
     options: ScheduleOptions;
   } & ScheduleTrigger,
 ): Promise<AgentScheduleRow | null> {
-  if (!(await agentWorksInProject(input.agentId, input.projectId))) return null;
-  await assertTriggerable(input.agentId, input.actorUserId);
+  if (!(await agentWorksInProject(db, input.agentId, input.projectId))) return null;
+  await assertTriggerable(db, input.agentId, input.actorUserId);
   const [row] = await db
     .insert(agentSchedule)
     .values({
@@ -303,8 +304,8 @@ export async function updateAgentSchedule(
   const current = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!current) return null;
   if (patch.agentId !== undefined) {
-    if (!(await agentWorksInProject(patch.agentId, projectId))) return null;
-    await assertTriggerable(patch.agentId, actorUserId);
+    if (!(await agentWorksInProject(db, patch.agentId, projectId))) return null;
+    await assertTriggerable(db, patch.agentId, actorUserId);
   }
   await db
     .update(agentSchedule)
@@ -317,15 +318,15 @@ export async function updateAgentSchedule(
 // Deletes a schedule and the conversation thread its runs shared, which lives outside
 // the database cascades (see ../core/runtime/memory).
 export async function deleteAgentSchedule(
-  db: Db,
+  rt: AgentRuntime,
   projectId: number,
   scheduleId: number,
   actorUserId: string,
 ): Promise<boolean> {
-  const current = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
+  const current = await getAgentSchedule(rt.db, projectId, scheduleId, actorUserId);
   if (!current) return false;
-  await db.delete(agentSchedule).where(eq(agentSchedule.id, scheduleId));
-  await deleteThreadsWhere({ scheduleId });
+  await rt.db.delete(agentSchedule).where(eq(agentSchedule.id, scheduleId));
+  await deleteThreadsWhere(rt, { scheduleId });
   return true;
 }
 
@@ -334,13 +335,14 @@ export async function enqueueManualScheduleRun(
   projectId: number,
   scheduleId: number,
   actorUserId: string,
+  queue?: RunQueueLike | null,
 ): Promise<number | null> {
   const schedule = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!schedule) return null;
   if (schedule.type !== 'cron') {
     throw new HttpError(400, 'Only a cron schedule runs on demand');
   }
-  await assertTriggerable(schedule.agentId, actorUserId);
+  await assertTriggerable(db, schedule.agentId, actorUserId);
   const [run] = await db
     .insert(agentRun)
     .values({
@@ -351,6 +353,7 @@ export async function enqueueManualScheduleRun(
       prompt: schedule.prompt,
     })
     .returning({ id: agentRun.id });
+  await sendRunMessage(queue, run.id, 0);
   return run.id;
 }
 
@@ -367,7 +370,7 @@ export async function cancelPendingScheduleRuns(
 ): Promise<number | null> {
   const schedule = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!schedule) return null;
-  await assertTriggerable(schedule.agentId, actorUserId);
+  await assertTriggerable(db, schedule.agentId, actorUserId);
   const rows = await db
     .update(agentRun)
     .set({ status: 'canceled', executionStartedAt: null, finishedAt: new Date() })

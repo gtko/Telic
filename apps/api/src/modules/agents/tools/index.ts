@@ -134,7 +134,7 @@ export const agentToolRoutes = new Elysia({
   .get(
     '/teams/:teamId/ai-agents/:agentId/tool-configs',
     async ({ db, params, membership }) => {
-      if (!(await agentInTeam(params.agentId, membership.teamId, agentScopeOf(membership)))) {
+      if (!(await agentInTeam(db, params.agentId, membership.teamId, agentScopeOf(membership)))) {
         throw new HttpError(404, 'Agent not found');
       }
       return listAgentToolLinks(db, params.agentId);
@@ -154,10 +154,10 @@ export const agentToolRoutes = new Elysia({
   .put(
     '/teams/:teamId/ai-agents/:agentId/tool-configs',
     async ({ db, params, membership, body }) => {
-      if (!(await agentInTeam(params.agentId, membership.teamId, agentScopeOf(membership)))) {
+      if (!(await agentInTeam(db, params.agentId, membership.teamId, agentScopeOf(membership)))) {
         throw new HttpError(404, 'Agent not found');
       }
-      await assertFullAgentAccess(membership, params.agentId);
+      await assertFullAgentAccess(db, membership, params.agentId);
       await setAgentTools(db, params.agentId, membership.teamId, body.agentToolIds);
       return listAgentToolLinks(db, params.agentId);
     },

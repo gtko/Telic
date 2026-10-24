@@ -98,7 +98,7 @@ export async function countRunsAhead(
 
 // Sends the message of a run. A failure is swallowed: the row is already stored, and the
 // cron sends the message of any due run that has none.
-async function sendRunMessage(
+export async function sendRunMessage(
   queue: RunQueueLike | null | undefined,
   runId: number,
   delaySeconds: number,

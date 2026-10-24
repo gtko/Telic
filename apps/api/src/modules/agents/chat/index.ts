@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import { Elysia, t } from 'elysia';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { authContext } from '#shared/auth-context';
@@ -48,8 +49,8 @@ const KEEPALIVE_MS = 15_000;
 
 // The agent this route acts on, or a 404. Only an external agent has a chat feed: an
 // internal one is run in-process by /run and /run/stream.
-async function requireExternalAgent(agentId: number, projectId: number) {
-  const agent = await getAgentInProject(agentId, projectId);
+async function requireExternalAgent(db: Db, agentId: number, projectId: number) {
+  const agent = await getAgentInProject(db, agentId, projectId);
   if (!agent) throw new HttpError(404, 'Agent not found');
   if (agent.kind !== 'external') {
     throw new HttpError(400, 'Only external agents are chatted with through the runner feed');
@@ -66,7 +67,7 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
     '/projects/:projectKey/ai-agents/:agentId/chat',
     async ({ db, params, project, body, user }) => {
       const caller = requireUser(user);
-      const agent = await requireExternalAgent(params.agentId, project.id);
+      const agent = await requireExternalAgent(db, params.agentId, project.id);
       if (!isTriggerableBy(agent, caller.id)) {
         throw new HttpError(403, 'This agent only takes tasks from its owner');
       }
@@ -99,7 +100,7 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
     '/projects/:projectKey/ai-agents/:agentId/chat/:messageId/events',
     async ({ db, params, project, query, user }) => {
       const caller = requireUser(user);
-      await requireExternalAgent(params.agentId, project.id);
+      await requireExternalAgent(db, params.agentId, project.id);
       const page = await readEvents(db, params.messageId, params.agentId, caller.id, query.after);
       if (!page) throw new HttpError(404, 'Message not found');
       return page;
@@ -121,14 +122,14 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
     '/projects/:projectKey/ai-agents/:agentId/chat/:messageId/stream',
     async ({ db, params, project, query, user }) => {
       const caller = requireUser(user);
-      await requireExternalAgent(params.agentId, project.id);
+      await requireExternalAgent(db, params.agentId, project.id);
       // Checked before the stream starts, so an unknown answer is a 404 rather than a
       // stream that ends immediately.
       const after = query.after ?? 0;
       if (!(await readEvents(db, params.messageId, params.agentId, caller.id, after))) {
         throw new HttpError(404, 'Message not found');
       }
-      return sseResponse(streamChatEvents(params.messageId, params.agentId, caller.id, after));
+      return sseResponse(streamChatEvents(db, params.messageId, params.agentId, caller.id, after));
     },
     {
       params: chatMessageParams,
@@ -150,7 +151,7 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
     '/projects/:projectKey/ai-agents/:agentId/chat/:messageId/cancel',
     async ({ db, params, project, user }) => {
       const caller = requireUser(user);
-      const agent = await requireExternalAgent(params.agentId, project.id);
+      const agent = await requireExternalAgent(db, params.agentId, project.id);
       if (!isTriggerableBy(agent, caller.id)) {
         throw new HttpError(403, 'This agent only takes tasks from its owner');
       }
@@ -173,7 +174,7 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
 
   .post(
     '/agent-chats/claim',
-    async ({ agent }) => ({ message: await claimNextMessage(db, agent) }),
+    async ({ db, agent }) => ({ message: await claimNextMessage(db, agent) }),
     {
       runnerAgent: true,
       response: { 200: ClaimChatResponse, ...errors(401, 403, 409) },
@@ -261,6 +262,7 @@ export const agentChatRoutes = new Elysia({ name: 'agent-chat', detail: { tags: 
 // rather than the answer ending. Comment frames keep the connection alive through a
 // proxy that would otherwise drop it while the agent is thinking.
 async function* streamChatEvents(
+  db: Db,
   messageId: number,
   agentId: number,
   userId: string,

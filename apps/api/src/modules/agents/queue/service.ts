@@ -27,7 +27,7 @@ const runnerPresence = sql<'push' | 'online' | 'offline' | 'never'>`CASE
   ELSE 'offline' END`;
 
 async function queueProjectIds(db: Db, userId: string, mcpOnly = false) {
-  const grants = await workspaceGrants(userId);
+  const grants = await workspaceGrants(db, userId);
   const grantedTeams = [...grants.keys()];
   const rows = await db
     .select({

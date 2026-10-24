@@ -89,7 +89,7 @@ export async function createAgentTool(
 ): Promise<AgentToolRow> {
   const tool = getTool(input.toolKey);
   if (!tool) throw new HttpError(400, `Unknown tool: ${input.toolKey}`);
-  const credential = await getCredentialById(input.credentialId, teamId);
+  const credential = await getCredentialById(db, input.credentialId, teamId);
   if (!credential) throw new HttpError(400, 'Credential not found');
   if (credential.integrationKey !== tool.integration.key) {
     throw new HttpError(

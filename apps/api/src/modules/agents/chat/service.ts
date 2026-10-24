@@ -170,7 +170,7 @@ async function searchThreads(
 ): Promise<ThreadRow[]> {
   const like = likePattern(term);
   const snippet = snippetOf(sql`msg.content`, term);
-  const rows = await db.all<ThreadRow & { favorite: number }>(sql`
+  const rows = await db.all<Omit<ThreadRow, 'favorite'> & { favorite: number }>(sql`
     SELECT t.id AS id,
            t.title AS title,
            t.cli_session_id AS cliSessionId,

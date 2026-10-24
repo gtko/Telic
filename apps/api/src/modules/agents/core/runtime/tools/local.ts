@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { createMappedImport } from '#modules/imports/service';
+import type { AgentRuntime } from '../bindings';
 
 // The agent tools with no route behind them. Everything an agent does to a project
 // goes through the real API (see route-tools.ts); this is what is left over.
@@ -13,6 +14,7 @@ import { createMappedImport } from '#modules/imports/service';
 // only when the agent has it enabled.
 
 export function buildLocalTools(
+  rt: AgentRuntime,
   projectId: number,
   enabledTools: string[],
 ): Record<string, ReturnType<typeof createTool>> {
@@ -40,7 +42,9 @@ export function buildLocalTools(
         .describe('Issue field -> column header, e.g. {"title": "Task", "dueDate": "Deadline"}.'),
     }),
     execute: async ({ attachmentId, mapping }) => {
-      const draft = await createMappedImport(projectId, attachmentId, mapping);
+      const bucket = rt.bucket;
+      if (!bucket) throw new Error('prepare_issue_import needs the BUCKET binding');
+      const draft = await createMappedImport(rt.db, bucket, projectId, attachmentId, mapping);
       return {
         ok: true,
         importId: draft.id,

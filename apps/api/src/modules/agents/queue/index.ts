@@ -20,12 +20,12 @@ export const runnerQueueRoutes = new Elysia({
     runTrace(_enabled: boolean) {
       return {
         detail: requiresPermission(['ai_agents', 'read']) as DocumentDecoration,
-        async resolve({ params, user, request }) {
+        async resolve({ db, params, user, request }) {
           const projectId = await runProjectId(db, Number((params as { runId: string }).runId));
           if (projectId == null) throw new HttpError(404, 'Run not found');
-          await assertPermission(projectId, user, 'work_items', 'read');
-          await assertPermission(projectId, user, 'ai_agents', 'read');
-          await assertMcpAllowed(projectId, request.headers);
+          await assertPermission(db, projectId, user, 'work_items', 'read');
+          await assertPermission(db, projectId, user, 'ai_agents', 'read');
+          await assertMcpAllowed(db, projectId, request.headers);
           return { projectId };
         },
       };

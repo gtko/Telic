@@ -545,7 +545,7 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .delete(
     '/teams/:teamId/ai-agents/:agentId',
-    async ({ env, db, params, membership }) => {
+    async ({ env, db, auth, params, membership }) => {
       await requireVisibleAgent(db, params.agentId, membership);
       await assertFullAgentAccess(db, membership, params.agentId);
       const ok = await deleteAgent(agentRuntime(env, auth), params.agentId, membership.teamId);
