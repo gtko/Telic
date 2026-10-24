@@ -1,0 +1,5 @@
+# Local secrets for `wrangler dev`. Copy to .dev.vars (git-ignored) and fill in; never commit real values.
+# 32+ random bytes, e.g. `openssl rand -base64 32`
+BETTER_AUTH_SECRET=
+# 32 random bytes, base64, e.g. `openssl rand -base64 32`
+APP_ENCRYPTION_KEY=

@@ -1,16 +1,17 @@
 import { Elysia } from 'elysia';
-import { db } from '@repo/db';
+import type { Db } from '@repo/db';
 import { user as users } from '@repo/db/schema';
 import { eq } from 'drizzle-orm';
 import {
-  auth,
   ensurePersonalWorkspace,
   getSessionFromHeaders,
   isAccountDeactivated,
   verifyMcpAccessToken,
+  type Session,
 } from '@repo/auth';
 import { HttpError } from './lib';
 import { getMcpOAuthToken } from './mcp-request';
+import { requestContext, type RequestContext } from './context';
 
 // GET routes that need no session. The raw attachment and avatar bytes routes
 // must work in <img>/<video> and external fetches. The invite lookup
@@ -21,10 +22,8 @@ import { getMcpOAuthToken } from './mcp-request';
 const PUBLIC_GET =
   /^\/attachments\/[^/]+\/raw$|^\/chat-attachments\/[^/]+\/raw$|^\/initiative-attachments\/[^/]+\/raw$|^\/avatars\/[^/]+\/raw$|^\/invites\/[^/]+$|^\/share\//;
 
-type SessionResult = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
-
 // The authenticated user carried on the request context.
-export type SessionUser = SessionResult['user'];
+export type SessionUser = Session['user'];
 
 // Session plugin shared by the planner. Resolves the better-auth session once and
 // puts `user` on the context, so handlers and the access guards read it instead
@@ -39,25 +38,30 @@ export type SessionUser = SessionResult['user'];
 // A deactivated account is refused here as well as at sign-in: deactivation arrives
 // over SCIM while sessions and API keys are already open, and this is the one place
 // every planner route and the MCP surface pass through.
-export const authContext = new Elysia({ name: 'auth-context' }).resolve(
-  { as: 'scoped' },
-  async ({ request, path }): Promise<{ user: SessionUser | null }> => {
-    const user = await requestUser(request);
-    if (user) return { user: await signedIn(user) };
+export const authContext = new Elysia({ name: 'auth-context' })
+  .use(requestContext)
+  .resolve({ as: 'scoped' }, async (ctx): Promise<{ user: SessionUser | null }> => {
+    const { request, path } = ctx;
+    const user = await requestUser(ctx);
+    if (user) return { user: await signedIn(ctx.db, user) };
     // The public raw-attachment route has no session and needs none.
     if (request.method === 'GET' && PUBLIC_GET.test(path)) return { user: null };
     throw new HttpError(401, 'Authentication required');
-  },
-);
+  });
 
 // The account the request's credentials belong to: a session or an API key, or the MCP
 // OAuth token of a tool call, which reaches the route beside the request rather than in
 // its headers. Whether the account may act is left to the caller.
-export async function requestUser(request: Request): Promise<SessionUser | null> {
-  const session = await getSessionFromHeaders(request.headers);
+export async function requestUser({
+  request,
+  env,
+  db,
+  auth,
+}: RequestContext): Promise<SessionUser | null> {
+  const session = await getSessionFromHeaders(auth, request.headers);
   if (session) return session.user;
   const mcpToken = getMcpOAuthToken(request);
-  const mcpUserId = mcpToken ? await verifyMcpAccessToken(mcpToken) : null;
+  const mcpUserId = mcpToken ? await verifyMcpAccessToken(env, db, mcpToken) : null;
   if (!mcpUserId) return null;
   const user = await db.query.user.findFirst({ where: eq(users.id, mcpUserId) });
   return (user as SessionUser | undefined) ?? null;
@@ -66,8 +70,8 @@ export async function requestUser(request: Request): Promise<SessionUser | null>
 // A deactivated account goes no further. Any other gets its personal workspace here when
 // it has none yet, so one made before personal workspaces, by SCIM or while they were off
 // has it on its next request instead of its next sign-in.
-async function signedIn(user: SessionUser): Promise<SessionUser> {
+async function signedIn(db: Db, user: SessionUser): Promise<SessionUser> {
   if (isAccountDeactivated(user)) throw new HttpError(401, 'This account is deactivated');
-  await ensurePersonalWorkspace(user);
+  await ensurePersonalWorkspace(db, user);
   return user;
 }
