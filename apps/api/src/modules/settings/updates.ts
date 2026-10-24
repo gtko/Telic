@@ -18,7 +18,7 @@ const FEED_TTL_MS = 30 * 60_000;
 
 // Fixed: an instance checks the project it is built from, so there is nothing to
 // configure.
-const FEED_URL = 'https://github.com/croffasia/itsaplan/releases.atom';
+const FEED_URL = 'https://github.com/gtko/Telic/releases.atom';
 
 export interface Release {
   tag: string;
@@ -136,7 +136,7 @@ async function localHistory(): Promise<Release[]> {
 
 async function readFeed(): Promise<Release[]> {
   const res = await fetch(FEED_URL, {
-    headers: { 'User-Agent': 'itsaplan' },
+    headers: { 'User-Agent': 'telic' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`feed returned ${res.status}`);

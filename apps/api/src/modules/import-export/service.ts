@@ -352,7 +352,7 @@ const STATE_CATEGORY_MAP: Record<string, StateCategory> = {
   triage: 'backlog',
 };
 
-// The source project's states, each with the category itsaplan would automatically
+// The source project's states, each with the category Telic would automatically
 // map it to - what the mapping review step shows before a job is created, so a user
 // can override one before anything is imported.
 export async function testPlaneStatesPreview(

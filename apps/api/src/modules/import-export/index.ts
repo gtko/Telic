@@ -79,7 +79,7 @@ export const importExportRoutes = new Elysia({
       detail: {
         summary: 'Preview a Plane project before importing it',
         description:
-          "Fetch the source project's states, each with the category itsaplan would " +
+          "Fetch the source project's states, each with the category Telic would " +
           'automatically map it to, for review before a job is created.',
       },
     },
@@ -111,7 +111,7 @@ export const importExportRoutes = new Elysia({
       detail: {
         summary: 'Preview a Linear team before importing from it',
         description:
-          "Fetch the team's workflow states, each with the category itsaplan would " +
+          "Fetch the team's workflow states, each with the category Telic would " +
           'automatically map it to, for review before a job is created.',
       },
     },

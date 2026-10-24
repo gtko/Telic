@@ -14,7 +14,7 @@ const importJobChoices = {
   ),
   stateOverrides: t.Optional(
     t.Record(t.String(), stateCategory, {
-      description: 'Source state id -> itsaplan state category, overriding the automatic mapping.',
+      description: 'Source state id -> Telic state category, overriding the automatic mapping.',
     }),
   ),
 };

@@ -66,7 +66,7 @@ describe('OAuth tokens at rest', () => {
     const god = await signUpTestUser({ name: 'Root' });
     const res = await authedApi(god.cookie).god['oidc-settings'].put({
       discoveryUrl: `http://localhost:${provider.port}/.well-known/openid-configuration`,
-      clientId: 'itsaplan',
+      clientId: 'telic',
       clientSecret: 'client-secret',
       label: 'Test IdP',
       enabled: true,

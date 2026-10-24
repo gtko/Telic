@@ -88,7 +88,7 @@ describe('a sign-up the registration gate refuses', () => {
     expect(google.status).toBe(200);
     const oidc = await god.god['oidc-settings'].put({
       discoveryUrl: `http://localhost:${provider.port}/.well-known/openid-configuration`,
-      clientId: 'itsaplan',
+      clientId: 'telic',
       clientSecret: 'client-secret',
       label: 'Test IdP',
       enabled: true,

@@ -16,7 +16,7 @@ function signInWithPassword(email: string, password: string) {
 
 const credentials = {
   discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
-  clientId: 'itsaplan',
+  clientId: 'telic',
   clientSecret: 'sh-secret',
 };
 

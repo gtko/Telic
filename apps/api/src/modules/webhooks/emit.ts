@@ -96,7 +96,7 @@ function subscribedWebhooks(db: Db, projectId: number, eventType: WebhookEventTy
 // The body follows Linear's webhook envelope: top-level action, type, actor, data,
 // plus createdAt and webhookTimestamp (epoch ms). `event` is our extension, and it
 // carries the granular event type. We omit organizationId, because there is no
-// organization concept. The shared dedup id goes in the X-Itsaplan-Event-Id header,
+// organization concept. The shared dedup id goes in the X-Telic-Event-Id header,
 // not in the body.
 export async function emitWebhookEvents(
   db: Db,

@@ -159,7 +159,7 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
       },
       documentation: {
         info: {
-          title: "It's a Plan API",
+          title: 'Telic API',
           version: pkg.version,
           description: apiDescription,
         },
@@ -366,14 +366,14 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
   )
   // Root and /health are the liveness endpoints: they touch no binding, so a probe says
   // whether the Worker is up, not whether D1 is.
-  .get('/', () => ({ name: "It's a Plan api", status: 'ok' }), {
+  .get('/', () => ({ name: 'Telic api', status: 'ok' }), {
     detail: {
       tags: ['System'],
       summary: 'Check that the api is up',
       description: 'Liveness probe: returns the api name and `status: "ok"`.',
     },
   })
-  .get('/health', () => ({ name: "It's a Plan api", status: 'ok' }), {
+  .get('/health', () => ({ name: 'Telic api', status: 'ok' }), {
     detail: {
       tags: ['System'],
       summary: 'Check that the api is up',

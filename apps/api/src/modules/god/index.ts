@@ -221,13 +221,13 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
       }
 
       const body = emailBody(
-        "This test confirms that It's a Plan can send email through the configured provider.",
+        'This test confirms that Telic can send email through the configured provider.',
       );
       const result = await sendEmail(
         { resend: config.resend, from: config.from },
         {
           to: current.email,
-          subject: "It's a Plan email test",
+          subject: 'Telic email test',
           ...body,
         },
       );
