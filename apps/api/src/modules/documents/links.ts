@@ -174,16 +174,12 @@ export async function addDocumentIssueLink(
       AND EXISTS (SELECT 1 FROM issue WHERE id = ${input.issueId} AND project_id = ${input.projectId})`,
     build: (ok) => [
       stmt`INSERT OR IGNORE INTO project_document_issue (document_id, issue_id, created_by_user_id, created_at)
-        SELECT ${input.documentId}, ${input.issueId}, ${input.userId}, ${now} WHERE ${ok}`,
-      // Only when the row was really inserted (changes() is that of the statement above).
-      stmt`INSERT INTO revision (scope, project_id, rev)
-        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`issue:${input.issueId}`})
-        WHERE changes() = 1
-        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+        SELECT ${input.documentId}, ${input.issueId}, ${input.userId}, ${now} WHERE ${ok}
+        RETURNING document_id`,
     ],
   });
   if (!applied) throw new HttpError(409, 'The document or the issue changed. Try again.');
-  if (results[0]?.meta.changes !== 1) {
+  if (results[0]?.results.length !== 1) {
     throw new HttpError(409, 'The document is already linked to this issue');
   }
   return {
@@ -213,14 +209,11 @@ export async function removeDocumentIssueLink(
     projectId: input.projectId,
     rev: null,
     build: (ok) => [
-      stmt`DELETE FROM project_document_issue WHERE document_id = ${input.documentId} AND issue_id = ${input.issueId} AND ${ok}`,
-      stmt`INSERT INTO revision (scope, project_id, rev)
-        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`issue:${input.issueId}`})
-        WHERE changes() = 1
-        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+      stmt`DELETE FROM project_document_issue WHERE document_id = ${input.documentId} AND issue_id = ${input.issueId} AND ${ok}
+        RETURNING document_id`,
     ],
   });
-  return results[0]?.meta.changes === 1;
+  return results[0]?.results.length === 1;
 }
 
 export async function listInitiativeDocumentLinks(
@@ -281,15 +274,12 @@ export async function addDocumentInitiativeLink(
       AND EXISTS (SELECT 1 FROM initiative WHERE id = ${input.initiativeId} AND project_id = ${input.projectId})`,
     build: (ok) => [
       stmt`INSERT OR IGNORE INTO project_document_initiative (document_id, initiative_id, created_by_user_id, created_at)
-        SELECT ${input.documentId}, ${input.initiativeId}, ${input.userId}, ${now} WHERE ${ok}`,
-      stmt`INSERT INTO revision (scope, project_id, rev)
-        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`initiative:${input.initiativeId}`})
-        WHERE changes() = 1
-        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+        SELECT ${input.documentId}, ${input.initiativeId}, ${input.userId}, ${now} WHERE ${ok}
+        RETURNING document_id`,
     ],
   });
   if (!applied) throw new HttpError(409, 'The document or the initiative changed. Try again.');
-  if (results[0]?.meta.changes !== 1) {
+  if (results[0]?.results.length !== 1) {
     throw new HttpError(409, 'The document is already linked to this initiative');
   }
   return documentLinkRow({ ...document, documentId: document.id, createdAt: new Date(now) });
@@ -306,12 +296,9 @@ export async function removeDocumentInitiativeLink(
     projectId: input.projectId,
     rev: null,
     build: (ok) => [
-      stmt`DELETE FROM project_document_initiative WHERE document_id = ${input.documentId} AND initiative_id = ${input.initiativeId} AND ${ok}`,
-      stmt`INSERT INTO revision (scope, project_id, rev)
-        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`initiative:${input.initiativeId}`})
-        WHERE changes() = 1
-        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+      stmt`DELETE FROM project_document_initiative WHERE document_id = ${input.documentId} AND initiative_id = ${input.initiativeId} AND ${ok}
+        RETURNING document_id`,
     ],
   });
-  return results[0]?.meta.changes === 1;
+  return results[0]?.results.length === 1;
 }

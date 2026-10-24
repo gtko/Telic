@@ -18,6 +18,12 @@ import {
   restoreDocument,
   updateDocument,
 } from '../../service';
+import {
+  addDocumentInitiativeLink,
+  addDocumentIssueLink,
+  removeDocumentInitiativeLink,
+  removeDocumentIssueLink,
+} from '../../links';
 import { d1Of } from '../../tree';
 
 vi.mock('#shared/limits', () => ({ getLimits: async () => ({ maxStorageBytes: 0 }) }));
@@ -195,7 +201,7 @@ describe('revision history (ports of the Postgres triggers)', () => {
     expect(afterEdits).toBeGreaterThanOrEqual(5);
     expect(afterEdits).toBeLessThan(10);
     // Pruning keeps the newest 20.
-    for (let i = 0; i < 14; i += 1) {
+    for (let i = 0; i < 24; i += 1) {
       const next = await updateDocument(db, projectId, doc.id, USER, { version, icon: `p${i}` });
       version = next!.version;
     }
@@ -316,5 +322,95 @@ describe('attachment quota', () => {
         sizeBytes: 900 * 1024,
       }),
     ).rejects.toMatchObject({ status: 413 });
+  });
+});
+
+describe('document links', () => {
+  // D1 meta.changes counts the rows the revision triggers write, so success is read from RETURNING.
+  it('reports each link and unlink exactly once, and moves the documents marker once per change', async () => {
+    const pid = await seedProject('LNK');
+    const d1 = d1Of(db);
+    const column = await d1
+      .prepare("INSERT INTO project_column (project_id, name, position) VALUES (?, 'Todo', 1)")
+      .bind(pid)
+      .run();
+    const issueId = (
+      await d1
+        .prepare(
+          "INSERT INTO issue (project_id, sequence_number, column_id, title) VALUES (?, 1, ?, 'i')",
+        )
+        .bind(pid, column.meta.last_row_id)
+        .run()
+    ).meta.last_row_id;
+    const initiativeId = (
+      await d1
+        .prepare("INSERT INTO initiative (project_id, title) VALUES (?, 'init')")
+        .bind(pid)
+        .run()
+    ).meta.last_row_id;
+    const doc = await createDocument(db, { projectId: pid, userId: USER, title: 'linked' });
+    const marker = async () =>
+      (
+        await all<{ rev: number }>('SELECT rev FROM revision WHERE scope = ?', `documents:${pid}`)
+      )[0]!.rev;
+
+    const issueInput = {
+      projectId: pid,
+      projectKey: 'LNK',
+      documentId: doc.id,
+      issueId,
+      userId: USER,
+    };
+    let rev = await marker();
+    await addDocumentIssueLink(db, issueInput);
+    expect(await marker()).toBe(rev + 1);
+    await expect(addDocumentIssueLink(db, issueInput)).rejects.toMatchObject({ status: 409 });
+    expect(await marker()).toBe(rev + 1);
+    expect(await removeDocumentIssueLink(db, issueInput)).toBe(true);
+    expect(await marker()).toBe(rev + 2);
+    expect(await removeDocumentIssueLink(db, issueInput)).toBe(false);
+    expect(await marker()).toBe(rev + 2);
+
+    const initiativeInput = { projectId: pid, documentId: doc.id, initiativeId, userId: USER };
+    rev = await marker();
+    await addDocumentInitiativeLink(db, initiativeInput);
+    await expect(addDocumentInitiativeLink(db, initiativeInput)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(await removeDocumentInitiativeLink(db, initiativeInput)).toBe(true);
+    expect(await removeDocumentInitiativeLink(db, initiativeInput)).toBe(false);
+    expect(await marker()).toBe(rev + 2);
+  });
+
+  it('lets exactly one of N parallel identical links through', async () => {
+    const pid = await seedProject('LNP');
+    const d1 = d1Of(db);
+    const column = await d1
+      .prepare("INSERT INTO project_column (project_id, name, position) VALUES (?, 'Todo', 1)")
+      .bind(pid)
+      .run();
+    const issueId = (
+      await d1
+        .prepare(
+          "INSERT INTO issue (project_id, sequence_number, column_id, title) VALUES (?, 1, ?, 'i')",
+        )
+        .bind(pid, column.meta.last_row_id)
+        .run()
+    ).meta.last_row_id;
+    const doc = await createDocument(db, { projectId: pid, userId: USER, title: 'race' });
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 6 }, () =>
+        addDocumentIssueLink(db, {
+          projectId: pid,
+          projectKey: 'LNP',
+          documentId: doc.id,
+          issueId,
+          userId: USER,
+        }),
+      ),
+    );
+    expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+    const rows = await all('SELECT 1 FROM project_document_issue WHERE document_id = ?', doc.id);
+    expect(rows).toHaveLength(1);
   });
 });

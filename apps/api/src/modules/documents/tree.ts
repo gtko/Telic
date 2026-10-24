@@ -94,10 +94,10 @@ export async function fencedBatch(
   const guardCheck = guard ? stmt` AND (${guard})` : stmt``;
   const results = await runBatch(db, [
     stmt`INSERT OR IGNORE INTO project_tree (project_id) VALUES (${projectId})`,
-    stmt`UPDATE project_tree SET last_tx = ${token}, rev = rev + ${rev === null ? 0 : 1} WHERE project_id = ${projectId}${revCheck}${guardCheck}`,
+    stmt`UPDATE project_tree SET last_tx = ${token}, rev = rev + ${rev === null ? 0 : 1} WHERE project_id = ${projectId}${revCheck}${guardCheck} RETURNING project_id`,
     ...options.build(ok),
   ]);
-  return { applied: results[1]?.meta.changes === 1, results: results.slice(2) };
+  return { applied: results[1]?.results.length === 1, results: results.slice(2) };
 }
 
 export const MAX_TREE_ATTEMPTS = 60;
@@ -438,12 +438,20 @@ export function captureRevisions(
   coalesceInto: number | null = null,
 ): Stmt[] {
   if (ids === 'last-insert') {
-    // The page inserted by the statement right before: first snapshot, nothing to prune.
+    // The page inserted by the statement right before: first snapshot, nothing to prune. The
+    // insert trigger has already written it, so this is an upsert.
     return [
       {
         sql: `INSERT INTO project_document_revision (document_id, version, ${REVISION_COLUMNS}, created_by_user_id, created_at)
       SELECT d.id, d.version, ${DOCUMENT_REVISION_SELECT}, COALESCE(d.updated_by_user_id, d.created_by_user_id), d.updated_at
-      FROM project_document d WHERE d.id = last_insert_rowid() AND ${ok.sql}`,
+      FROM project_document d WHERE d.id = last_insert_rowid() AND ${ok.sql}
+      ON CONFLICT (document_id, version) DO UPDATE SET
+        parent_id = excluded.parent_id, title = excluded.title, content = excluded.content,
+        content_json = excluded.content_json, icon = excluded.icon, metadata = excluded.metadata,
+        full_width = excluded.full_width, is_private = excluded.is_private,
+        is_locked = excluded.is_locked, archived_at = excluded.archived_at,
+        position = excluded.position, owner_user_id = excluded.owner_user_id,
+        created_by_user_id = excluded.created_by_user_id, created_at = excluded.created_at`,
         params: [...ok.params],
       },
     ];
@@ -486,13 +494,6 @@ export function captureRevisions(
       ) WHERE rn > ${REVISION_LIMIT}
     )`);
   return statements;
-}
-
-/** rev_document / rev_document_child: moves the `documents:<project>` sync marker. */
-export function bumpDocumentsMarker(ok: Stmt, projectId: number): Stmt {
-  return stmt`INSERT INTO revision (scope, project_id, rev)
-    SELECT ${`documents:${projectId}`}, ${projectId}, 1 WHERE ${ok}
-    ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`;
 }
 
 /** Renumbering of a sibling set in one statement (a single bound JSON parameter). */

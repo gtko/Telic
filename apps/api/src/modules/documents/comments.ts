@@ -4,7 +4,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
 import { collaborationSchema } from './collaboration-schema';
 import { readVisibleDocument } from './collaboration';
-import { bumpDocumentsMarker, fencedBatch, stmt } from './tree';
+import { fencedBatch, stmt } from './tree';
 
 export async function listDocumentComments(
   db: Db,
@@ -89,7 +89,6 @@ export async function addDocumentComment(
           ${input.parentId ? '' : (input.quote ?? '')}, ${input.parentId ? null : (input.from ?? null)},
           ${input.parentId ? null : (input.to ?? null)}, ${now}, ${now}
         WHERE ${ok}`,
-      bumpDocumentsMarker(ok, projectId),
     ],
   });
   if (!applied) {
@@ -134,7 +133,6 @@ export async function updateDocumentComment(
               WHERE id = ${commentId} AND document_id = ${documentId} AND ${ok}`,
           ]
         : []),
-      bumpDocumentsMarker(ok, projectId),
     ],
   });
   return { ok: true };

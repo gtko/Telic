@@ -11,7 +11,6 @@ import { HttpError } from '#shared/lib';
 import { assertValidDocumentContentJson, getDocument } from './service';
 import { collaborationSchema } from './collaboration-schema';
 import {
-  bumpDocumentsMarker,
   captureRevisions,
   coalesceTarget,
   fencedBatch,
@@ -143,7 +142,6 @@ export async function openDocumentSession(
                 updated_by_user_id = ${userId}, updated_at = ${now}
                 WHERE id = ${documentId} AND version = ${document.version} AND ${ok}`,
               ...captureRevisions(ok, [documentId], coalesceInto),
-              bumpDocumentsMarker(ok, projectId),
             ]
           : []),
       ],
@@ -312,7 +310,6 @@ export async function saveDocumentSteps(
                   AND id IN (SELECT json_extract(j.value, '$.id') FROM json_each(${JSON.stringify(moved)}) j) AND ${ok}`,
             ]
           : []),
-        bumpDocumentsMarker(ok, projectId),
         // The session moves last: the guard above reads its version before this statement.
         stmt`UPDATE document_collaboration SET version = ${nextVersion}, content_json = ${json(contentJson)}
           WHERE document_id = ${documentId} AND epoch = ${input.epoch} AND version = ${input.version} AND ${ok}`,

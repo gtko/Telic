@@ -30,7 +30,6 @@ import {
 } from '#modules/attachments/storage';
 import {
   assertValidParent,
-  bumpDocumentsMarker,
   canSee,
   captureRevisions,
   coalesceTarget,
@@ -363,7 +362,6 @@ export async function createDocumentAsset(
       stmt`INSERT INTO document_asset (public_id, document_id, uploaded_by_user_id, s3_key, filename, content_type, size_bytes)
         SELECT ${publicId}, ${input.documentId}, ${input.userId}, ${input.s3Key}, ${input.filename}, ${input.contentType}, ${input.sizeBytes}
         WHERE ${ok}`,
-      bumpDocumentsMarker(ok, input.projectId),
     ],
   });
   if (!applied) {
@@ -412,7 +410,6 @@ export async function deleteDocumentAsset(
     guard: openDocumentGuard(projectId, documentId, userId),
     build: (ok) => [
       stmt`DELETE FROM document_asset WHERE document_id = ${documentId} AND public_id = ${publicId} AND ${ok}`,
-      bumpDocumentsMarker(ok, projectId),
     ],
   });
   if (!applied) {
@@ -534,7 +531,6 @@ export async function createDocument(
               ${position}, ${input.userId}, ${input.userId}, ${input.userId}, ${now}, ${now}
             WHERE ${ok}`,
           ...captureRevisions(ok, 'last-insert'),
-          bumpDocumentsMarker(ok, input.projectId),
         ],
         result: (results) => results[0]!.meta.last_row_id,
       };
@@ -999,7 +995,6 @@ export async function updateDocument(
         ...(contentChanged ? dropCollaboration(ok, documentId) : []),
         ...renumberSiblings(ok, projectId, normalized),
         ...captureRevisions(ok, [documentId], coalesceInto),
-        bumpDocumentsMarker(ok, projectId),
       ],
       result: () => 'ok' as const,
     };
@@ -1095,7 +1090,6 @@ async function mutateDocument(
             change.sets,
           ),
           ...captureRevisions(ok, [o.documentId]),
-          bumpDocumentsMarker(ok, o.projectId),
         ],
         result: () => 'changed' as const,
       };
@@ -1215,7 +1209,6 @@ export async function archiveDocument(
             ]
           : []),
         ...captureRevisions(ok, [documentId, ...descendants]),
-        bumpDocumentsMarker(ok, projectId),
       ],
       result: () => 'ok' as const,
     };
@@ -1269,7 +1262,6 @@ export async function restoreDocument(
             ]
           : []),
         ...captureRevisions(ok, [documentId, ...descendants]),
-        bumpDocumentsMarker(ok, projectId),
       ],
       result: () => 'ok' as const,
     };
@@ -1380,7 +1372,6 @@ export async function duplicateDocument(
                 WHERE ${ok}`,
             ),
             ...captureRevisions(ok, [id]),
-            bumpDocumentsMarker(ok, input.projectId),
           ],
           result: () => id,
         };
@@ -1414,7 +1405,6 @@ export async function setDocumentPreference(
       stmt`INSERT INTO project_document_preference (document_id, user_id, is_favorite, updated_at)
         SELECT ${documentId}, ${userId}, ${isFavorite}, ${now} WHERE ${ok}
         ON CONFLICT (document_id, user_id) DO UPDATE SET is_favorite = excluded.is_favorite, updated_at = excluded.updated_at`,
-      bumpDocumentsMarker(ok, projectId),
     ],
   });
   return { isFavorite };
@@ -1538,7 +1528,6 @@ export async function restoreDocumentRevision(
           ...dropCollaboration(ok, documentId),
           // A restore is always an explicit checkpoint: never merged into the last snapshot.
           ...captureRevisions(ok, [documentId]),
-          bumpDocumentsMarker(ok, projectId),
         ],
         result: () => 'ok' as const,
       };
@@ -1621,7 +1610,6 @@ export async function deleteDocument(
           : []),
         stmt`DELETE FROM project_document WHERE id = ${documentId} AND project_id = ${projectId}
           AND version = ${version} AND ${ok}`,
-        bumpDocumentsMarker(ok, projectId),
       ],
       result: () => assets.map((asset) => asset.s3Key),
     };
