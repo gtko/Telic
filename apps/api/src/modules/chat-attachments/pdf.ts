@@ -19,12 +19,17 @@ export interface PdfExtraction {
   markdown?: string;
 }
 
-// The one seam to the PDF engine. The former engine (@firecrawl/pdf-inspector) is a native
-// addon that does not run on Workers, so its replacement (a WASM build, or a call out to a
-// service) is chosen separately and plugs in here. Until then the upload of a PDF is
-// refused with a clear 501 instead of storing a file the agent cannot read.
-export async function extractPdfText(_bytes: Uint8Array): Promise<PdfExtraction> {
-  throw new HttpError(501, 'PDF conversion is not available on this deployment yet');
+// unpdf bundles a serverless build of pdf.js (pure JS, no native addon), so it runs on Workers.
+// It reads the text layer only: a PDF without one is reported as Scanned.
+export async function extractPdfText(bytes: Uint8Array): Promise<PdfExtraction> {
+  const { getDocumentProxy, extractText } = await import('unpdf');
+  const pdf = await getDocumentProxy(new Uint8Array(bytes));
+  const { text } = await extractText(pdf, { mergePages: false });
+  const markdown = text
+    .map((page) => page.trim())
+    .filter((page) => page !== '')
+    .join('\n\n');
+  return { pdfType: markdown === '' ? 'Scanned' : 'TextBased', markdown };
 }
 
 export async function pdfToMarkdown(bytes: Uint8Array): Promise<string> {
