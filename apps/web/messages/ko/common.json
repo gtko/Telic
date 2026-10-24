@@ -138,7 +138,7 @@
     "openPreviewLink": "새 탭에서 {name} 열기",
     "loadingPreview": "미리보기 불러오는 중…",
     "previewUnavailable": "미리보기를 사용할 수 없습니다. 링크를 열어 페이지를 확인하세요.",
-    "internalPage": "ItsAPlan 페이지",
+    "internalPage": "Telic 페이지",
     "internalPreviewUnavailable": "이 페이지를 사용할 수 없거나 접근 권한이 없습니다.",
     "previewNoteCount": "{count, plural, one {#개의 노트} other {#개의 노트}}",
     "previewCustomField": "사용자 지정 필드",
@@ -167,6 +167,5 @@
     "page": "{number}페이지",
     "perPage": "개씩 보기",
     "range": "전체 {total}개 중 {first}-{last}"
-  },
-  "aboutCloudAndPro": "Cloud 및 Pro 알아보기"
+  }
 }

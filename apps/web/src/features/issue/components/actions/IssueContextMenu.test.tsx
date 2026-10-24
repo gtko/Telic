@@ -19,7 +19,7 @@ it('renders a public card without requesting private quick actions', async () =>
     const value = key === 'IS_REACT_ACT_ENVIRONMENT' ? true : dom.window[key];
     Object.defineProperty(globalThis, key, { configurable: true, value });
   }
-  window.__ITSAPLAN_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
+  window.__TELIC_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {

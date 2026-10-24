@@ -1,8 +1,8 @@
-// The "It's a Plan" brand mark: two shapes in tandem — a filled circle (the human/team)
+// The 'Telic' brand mark: two shapes in tandem — a filled circle (the human/team)
 // and an outlined square (the agent), joined by a short link. Roles read from the shapes
 // themselves, so the mark works in a single color via currentColor and stays legible at
 // small sizes. Decorative — the caller sets size/color via className.
-export default function ItsAPlanMark({ className }: { className?: string }) {
+export default function TelicMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 32 32"

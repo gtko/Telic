@@ -35,7 +35,7 @@ Next.js App Router, SSR (not SPA). Tailwind v4 + shadcn/ui. See root `AGENTS.md`
   build shows notices about the instance there. `AfterSignIn` is mounted over every page,
   beside the what's new screen; here it shows nothing, while the hosted build can show a
   screen there once a session starts. `BrandMark` is the product mark at the top
-  and the bottom of both sidebars; here the core's `ItsAPlanMark`, which the hosted build can
+  and the bottom of both sidebars; here the core's `TelicMark`, which the hosted build can
   mark its edition on. `BrandPanel({ subtitle })` is the panel beside the form on the
   logged-out screens and the invite screen; here the core's, which the hosted build can
   replace. `godSections(core)` returns the god mode

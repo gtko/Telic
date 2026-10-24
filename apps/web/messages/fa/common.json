@@ -138,7 +138,7 @@
     "openPreviewLink": "باز کردن {name} در زبانه جدید",
     "loadingPreview": "در حال بارگذاری پیش‌نمایش…",
     "previewUnavailable": "پیش‌نمایش در دسترس نیست. پیوند را باز کنید تا این صفحه را ببینید.",
-    "internalPage": "صفحه ItsAPlan",
+    "internalPage": "صفحه Telic",
     "internalPreviewUnavailable": "این صفحه در دسترس نیست یا شما دسترسی ندارید.",
     "previewNoteCount": "{count, plural, one {# یادداشت} other {# یادداشت}}",
     "previewCustomField": "فیلد سفارشی",
@@ -167,6 +167,5 @@
     "page": "صفحه {number}",
     "perPage": "در هر صفحه",
     "range": "{first}-{last} از {total}"
-  },
-  "aboutCloudAndPro": "درباره Cloud و Pro"
+  }
 }

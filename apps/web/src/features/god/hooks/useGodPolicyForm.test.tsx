@@ -72,7 +72,7 @@ beforeEach(async () => {
     configurable: true,
     value: true,
   });
-  dom.window.__ITSAPLAN_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
+  dom.window.__TELIC_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
   saved = [];
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input, init) => {

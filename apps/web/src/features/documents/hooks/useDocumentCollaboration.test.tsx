@@ -76,7 +76,7 @@ beforeEach(async () => {
   dom = new JSDOM('<!doctype html><div id="root"></div><div id="editor"></div>', {
     url: 'https://plan.example.test',
   });
-  dom.window.__ITSAPLAN_ENV__ = {
+  dom.window.__TELIC_ENV__ = {
     apiUrl: 'https://api.example.test',
     privacyUrl: '',
     termsUrl: '',

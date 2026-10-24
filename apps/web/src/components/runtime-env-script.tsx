@@ -10,5 +10,5 @@ import { serverRuntimeEnv } from '@/utils/runtimeEnv';
 export default async function RuntimeEnvScript() {
   await connection();
   const json = JSON.stringify(serverRuntimeEnv()).replace(/</g, '\\u003c');
-  return <script dangerouslySetInnerHTML={{ __html: `window.__ITSAPLAN_ENV__=${json}` }} />;
+  return <script dangerouslySetInnerHTML={{ __html: `window.__TELIC_ENV__=${json}` }} />;
 }

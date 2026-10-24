@@ -54,7 +54,7 @@ function jobFields(target: ImportReviewTarget): PlaneImportJobFields | LinearImp
 }
 
 // Shown once a source project is picked, before the job is created: the states
-// the source reports for it, each pre-filled with the category itsaplan would map it
+// the source reports for it, each pre-filled with the category Telic would map it
 // to automatically, and the unmatched-assignee/comment-author policy. Only a state
 // row the user actually changes from its default is sent as an override.
 export default function SettingsImportExportMappingReview({

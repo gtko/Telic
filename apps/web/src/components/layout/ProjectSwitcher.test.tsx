@@ -241,7 +241,7 @@ beforeEach(async () => {
     },
     IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
-  Object.defineProperty(window, '__ITSAPLAN_ENV__', {
+  Object.defineProperty(window, '__TELIC_ENV__', {
     value: { apiUrl: 'https://api.test', privacyUrl: '', termsUrl: '' },
   });
   window.matchMedia = (query) => ({

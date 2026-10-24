@@ -138,7 +138,7 @@
     "openPreviewLink": "{name} bağlantısını yeni sekmede aç",
     "loadingPreview": "Önizleme yükleniyor…",
     "previewUnavailable": "Önizleme mevcut değil. Sayfayı görüntülemek için bağlantıyı açın.",
-    "internalPage": "ItsAPlan sayfası",
+    "internalPage": "Telic sayfası",
     "internalPreviewUnavailable": "Bu sayfa mevcut değil veya erişiminiz yok.",
     "previewNoteCount": "{count, plural, one {# not} other {# not}}",
     "previewCustomField": "Özel alan",
@@ -167,6 +167,5 @@
     "page": "Sayfa {number}",
     "perPage": "/ sayfa",
     "range": "{total} kayıttan {first}-{last} arası"
-  },
-  "aboutCloudAndPro": "Cloud ve Pro hakkında bilgi edinin"
+  }
 }

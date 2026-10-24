@@ -138,7 +138,7 @@
     "openPreviewLink": "在新分頁開啟 {name}",
     "loadingPreview": "正在載入預覽…",
     "previewUnavailable": "無法預覽。開啟連結檢視此頁面。",
-    "internalPage": "ItsAPlan 頁面",
+    "internalPage": "Telic 頁面",
     "internalPreviewUnavailable": "此頁面無法使用，或你沒有存取權限。",
     "previewNoteCount": "{count, plural, other {# 則筆記}}",
     "previewCustomField": "自訂欄位",
@@ -167,6 +167,5 @@
     "page": "第 {number} 頁",
     "perPage": "每頁",
     "range": "第 {first}-{last} 項，共 {total} 項"
-  },
-  "aboutCloudAndPro": "瞭解 Cloud 和 Pro"
+  }
 }
