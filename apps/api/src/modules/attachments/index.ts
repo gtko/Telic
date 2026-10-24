@@ -165,7 +165,7 @@ export const attachmentRoutes = new Elysia({
   )
 
   // Adds an attachment from a URL or inline base64, for callers that cannot send a
-  // multipart file (internal agents). Exactly one of url / contentBase64 is given.
+  // multipart file. Exactly one of url / contentBase64 is given.
   // A URL is fetched server-side, so it is SSRF-guarded (https only in prod, no
   // private/local hosts, no redirects) and size-capped like a direct upload.
   .post(

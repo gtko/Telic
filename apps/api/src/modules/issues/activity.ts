@@ -28,7 +28,7 @@ import { listStatusTimeline } from './status-history';
 
 // Issue timeline: comments and change-log activity in one table (issue_activity).
 // kind selects which columns a row uses. The author is the session user
-// (a member or an agent's bot user); actor_name is a snapshot taken at write time,
+// (a member); actor_name is a snapshot taken at write time,
 // so an entry keeps reading correctly after that user is renamed or deleted. The
 // issue detail panel renders the feed newest first and pages through it with a
 // (created_at, id) keyset cursor.
@@ -494,8 +494,7 @@ export interface ActivityInput extends ActivityPayload {
   action: string;
 }
 
-// The actor behind a write: the session user's id (a member or an agent's bot
-// user), null/undefined for an anonymous system write, or a named system actor
+// The actor behind a write: the session user's id (a member), null/undefined for an anonymous system write, or a named system actor
 // ({ system: 'GitHub' }) whose name is stored as the entry's actor_name without a
 // user behind it.
 export type ActivityActor = string | null | undefined | { system: string };

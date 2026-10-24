@@ -1,4 +1,4 @@
-import { type Db, aiAgent, issueWatcher, projectMember, user, userPreference } from '@repo/db';
+import { type Db, issueWatcher, projectMember, user, userPreference } from '@repo/db';
 import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { getMemberContext, listMemberContexts, type MemberContext } from '#modules/members/service';
 import { hasPermission } from '#shared/permissions';
@@ -40,10 +40,7 @@ export async function listIssueWatchers(
       projectMember,
       and(eq(projectMember.userId, issueWatcher.userId), eq(projectMember.projectId, projectId)),
     )
-    .leftJoin(aiAgent, eq(aiAgent.userId, issueWatcher.userId))
-    .where(
-      and(eq(issueWatcher.issueId, issueId), eq(issueWatcher.subscribed, true), isNull(aiAgent.id)),
-    )
+    .where(and(eq(issueWatcher.issueId, issueId), eq(issueWatcher.subscribed, true)))
     .orderBy(asc(user.name));
   const contexts = await listMemberContexts(db, projectId);
   return rows.filter((row) => canReadWorkItems(contexts.get(row.userId)));
@@ -58,9 +55,6 @@ export async function watcherUserIds(
   return new Set(rows.map((r) => r.userId));
 }
 
-// Watchers represent people who receive the project's human notifications. An AI
-// agent also has a project_member row, so checking that table alone would make it
-// look like a valid target; the anti-join keeps the management endpoint human-only.
 export async function isEligibleIssueWatcher(
   db: Db,
   projectId: number,
@@ -69,14 +63,7 @@ export async function isEligibleIssueWatcher(
   const rows = await db
     .select({ userId: projectMember.userId })
     .from(projectMember)
-    .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
-    .where(
-      and(
-        eq(projectMember.projectId, projectId),
-        eq(projectMember.userId, userId),
-        isNull(aiAgent.id),
-      ),
-    )
+    .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, userId)))
     .limit(1);
   if (rows.length === 0) return false;
   return canReadWorkItems(await getMemberContext(db, projectId, userId));
@@ -101,7 +88,7 @@ export async function setIssueWatching(
 
 // Subscribes the members that just acted on the issue in a way that implies they
 // want to follow it: they created it, were assigned it, commented on it, or were
-// mentioned in a comment. A candidate that is not a human member of the project
+// mentioned in a comment. A candidate that is not a member of the project
 // or that turned auto-subscribe off is skipped. `on conflict do nothing` is what makes an
 // unsubscription stick: the row is there with subscribed = false and stays.
 export async function autoWatchIssue(
@@ -116,12 +103,10 @@ export async function autoWatchIssue(
     .select({ userId: projectMember.userId })
     .from(projectMember)
     .leftJoin(userPreference, eq(userPreference.userId, projectMember.userId))
-    .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
     .where(
       and(
         eq(projectMember.projectId, projectId),
         inArray(projectMember.userId, ids),
-        isNull(aiAgent.id),
         // No preference row yet means the default, which is on.
         or(isNull(userPreference.autoWatch), eq(userPreference.autoWatch, true)),
       ),

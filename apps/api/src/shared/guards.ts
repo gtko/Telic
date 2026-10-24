@@ -130,9 +130,9 @@ function resolveTeam(db: Db, params: unknown, user: AuthUser | undefined | null)
   return requireTeamMembership(db, Number((params as TeamIdParams).teamId), user);
 }
 
-// The team's MCP switch, for the team-scoped routes. Their resources — the agents,
-// the skills, the tools, the roles and the integration credentials — belong to the
-// team rather than to a project, so no project flag covers them; this is what does.
+// The team's MCP switch, for the team-scoped routes. Their resources — the roles,
+// for one — belong to the team rather than to a project, so no project flag covers
+// them; this is what does.
 // A plain request passes untouched.
 async function assertTeamMcpAllowed(db: Db, params: unknown, headers: Headers): Promise<void> {
   if (!isMcpRequest(headers)) return;
@@ -318,8 +318,7 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   },
 
   // Owner or manager. They run the team's projects: create, copy and update one. A
-  // member does not, and neither does an agent, whose standing in the team says only
-  // that it belongs to it.
+  // member does not.
   teamManager(_enabled: boolean) {
     return {
       async resolve({ params, user, request, db }) {

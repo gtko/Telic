@@ -173,8 +173,7 @@ export async function getTeamPermissions(
 }
 
 // Every member's resolved access in the project, keyed by user id — getMemberContext
-// in bulk, for a caller that judges several people at once (agents included: their
-// bot user is a member like any other).
+// in bulk, for a caller that judges several people at once.
 export async function listMemberContexts(
   db: Db,
   projectId: number,
@@ -248,8 +247,7 @@ export interface MemberFilters {
   search?: string;
 }
 
-// Filters on the joined user and agent rows alone, so any member query that joins both
-// can reuse it.
+// Filters on the joined user rows alone, so any member query that joins them can reuse it.
 export function matchesFilters({ search }: MemberFilters) {
   const term = search?.trim();
   return and(

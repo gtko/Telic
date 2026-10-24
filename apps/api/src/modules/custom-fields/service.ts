@@ -3,8 +3,6 @@ import {
   batchAll,
   chunk,
   type BatchStatement,
-  agentFieldTrigger,
-  aiAgent,
   customField,
   customFieldOption,
   issueFieldOption,
@@ -34,7 +32,7 @@ export type CustomFieldType =
   | 'member';
 
 // Who a member field may hold. Null for every other field type.
-export type MemberScope = 'all' | 'humans' | 'agents';
+export type MemberScope = 'all' | 'humans';
 
 export interface CustomFieldOptionRow {
   id: number;
@@ -126,29 +124,6 @@ export async function listCustomFields(
   return fields.map((f) => mapField(f, options.get(f.id) ?? []));
 }
 
-// The ids of the member fields of the given projects an agent can be set into: the ones
-// whose scope holds agents. These are the fields an agent may carry a run trigger for.
-export async function listAgentMemberFieldIds(db: Db, projectIds: number[]): Promise<number[]> {
-  if (projectIds.length === 0) return [];
-  const rows = (
-    await Promise.all(
-      chunk(projectIds).map((ids) =>
-        db
-          .select({ id: customField.id })
-          .from(customField)
-          .where(
-            and(
-              inArray(customField.projectId, ids),
-              eq(customField.fieldType, 'member'),
-              inArray(customField.memberScope, ['all', 'agents']),
-            ),
-          ),
-      ),
-    )
-  ).flat();
-  return rows.map((r) => r.id);
-}
-
 // One field by id, scoped to its project so a field id from another project is
 // not matched. Returns null when no field of that id exists in the project.
 export async function getCustomFieldById(
@@ -225,18 +200,6 @@ function clearFieldValues(db: Db, fieldId: number) {
     db.delete(issueFieldValue).where(eq(issueFieldValue.fieldId, fieldId)),
     db.delete(issueFieldOption).where(eq(issueFieldOption.fieldId, fieldId)),
   ];
-}
-
-// Clears the members a narrowed scope no longer allows, leaving the rest in place.
-// An agent is a member whose user id backs an ai_agent row.
-function clearMembersOutOfScope(db: Db, fieldId: number, scope: MemberScope) {
-  const isAgent = sql`EXISTS (SELECT 1 FROM ${aiAgent} WHERE ${aiAgent.userId} = ${issueFieldValue.valueUserId})`;
-  return db
-    .update(issueFieldValue)
-    .set({ valueUserId: null })
-    .where(
-      and(eq(issueFieldValue.fieldId, fieldId), scope === 'humans' ? isAgent : sql`NOT ${isAgent}`),
-    );
 }
 
 // Writes the option list a select field should end up with. An option that arrives
@@ -325,14 +288,6 @@ export async function updateCustomField(
     if (!holdsOptions(fieldType)) {
       statements.push(db.delete(customFieldOption).where(eq(customFieldOption.fieldId, id)));
     }
-  } else if (memberScope != null && memberScope !== current.memberScope) {
-    if (memberScope !== 'all') statements.push(clearMembersOutOfScope(db, id, memberScope));
-  }
-
-  // A field that no longer takes agents drops its agent triggers: kept, they would
-  // arm again on their own once the field takes agents anew.
-  if (fieldType !== 'member' || memberScope === 'humans') {
-    statements.push(db.delete(agentFieldTrigger).where(eq(agentFieldTrigger.fieldId, id)));
   }
 
   if (patch.options && holdsOptions(fieldType)) {

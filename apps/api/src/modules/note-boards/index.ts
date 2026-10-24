@@ -106,7 +106,7 @@ export const noteBoardRoutes = new Elysia({
       detail: {
         summary: 'List who a board can be shared with',
         description:
-          'The project members and agents a restricted board can grant access to. `canAccess` false means their role cannot read notes at all, so granting them access would change nothing and is rejected.',
+          'The project members a restricted board can grant access to. `canAccess` false means their role cannot read notes at all, so granting them access would change nothing and is rejected.',
       },
     },
   )

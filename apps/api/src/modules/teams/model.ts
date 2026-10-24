@@ -67,7 +67,6 @@ export const TeamResponse = t.Object({
   memberCount: t.Number(),
   ownerCount: t.Number({ description: 'How many members are owners; the last one cannot leave.' }),
   roleCount: t.Number({ description: "How many roles the team's projects assign from." }),
-  integrationCount: t.Number({ description: 'How many integration credentials the team holds.' }),
   createdAt: t.String(),
 });
 
@@ -132,8 +131,7 @@ export const TeamProjectPageResponse = pageResponse(
   }),
 );
 
-// Every project the reader has, for the pickers that need them all: the projects an
-// agent is attached to, and the MCP switch each project carries.
+// Every project the reader has, for the pickers that need them all: the MCP switch each project carries.
 export const TeamProjectOptionListResponse = t.Array(
   t.Object({
     id: t.Number(),

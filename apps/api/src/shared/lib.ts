@@ -6,7 +6,7 @@
 // plugin's onError maps it to a { error } JSON response with that status.
 //
 // `code` names the failure for a caller that has to branch on it rather than show
-// the message — an agent moving issues without a human watching. Most failures
+// the message. Most failures
 // leave it unset: the status and the message are enough to render.
 export class HttpError extends Error {
   constructor(

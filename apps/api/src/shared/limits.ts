@@ -10,14 +10,8 @@ import type { ProjectFeature } from './features';
 
 export interface Limits {
   maxTeams: number;
-  // Distinct people across the workspace's teams. An agent's bot user takes no seat.
+  // Distinct people across the workspace's teams.
   maxSeats: number;
-  // Runs of the workspace's agents in flight at once.
-  maxConcurrentRuns: number;
-  // Wall time one run gets before it is aborted.
-  maxRunSeconds: number;
-  // How close together an agent schedule may fire.
-  minScheduleIntervalSeconds: number;
   // Stored attachment bytes across the workspace's projects.
   maxStorageBytes: number;
   // Project sections the workspace cannot use. A blocked one reads as off however its
@@ -30,9 +24,6 @@ export interface Limits {
 export const NO_LIMITS: Limits = {
   maxTeams: 0,
   maxSeats: 0,
-  maxConcurrentRuns: 0,
-  maxRunSeconds: 0,
-  minScheduleIntervalSeconds: 0,
   maxStorageBytes: 0,
   blockedFeatures: [],
 };

@@ -149,8 +149,7 @@ export async function notifyEditedCommentMentions(
 // the handles the write added are reached, so re-saving a text keeps quiet about the
 // people it already named. Being mentioned subscribes to the issue, the same as it
 // does in a comment. Only the members named are reached: the text describes the work
-// rather than addressing anyone, so an agent named in it is neither notified nor
-// given a run — an agent is addressed in a comment, or given an issue by delegation.
+// rather than addressing anyone.
 export async function notifyTextMentions(
   db: Db,
   input: {

@@ -48,8 +48,7 @@ export const WorkspaceResponse = t.Object({
   color: t.Nullable(t.String()),
   teamCreation: t.UnionEnum([...TEAM_CREATION]),
   deletion: t.UnionEnum(['allowed', 'work'], {
-    description:
-      'Whether the owner may delete it: work while a team of it holds a project or an AI agent.',
+    description: 'Whether the owner may delete it: work while a team of it holds a project.',
   }),
 });
 

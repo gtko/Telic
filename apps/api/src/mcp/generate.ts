@@ -57,7 +57,7 @@ export interface McpRouteTool {
 // where the method understates it — a POST that revokes a credential or turns
 // down an invite is destructive even though POST as a class is not:
 //
-//   detail: { ...mcpTool("regenerate_ai_agent_key", { destructiveHint: true }) }
+//   detail: { ...mcpTool("some_tool", { destructiveHint: true }) }
 //
 // `x-mcp` is an OpenAPI extension key, so it rides along in the route's detail,
 // is read back from app.routes by generateRouteTools, and does not show up as a

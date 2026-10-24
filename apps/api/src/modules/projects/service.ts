@@ -1,7 +1,6 @@
 import { likeText } from '#modules/issues/sql-helpers';
 import {
   type Db,
-  aiAgent,
   documentAsset,
   initiative,
   initiativeAttachment,
@@ -18,7 +17,6 @@ import {
   team,
   teamMember,
   batchAll,
-  chunk,
 } from '@repo/db';
 import {
   and,
@@ -43,7 +41,6 @@ import { toMemberContext, type MemberRole } from '#modules/members/service';
 import { workspaceGrants } from '#modules/workspaces/service';
 import { assertSeatFree } from '#modules/teams/service';
 import { getProjectDefaults } from '#modules/settings/service';
-import { getDefaultRoleId } from '#modules/roles/service';
 import { dropUnusedTeamMembership } from '#modules/scim/reconcile';
 import { projectRef, teamRef } from '#modules/teams/ref';
 import { deleteObjects } from '@repo/storage';
@@ -413,7 +410,6 @@ export async function targetTeam(db: Db, userId: string, teamId: number): Promis
       name: team.name,
       slug: team.slug,
       mcpEnabled: team.mcpEnabled,
-      defaultAgentIds: team.defaultAgentIds,
     })
     .from(team)
     .where(eq(team.id, teamId));
@@ -440,7 +436,6 @@ export interface TargetTeam {
   name: string;
   slug: string | null;
   mcpEnabled: boolean;
-  defaultAgentIds: number[];
 }
 
 // Every new project starts with one column per state type, so it's usable (has
@@ -537,15 +532,6 @@ export async function createProject(
   // What a new project starts with, set instance-wide in god mode. Read before
   // any write starts.
   const defaults = await getProjectDefaults(db);
-  const defaultAgents = ownerTeam.defaultAgentIds.length
-    ? await db
-        .select({ userId: aiAgent.userId })
-        .from(aiAgent)
-        .where(
-          and(eq(aiAgent.teamId, ownerTeam.id), inArray(aiAgent.id, ownerTeam.defaultAgentIds)),
-        )
-    : [];
-  const defaultRoleId = defaultAgents.length ? await getDefaultRoleId(db, ownerTeam.id) : null;
   // One atomic D1 batch. The project id the later statements need is read back by
   // sub-select on the unique (team, key) the first insert just wrote.
   const projectId = sql<number>`(select ${project.id} from ${project} where ${project.teamId} = ${ownerTeam.id} and ${project.key} = ${input.key} order by ${project.id} desc limit 1)`;
@@ -563,16 +549,6 @@ export async function createProject(
       })
       .returning(),
     db.insert(projectMember).values({ projectId, userId: ownerId, role: 'owner' }),
-    ...chunk(defaultAgents, 15).map((agents) =>
-      db.insert(projectMember).values(
-        agents.map((agent) => ({
-          projectId,
-          userId: agent.userId,
-          role: 'member',
-          roleId: defaultRoleId,
-        })),
-      ),
-    ),
     ...DEFAULT_COLUMNS.map((column, position) =>
       db.insert(projectColumn).values({
         projectId,

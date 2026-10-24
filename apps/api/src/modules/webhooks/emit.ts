@@ -1,4 +1,4 @@
-import { aiAgent, batchAll, chunk, user, webhook, webhookDelivery, type Db } from '@repo/db';
+import { batchAll, chunk, user, webhook, webhookDelivery, type Db } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 import type { ActivityActor } from '#modules/issues/activity';
 import type { WebhookEventType } from './service';
@@ -21,11 +21,10 @@ const EVENT_SHAPE: Record<WebhookEventType, { action: string; type: string }> = 
   'comment.deleted': { action: 'remove', type: 'Comment' },
 };
 
-// Who caused the event. An agent acts through its own bot user, so a user id is an
-// agent when an ai_agent row points at it. A system write has no user: it carries
-// the system's name ('GitHub', 'Auto-archive'), or null for an unnamed one.
+// Who caused the event. A system write has no user: it carries the system's name
+// ('GitHub', 'Auto-archive'), or null for an unnamed one.
 interface WebhookActor {
-  type: 'human' | 'agent' | 'system';
+  type: 'human' | 'system';
   id: string | null;
   name: string | null;
 }
@@ -33,13 +32,8 @@ interface WebhookActor {
 async function resolveActor(db: Db, actor: ActivityActor): Promise<WebhookActor> {
   if (!actor) return { type: 'system', id: null, name: null };
   if (typeof actor === 'object') return { type: 'system', id: null, name: actor.system };
-  const [row] = await db
-    .select({ name: user.name, agentId: aiAgent.id })
-    .from(user)
-    .leftJoin(aiAgent, eq(aiAgent.userId, user.id))
-    .where(eq(user.id, actor))
-    .limit(1);
-  return { type: row?.agentId != null ? 'agent' : 'human', id: actor, name: row?.name ?? null };
+  const [row] = await db.select({ name: user.name }).from(user).where(eq(user.id, actor)).limit(1);
+  return { type: 'human', id: actor, name: row?.name ?? null };
 }
 
 export interface ProjectEvent {

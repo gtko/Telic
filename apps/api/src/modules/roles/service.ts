@@ -1,5 +1,5 @@
-import { teamRole, projectMember, aiAgent, teamInvite, scimGroupMapping, type Db } from '@repo/db';
-import { and, asc, count, eq, like, isNull, sql } from 'drizzle-orm';
+import { teamRole, projectMember, teamInvite, scimGroupMapping, type Db } from '@repo/db';
+import { and, asc, count, eq, like, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { normalizePermissions, type Permissions } from '#shared/permissions';
 
@@ -123,31 +123,19 @@ export async function updateRole(
   return row ? mapRole(row) : null;
 }
 
-// Who currently works under a role: project members, AI agents, pending invites that
+// Who currently works under a role: project members, pending invites that
 // would put their invitee on it, and the provisioned group mappings that grant it. A
 // role with any of them cannot be deleted until the caller names the role to move
 // them to.
 export interface RoleUsage {
   members: number;
-  agents: number;
   invites: number;
   groups: number;
 }
 
 export async function getRoleUsage(db: Db, roleId: number): Promise<RoleUsage> {
-  const [members, agents, invites, groups] = await Promise.all([
-    db
-      .select({ n: count() })
-      .from(projectMember)
-      // An agent's bot user holds a project_member row like a person does; it is
-      // counted as an agent instead. Same agent test as listMembers.
-      .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
-      .where(and(eq(projectMember.roleId, roleId), isNull(aiAgent.id))),
-    db
-      .select({ n: count() })
-      .from(projectMember)
-      .innerJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
-      .where(eq(projectMember.roleId, roleId)),
+  const [members, invites, groups] = await Promise.all([
+    db.select({ n: count() }).from(projectMember).where(eq(projectMember.roleId, roleId)),
     db
       .select({ n: count() })
       .from(teamInvite)
@@ -156,18 +144,16 @@ export async function getRoleUsage(db: Db, roleId: number): Promise<RoleUsage> {
   ]);
   return {
     members: members[0].n,
-    agents: agents[0].n,
     invites: invites[0].n,
     groups: groups[0].n,
   };
 }
 
 export function isRoleInUse(usage: RoleUsage): boolean {
-  return usage.members + usage.agents + usage.invites + usage.groups > 0;
+  return usage.members + usage.invites + usage.groups > 0;
 }
 
-// Deletes a role after moving everything on it — memberships, people's and agents'
-// alike, pending invites, and the group mappings that grant it — to targetRoleId, in
+// Deletes a role after moving everything on it — memberships, people's, pending invites, and the group mappings that grant it — to targetRoleId, in
 // one transaction, so nothing is left with a dangling role. A mapping left behind
 // would be nulled by its foreign key, and the next SCIM sync would silently move the
 // members it provisions onto the default matrix. The caller guards against deleting

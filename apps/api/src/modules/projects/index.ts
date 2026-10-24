@@ -142,8 +142,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
 
   // Full project view: columns, issue types, labels, issues, and the caller's own
   // effective access (role + resolved permission matrix) — everything the work
-  // items UI needs in one call. Assignee options come from the project's members
-  // and AI agents, fetched separately. The web app gates its UI off `viewer`; the
+  // items UI needs in one call. Assignee options come from the project's members,
+  // fetched separately. The web app gates its UI off `viewer`; the
   // API still enforces the same matrix on every request.
   //
   // Open to any project member: the payload is the project's own naming (columns,
@@ -197,7 +197,7 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
         summary: 'Get a project',
         description:
           'Get a project setup by key: columns, issue types, labels, custom fields, issue ' +
-          'templates, and assignable users and agents. Resolves the ids create_issue and update_issue ' +
+          'templates, and assignable users. Resolves the ids create_issue and update_issue ' +
           'take. For issues use list_issues or search_issues.',
         ...mcpTool('get_project'),
       },
@@ -220,8 +220,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
       detail: {
         summary: 'Update a project',
         description:
-          "Update a project's name and/or description. The description is given to the " +
-          `agents of the project in their system prompt; up to ${PROJECT_DESCRIPTION_LIMIT} ` +
+          "Update a project's name and/or description. The description takes up to " +
+          `${PROJECT_DESCRIPTION_LIMIT} ` +
           'characters. The key changes only when it does not match the key pattern: a key ' +
           'created before the pattern existed, for example one that starts with a digit. ' +
           'A key that another project of the team has is refused with 409.',

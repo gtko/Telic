@@ -108,8 +108,8 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
       detail: {
         summary: 'Delete a workspace',
         description:
-          'Delete a workspace you own, with its teams. One whose teams hold a project or an ' +
-          'AI agent is refused until those are gone.',
+          'Delete a workspace you own, with its teams. One whose teams hold a project is ' +
+          'refused until it is gone.',
       },
     },
   )

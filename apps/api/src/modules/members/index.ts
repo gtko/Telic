@@ -206,8 +206,7 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
     },
   )
 
-  // The description is shown on the members page and given to agents so they can
-  // pick who to tag on an unassigned issue.
+  // The description is shown on the members page.
   .patch(
     '/projects/:projectKey/members/:userId/description',
     async ({ db, project, params, body }) => {

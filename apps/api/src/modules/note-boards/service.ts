@@ -224,9 +224,7 @@ export async function deleteNoteBoard(db: Db, id: number): Promise<void> {
 
 // Someone a restricted board can be shared with. `canAccess` is whether their role
 // lets them read note boards at all: without it a grant would be pointless, since
-// every board route still checks the permission matrix. An agent is listed too —
-// its bot user is a project member — but reaching a board also needs the note board
-// actions enabled on the agent.
+// every board route still checks the permission matrix.
 export interface NoteBoardAccessCandidate {
   userId: string;
   name: string;

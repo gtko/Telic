@@ -1282,8 +1282,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   )
 
   // Editors can curate the full watcher list when a handoff or review needs to
-  // reach someone immediately. The target must be a real project member: agents
-  // have their own delegation flow and must never receive human notifications.
+  // reach someone immediately. The target must be a real project member.
   .put(
     '/issues/:issueId/watchers/:userId',
     async ({ db, params, projectId }) => {

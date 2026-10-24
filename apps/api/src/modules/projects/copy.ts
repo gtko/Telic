@@ -212,8 +212,7 @@ function remapActionEffect(effect: unknown, maps: CopyIdMaps): unknown {
 // documents, actions, settings, webhooks) are copied step by step (D1 has no interactive transaction), recording
 // old id → new id so the ids that views and actions reference are remapped to the
 // copied entities. A document's assets are cloned in the object store as the copy goes and
-// removed again if it fails (the half-built project is deleted). The team's agents are attached to
-// the new project after it commits, through the same service function the UI uses.
+// removed again if it fails (the half-built project is deleted).
 // Headroom under D1's 1000 queries per invocation for the fixed reads and writes.
 const MAX_COPY_QUERIES = 850;
 

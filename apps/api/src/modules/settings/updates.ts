@@ -7,8 +7,7 @@ import { CHANGELOG_MARKDOWN } from './changelog.generated';
 // cannot be read.
 //
 // The feed is github.com web content, not the REST API, so no token and no
-// 60/hour limit (modules/agents/skills/skill-format.ts reads github.com atom the
-// same way).
+// 60/hour limit.
 // The feed is read at most once every FEED_TTL_MS: the what's-new screen asks on
 // every session, and a fetch per session would both be slow and hammer github.
 // "Check for updates" bypasses the cache. A failed read answers from the last

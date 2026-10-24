@@ -1,6 +1,5 @@
 import {
   teamWorkspaceId,
-  integrationCredential,
   issue,
   issueActivity,
   project,
@@ -85,11 +84,9 @@ export interface TeamRow {
   memberCount: number;
   // How many of those members are owners: the last one cannot leave.
   ownerCount: number;
-  // The roles the team's projects assign from, the integration credentials they run
-  // on.
+  // The roles the team's projects assign from.
   // Counted here so the page shows them beside the section without opening it.
   roleCount: number;
-  integrationCount: number;
   createdAt: string;
 }
 
@@ -238,7 +235,7 @@ async function loadTeamRows(db: Db, userId: string, teamId?: number): Promise<Te
   if (rows.length === 0) return [];
 
   const ids = rows.map((r) => r.id);
-  const [projectCounts, memberCounts, roleCounts, integrationCounts] = await Promise.all([
+  const [projectCounts, memberCounts, roleCounts] = await Promise.all([
     db
       .select({
         teamId: project.teamId,
@@ -266,16 +263,10 @@ async function loadTeamRows(db: Db, userId: string, teamId?: number): Promise<Te
       .from(teamRole)
       .where(inArray(teamRole.teamId, ids))
       .groupBy(teamRole.teamId),
-    db
-      .select({ teamId: integrationCredential.teamId, count: sql<number>`count(*)` })
-      .from(integrationCredential)
-      .where(inArray(integrationCredential.teamId, ids))
-      .groupBy(integrationCredential.teamId),
   ]);
   const projects = new Map(projectCounts.map((r) => [r.teamId, r]));
   const members = new Map(memberCounts.map((r) => [r.teamId, r]));
   const roles = new Map(roleCounts.map((r) => [r.teamId, r.count]));
-  const integrations = new Map(integrationCounts.map((r) => [r.teamId, r.count]));
 
   return rows.map((row) => {
     const grant = grants.get(row.id) ?? null;
@@ -297,7 +288,6 @@ async function loadTeamRows(db: Db, userId: string, teamId?: number): Promise<Te
       memberCount: members.get(row.id)?.count ?? 0,
       ownerCount: members.get(row.id)?.owners ?? 0,
       roleCount: roles.get(row.id) ?? 0,
-      integrationCount: integrations.get(row.id) ?? 0,
       createdAt: iso(row.createdAt),
     };
   });
@@ -570,8 +560,7 @@ export async function listTeamProjects(
   };
 }
 
-// Every project the caller reads, as id, key, name and MCP reach: the picker on an
-// agent and the team's MCP switches, which need them all rather than a page.
+// Every project the caller reads, as id, key, name and MCP reach: the team's MCP switches, which need them all rather than a page.
 export async function listTeamProjectOptions(
   db: Db,
   teamId: number,
@@ -799,7 +788,6 @@ export async function createTeam(
     memberCount: 1,
     ownerCount: 1,
     roleCount: 1,
-    integrationCount: 0,
     createdAt: iso(row.createdAt),
   };
 }
