@@ -1,21 +1,55 @@
+import path from 'node:path';
+import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-workers';
 import { defineConfig } from 'vitest/config';
 
-// Service-level tests of the D1 ports (ODY-296): a local D1 (Miniflare) with the committed
-// baseline, the services called with a real `db`. Named *.vtest.ts (or under __tests__/d1/) so
-// bun's own runner (`bun test`) keeps ignoring them.
-export default defineConfig({
-  test: {
-    include: ['src/**/*.vtest.ts', 'src/**/__tests__/d1/**/*.test.ts'],
-    hookTimeout: 60_000,
-    testTimeout: 60_000,
-    fileParallelism: false,
-    setupFiles: ['./src/__tests__/helpers/setup-vtest.ts'],
-    // Test values: nothing here is a credential.
-    env: {
-      APP_URL: 'http://localhost:3001',
-      API_URL: 'http://localhost:3000',
-      BETTER_AUTH_SECRET: 'test-secret-test-secret-test-secret-0123456789',
-      APP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+// Two projects (ODY-296):
+//  - `workers`: the app run inside workerd through @cloudflare/vitest-pool-workers (tests/),
+//    the D1 binding is the real one and the baseline of packages/db is applied per file.
+//  - `node`: service-level tests of the D1 ports (src/**/*.vtest.ts, src/**/__tests__/d1/): a
+//    Miniflare D1 started by the test itself, the services called with a real `db`. Named so
+//    that bun's own runner (`bun run test:bun`) keeps ignoring them.
+const testEnv = {
+  // Test values: nothing here is a credential.
+  BETTER_AUTH_SECRET: 'test-secret-test-secret-test-secret-0123456789',
+  APP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+  APP_URL: 'http://localhost:3001',
+  API_URL: 'http://localhost:3000',
+};
+
+export default defineConfig(async () => {
+  const migrations = await readD1Migrations(
+    path.join(import.meta.dirname, '../../packages/db/drizzle-d1'),
+  );
+  return {
+    test: {
+      projects: [
+        {
+          plugins: [
+            cloudflareTest({
+              wrangler: { configPath: './wrangler.jsonc' },
+              miniflare: { bindings: { TEST_MIGRATIONS: migrations, ...testEnv } },
+            }),
+          ],
+          test: {
+            name: 'workers',
+            include: ['tests/**/*.test.ts'],
+            setupFiles: ['./tests/setup.ts'],
+            hookTimeout: 60_000,
+            testTimeout: 30_000,
+          },
+        },
+        {
+          test: {
+            name: 'node',
+            include: ['src/**/*.vtest.ts', 'src/**/__tests__/d1/**/*.test.ts'],
+            hookTimeout: 60_000,
+            testTimeout: 60_000,
+            fileParallelism: false,
+            setupFiles: ['./src/__tests__/helpers/setup-vtest.ts'],
+            env: testEnv,
+          },
+        },
+      ],
     },
-  },
+  };
 });

@@ -40,6 +40,7 @@ type EntityGuardCtx = {
   params: Record<string, unknown>;
   user?: AuthUser | null;
   request: Request;
+  db: Db;
 };
 
 // What a project lookup of an entity receives: the request context, whose `db` comes from
@@ -66,7 +67,8 @@ function permissionDetail(permission: Permission) {
 
 // Builds a feature-local macro for routes that address an entity by its own id
 // (no :projectKey in the path). resolveProjectId maps the route params to the
-// entity's owning project id (null means the entity was not found). The macro
+// entity's owning project id (null means the entity was not found); it receives the
+// request's database as its second argument (`ctx.db`). The macro
 // asserts the given action on `resource` and injects the resolved `projectId` into
 // the handler context, so a handler that needs it does not resolve it again. `feature`
 // names the optional section the entity belongs to, closing every route of the macro
@@ -74,7 +76,7 @@ function permissionDetail(permission: Permission) {
 //
 //   .macro({
 //     workItem: entityGuard("work_items", "Issue not found",
-//       (p) => getIssueProjectId(Number(p.issueId))),
+//       (p, db) => getIssueProjectId(db, Number(p.issueId))),
 //   })
 //   .patch("/issues/:issueId", handler, { workItem: "edit" })
 export function entityGuard(
@@ -89,16 +91,16 @@ export function entityGuard(
   return (action: PermissionAction) => ({
     ...permissionDetail([resource, action]),
     async resolve(context: EntityGuardCtx) {
-      const { params, user, request } = context;
+      const { params, user, request, db } = context;
       const projectId = await resolveProjectId(
         params as Record<string, string>,
         context as EntityLookupCtx,
       );
       if (projectId == null) throw new HttpError(404, notFound);
-      await assertPermission(projectId, user, resource, action);
-      if (feature) await assertProjectFeature(projectId, feature);
-      await assertMcpAllowed(projectId, request.headers);
-      await assertProjectWritable(projectId, request.method);
+      await assertPermission(db, projectId, user, resource, action);
+      if (feature) await assertProjectFeature(db, projectId, feature);
+      await assertMcpAllowed(db, projectId, request.headers);
+      await assertProjectWritable(db, projectId, request.method);
       return { projectId };
     },
   });
@@ -108,13 +110,13 @@ export function entityGuard(
 // project by an object's id rather than through one of the :projectKey macros: an
 // internal agent's run is bound to its own project, and an MCP call obeys the
 // per-project MCP toggle. A plain request passes untouched.
-export async function assertMcpAllowed(projectId: number, headers: Headers): Promise<void> {
+export async function assertMcpAllowed(db: Db, projectId: number, headers: Headers): Promise<void> {
   const bound = boundProjectId(headers);
   if (bound != null && bound !== projectId) {
     throw new HttpError(403, 'Outside the project this run works in');
   }
   if (!isMcpRequest(headers)) return;
-  const project = await getProjectById(projectId);
+  const project = await getProjectById(db, projectId);
   if (project) assertMcpEnabled(project, true);
 }
 
@@ -129,18 +131,19 @@ type TeamIdParams = { teamId: string };
 
 type WorkspaceIdParams = { workspaceId: string };
 
-function resolveTeam(params: unknown, user: AuthUser | undefined | null) {
-  return requireTeamMembership(Number((params as TeamIdParams).teamId), user);
+function resolveTeam(db: Db, params: unknown, user: AuthUser | undefined | null) {
+  return requireTeamMembership(db, Number((params as TeamIdParams).teamId), user);
 }
 
 // The team's MCP switch, for the team-scoped routes. Their resources — the agents,
 // the skills, the tools, the roles and the integration credentials — belong to the
 // team rather than to a project, so no project flag covers them; this is what does.
 // A plain request passes untouched.
-async function assertTeamMcpAllowed(params: unknown, headers: Headers): Promise<void> {
+async function assertTeamMcpAllowed(db: Db, params: unknown, headers: Headers): Promise<void> {
   if (!isMcpRequest(headers)) return;
   const teamId = Number((params as TeamIdParams).teamId);
-  if (!(await teamMcpEnabled(teamId))) throw new HttpError(403, 'MCP is disabled for this team');
+  if (!(await teamMcpEnabled(db, teamId)))
+    throw new HttpError(403, 'MCP is disabled for this team');
 }
 
 // Declarative access guards for routes whose path carries :projectKey. Each
@@ -162,8 +165,12 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // Bare membership: any member of the project may proceed.
   projectMember(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const project = await requireProjectAccess((params as ProjectKeyParams).projectKey, user);
+      async resolve({ params, user, request, db }) {
+        const project = await requireProjectAccess(
+          db,
+          (params as ProjectKeyParams).projectKey,
+          user,
+        );
         assertMcpEnabled(project, isMcpRequest(request.headers));
         assertWritable(project, request.method);
         return { project };
@@ -178,8 +185,12 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // already requires membership — not on one a team owner reaches without it.
   feature(name: ProjectFeature) {
     return {
-      async resolve({ params, user }) {
-        const project = await requireProjectAccess((params as ProjectKeyParams).projectKey, user);
+      async resolve({ params, user, db }) {
+        const project = await requireProjectAccess(
+          db,
+          (params as ProjectKeyParams).projectKey,
+          user,
+        );
         assertFeatureEnabled(project, name);
       },
     };
@@ -189,8 +200,9 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   permission(permission: Permission) {
     return {
       ...permissionDetail(permission),
-      async resolve({ params, user, request }) {
+      async resolve({ params, user, request, db }) {
         const project = await requireProjectPermission(
+          db,
           (params as ProjectKeyParams).projectKey,
           user,
           permission[0],
@@ -209,8 +221,12 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // check.
   projectOwner(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const project = await requireProjectOwner((params as ProjectKeyParams).projectKey, user);
+      async resolve({ params, user, request, db }) {
+        const project = await requireProjectOwner(
+          db,
+          (params as ProjectKeyParams).projectKey,
+          user,
+        );
         assertMcpEnabled(project, isMcpRequest(request.headers));
         assertWritable(project, request.method);
         return { project };
@@ -222,8 +238,12 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // owner and the team that runs it both govern.
   projectAdmin(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const project = await requireProjectAdmin((params as ProjectKeyParams).projectKey, user);
+      async resolve({ params, user, request, db }) {
+        const project = await requireProjectAdmin(
+          db,
+          (params as ProjectKeyParams).projectKey,
+          user,
+        );
         assertMcpEnabled(project, isMcpRequest(request.headers));
         assertWritable(project, request.method);
         return { project };
@@ -236,8 +256,12 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // Copying only reads the source, so an archived project can still be copied.
   teamRunsProject(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const project = await requireTeamRunsProject((params as ProjectKeyParams).projectKey, user);
+      async resolve({ params, user, request, db }) {
+        const project = await requireTeamRunsProject(
+          db,
+          (params as ProjectKeyParams).projectKey,
+          user,
+        );
         assertMcpEnabled(project, isMcpRequest(request.headers));
         return { project };
       },
@@ -249,9 +273,10 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   memberSelfOrAdmin(permission: Permission) {
     return {
       ...permissionDetail(permission),
-      async resolve({ params, user, request }) {
+      async resolve({ params, user, request, db }) {
         const { projectKey, userId } = params as ProjectKeyParams & { userId: string };
         const project = await requireSelfOrMemberAdmin(
+          db,
           projectKey,
           userId,
           user,
@@ -270,8 +295,9 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   memberAdmin(permission: Permission) {
     return {
       ...permissionDetail(permission),
-      async resolve({ params, user, request }) {
+      async resolve({ params, user, request, db }) {
         const project = await requireMemberAdmin(
+          db,
           (params as ProjectKeyParams).projectKey,
           user,
           permission[0],
@@ -288,9 +314,9 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // `membership` into the handler context.
   teamMember(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const membership = await resolveTeam(params, user);
-        await assertTeamMcpAllowed(params, request.headers);
+      async resolve({ params, user, request, db }) {
+        const membership = await resolveTeam(db, params, user);
+        await assertTeamMcpAllowed(db, params, request.headers);
         return { membership };
       },
     };
@@ -301,11 +327,11 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // that it belongs to it.
   teamManager(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const membership = await resolveTeam(params, user);
+      async resolve({ params, user, request, db }) {
+        const membership = await resolveTeam(db, params, user);
         if (!runsTeam(membership.role))
           throw new HttpError(403, 'Only a team owner or manager can do this');
-        await assertTeamMcpAllowed(params, request.headers);
+        await assertTeamMcpAllowed(db, params, request.headers);
         return { membership };
       },
     };
@@ -317,15 +343,16 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   teamPermission(permission: Permission) {
     return {
       ...permissionDetail(permission),
-      async resolve({ params, user, request }) {
+      async resolve({ params, user, request, db }) {
         const { teamId } = params as TeamIdParams;
         const membership = await requireTeamPermission(
+          db,
           Number(teamId),
           user,
           permission[0],
           permission[1],
         );
-        await assertTeamMcpAllowed(params, request.headers);
+        await assertTeamMcpAllowed(db, params, request.headers);
         return { membership };
       },
     };
@@ -335,8 +362,9 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // `standing` into the handler context.
   workspaceManager(_enabled: boolean) {
     return {
-      async resolve({ params, user }) {
+      async resolve({ params, user, db }) {
         const standing = await requireWorkspaceManager(
+          db,
           Number((params as WorkspaceIdParams).workspaceId),
           user,
         );
@@ -348,8 +376,9 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // Only the owner appoints and removes the admins.
   workspaceOwner(_enabled: boolean) {
     return {
-      async resolve({ params, user }) {
+      async resolve({ params, user, db }) {
         const standing = await requireWorkspaceManager(
+          db,
           Number((params as WorkspaceIdParams).workspaceId),
           user,
         );
@@ -365,8 +394,9 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // it up. Without it SCIM is the instance's, set up in god mode.
   workspaceScim(_enabled: boolean) {
     return {
-      async resolve({ params, user }) {
+      async resolve({ params, user, db }) {
         const standing = await requireWorkspaceManager(
+          db,
           Number((params as WorkspaceIdParams).workspaceId),
           user,
         );
@@ -386,10 +416,10 @@ export const guards = new Elysia({ name: 'guards' }).use(authContext).macro({
   // resolved before the owner check.
   teamOwner(_enabled: boolean) {
     return {
-      async resolve({ params, user, request }) {
-        const membership = await resolveTeam(params, user);
+      async resolve({ params, user, request, db }) {
+        const membership = await resolveTeam(db, params, user);
         if (membership.role !== 'owner') throw new HttpError(403, 'Only a team owner can do this');
-        await assertTeamMcpAllowed(params, request.headers);
+        await assertTeamMcpAllowed(db, params, request.headers);
         return { membership };
       },
     };

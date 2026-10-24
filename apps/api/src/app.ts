@@ -1,19 +1,21 @@
 import {
-  auth,
   oauthAuthorizationServerMetadata,
   oauthProtectedResourceMetadata,
   openIdConfiguration,
   OIDC_PROVIDER_ID,
-  trustedOrigins,
+  trustedOriginsOf,
   getAuthSettings,
   hasConfiguredGoogle,
   hasConfiguredOidc,
   getOidcLabel,
 } from '@repo/auth';
-import { db, hasConfiguredEmailProvider, user } from '@repo/db';
+import { hasConfiguredEmailProvider, user } from '@repo/db';
 import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
 import { Elysia } from 'elysia';
+import { CloudflareAdapter } from 'elysia/adapter/cloudflare-worker';
+import { apiUrlOf, appUrlOf, getEnv, type Env } from './env';
+import { requestContext } from './shared/context';
 import { planner } from './planner';
 import { mountMcp } from './mcp/mount';
 import { setMcpApp } from './mcp/app-ref';
@@ -25,11 +27,10 @@ import { normalizeOpenApiResponse } from './openapi';
 import { requestTracking } from './shared/request-tracker';
 import pkg from '../../../package.json';
 
-const apiUrl = (process.env.API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
-const appUrl = (process.env.APP_URL?.split(',')[0]?.trim() || 'http://localhost:3001').replace(
-  /\/+$/,
-  '',
-);
+// The public URLs the OpenAPI document quotes. The document is built once per isolate, so this
+// reads the Worker's variables from the module scope (`cloudflare:workers`), not from a request.
+const apiUrl = apiUrlOf(getEnv());
+const appUrl = appUrlOf(getEnv());
 const apiDescription = `REST API for projects, work items, AI agents, Git integrations, analytics, and instance administration.
 
 ## Quick start
@@ -61,29 +62,39 @@ const OIDC_CALLBACK = `/api/auth/callback/${OIDC_PROVIDER_ID}`;
 // server-side calls the web makes carry neither Origin nor Sec-Fetch-Site.
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // The api's own origin counts too: the /docs page sends its "Try it" requests from it.
-const csrfTrustedOrigins = [...trustedOrigins, new URL(apiUrl).origin];
+function csrfTrustedOrigins(env: Env): string[] {
+  return [...trustedOriginsOf(env), new URL(apiUrlOf(env)).origin];
+}
 
-function isCrossSiteCookieRequest(request: Request): boolean {
+function isCrossSiteCookieRequest(request: Request, env: Env): boolean {
   if (CSRF_SAFE_METHODS.has(request.method)) return false;
   if (new URL(request.url).pathname.startsWith('/api/auth/')) return false;
   const cookie = request.headers.get('cookie');
   if (!cookie || !cookie.includes('session_token')) return false;
   if (request.headers.get('authorization') || request.headers.get('x-api-key')) return false;
   const origin = request.headers.get('origin');
-  if (origin !== null) return !csrfTrustedOrigins.includes(origin);
+  if (origin !== null) return !csrfTrustedOrigins(env).includes(origin);
   // No Origin: trust Sec-Fetch-Site when the browser sent it, allow its absence
   // (non-browser clients that happen to carry a cookie are not page-driven).
   const site = request.headers.get('sec-fetch-site');
   return site !== null && site !== 'same-origin' && site !== 'none';
 }
 
-// The assembled Elysia app, without `.listen()`. `index.ts` imports this and
-// binds the port; tests import it and pass it to Eden Treaty to drive routes in
-// memory (no network). Keep the chain unbroken so `type App` stays accurate.
-export const app = new Elysia()
+// The assembled Elysia app. `worker.ts` serves it from the Worker's fetch handler; tests import
+// it and pass it to Eden Treaty to drive routes in memory (no network). It is compiled ahead of
+// time (see the end of the file), which is how Elysia runs where `new Function` is not allowed.
+// Keep the chain unbroken so `type App` stays accurate.
+export const app = new Elysia({ adapter: CloudflareAdapter })
+  // First, so every route (the ones mounted after the chain included) reads ctx.env, ctx.db
+  // and ctx.auth instead of a module-level global.
+  .use(requestContext)
   .use(
     cors({
-      origin: trustedOrigins,
+      // The allowed origins follow the Worker's APP_URL, read per request.
+      origin: (request) => {
+        const origin = request.headers.get('origin');
+        return origin !== null && trustedOriginsOf(getEnv()).includes(origin);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
@@ -92,7 +103,7 @@ export const app = new Elysia()
   // Before the routes: a hook applies only to the routes registered after it.
   .use(requestTracking)
   .onRequest(({ request, set }) => {
-    if (isCrossSiteCookieRequest(request)) {
+    if (isCrossSiteCookieRequest(request, getEnv())) {
       set.status = 403;
       return { error: 'Cross-site request refused', code: 'CSRF_ORIGIN_REJECTED' };
     }
@@ -272,28 +283,36 @@ export const app = new Elysia()
   // An issuer with a path is looked up with the path after the well-known segment
   // (RFC 8414 §3), and some clients fall back to OpenID discovery, so each document
   // answers under any suffix; the proxy decides which of these paths reach the api.
-  .get('/.well-known/oauth-authorization-server', ({ request }) =>
-    oauthAuthorizationServerMetadata(request),
+  .get('/.well-known/oauth-authorization-server', ({ env, db, request }) =>
+    oauthAuthorizationServerMetadata(env, db, request),
   )
-  .get('/.well-known/oauth-authorization-server/*', ({ request }) =>
-    oauthAuthorizationServerMetadata(request),
+  .get('/.well-known/oauth-authorization-server/*', ({ env, db, request }) =>
+    oauthAuthorizationServerMetadata(env, db, request),
   )
-  .get('/.well-known/openid-configuration', ({ request }) => openIdConfiguration(request))
-  .get('/.well-known/openid-configuration/*', ({ request }) => openIdConfiguration(request))
-  .get('/.well-known/oauth-protected-resource', () => oauthProtectedResourceMetadata())
-  .get('/.well-known/oauth-protected-resource/*', () => oauthProtectedResourceMetadata())
+  .get('/.well-known/openid-configuration', ({ env, db, request }) =>
+    openIdConfiguration(env, db, request),
+  )
+  .get('/.well-known/openid-configuration/*', ({ env, db, request }) =>
+    openIdConfiguration(env, db, request),
+  )
+  .get('/.well-known/oauth-protected-resource', ({ env, db }) =>
+    oauthProtectedResourceMetadata(env, db),
+  )
+  .get('/.well-known/oauth-protected-resource/*', ({ env, db }) =>
+    oauthProtectedResourceMetadata(env, db),
+  )
   // better-auth: forward every /api/auth/* request to its handler. The OIDC
   // callback gets one extra step afterwards: folding the provider's `groups` claim
   // into the SCIM group tables, so a group mapped to a project in god mode grants
   // access on an OIDC-only instance too, not just one that also runs a SCIM sync.
-  .all('/api/auth/*', async ({ request }) => {
+  .all('/api/auth/*', async ({ request, db, auth }) => {
     const url = new URL(request.url);
     if (url.pathname === LEGACY_OIDC_CALLBACK) {
       url.pathname = OIDC_CALLBACK;
       request = new Request(url.href, request);
     }
     const response = await auth.handler(request);
-    if (url.pathname === OIDC_CALLBACK) await syncOidcGroupsAfterCallback(response);
+    if (url.pathname === OIDC_CALLBACK) await syncOidcGroupsAfterCallback(db, auth, response);
     return response;
   })
   .use(currentUserRoutes)
@@ -303,9 +322,9 @@ export const app = new Elysia()
   // credentials, only the instance's own policy.
   .get(
     '/auth-config',
-    async () => {
-      const settings = await getAuthSettings();
-      const emailEnabled = await hasConfiguredEmailProvider();
+    async ({ db }) => {
+      const settings = await getAuthSettings(db);
+      const emailEnabled = await hasConfiguredEmailProvider(db);
       return {
         registration: settings.registration,
         // Only usable when the instance can actually send mail.
@@ -317,11 +336,11 @@ export const app = new Elysia()
         // Whether the email/password form is offered at all. The api refuses to turn
         // it off while no provider below is usable, so this is never false alone.
         emailPassword: settings.emailPassword,
-        google: await hasConfiguredGoogle(),
-        oidc: await hasConfiguredOidc(),
+        google: await hasConfiguredGoogle(db),
+        oidc: await hasConfiguredOidc(db),
         // Names the operator's own identity provider, so the button shows it as
         // given. Empty falls back to a translated default.
-        oidcLabel: await getOidcLabel(),
+        oidcLabel: await getOidcLabel(db),
         hasUsers: (await db.$count(user)) > 0,
       };
     },
@@ -335,12 +354,20 @@ export const app = new Elysia()
       },
     },
   )
-  // Root doubles as the liveness/health endpoint.
+  // Root and /health are the liveness endpoints: they touch no binding, so a probe says
+  // whether the Worker is up, not whether D1 is.
   .get('/', () => ({ name: "It's a Plan api", status: 'ok' }), {
     detail: {
       tags: ['System'],
       summary: 'Check that the api is up',
       description: 'Liveness probe: returns the api name and `status: "ok"`.',
+    },
+  })
+  .get('/health', () => ({ name: "It's a Plan api", status: 'ok' }), {
+    detail: {
+      tags: ['System'],
+      summary: 'Check that the api is up',
+      description: 'Liveness probe, same answer as `/`.',
     },
   })
   // Inbound repository webhook receiver (authenticated by its per-project secret).
@@ -362,6 +389,11 @@ mountMcp(app);
 // tools from the same mcpTool() routes and dispatches them in process. It cannot
 // import this module without a cycle, so the reference is passed here.
 setMcpApp(app);
+
+// Elysia's Cloudflare adapter does not compile on the first request (no `new Function` in a
+// Worker), so the routes, the MCP endpoint included, are compiled here, once the chain is
+// complete.
+app.compile();
 
 // App type — useful for Eden Treaty (type-safe client) on the frontend and in tests.
 export type App = typeof app;
