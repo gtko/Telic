@@ -12,33 +12,42 @@ export async function sweepStaleIssues(db: Db): Promise<number> {
   // The threshold lives in project_setting under key 'auto_archive' as
   // { completedDays, canceledDays } (kept in sync with getAutoArchiveSettings in
   // modules/projects/service.ts); a positive day count enables archiving for that state
-  // group, null/absent disables it. The numeric-string regex guards the cast, so a
-  // malformed value is treated as disabled rather than raising.
-  const rows = await db.execute(sql`
-    UPDATE issue i
-    SET archived_at = now()
-    FROM project_column c, project_setting s, project p
-    WHERE i.column_id = c.id
-      AND i.project_id = s.project_id
-      AND p.id = i.project_id
-      AND p.archived_at IS NULL
-      AND s.key = 'auto_archive'
-      AND i.archived_at IS NULL
-      AND (
-        (c.state_type = 'completed'
-          AND (s.value->>'completedDays') ~ '^[0-9]{1,4}$'
-          AND i.updated_at < now() - make_interval(days => (s.value->>'completedDays')::int))
-        OR
-        (c.state_type = 'canceled'
-          AND (s.value->>'canceledDays') ~ '^[0-9]{1,4}$'
-          AND i.updated_at < now() - make_interval(days => (s.value->>'canceledDays')::int))
+  // group, null/absent disables it. The digits-only test guards the cast, so a
+  // malformed value is treated as disabled rather than raising. Timestamps are epoch
+  // milliseconds, computed here: a single UPDATE ... RETURNING is atomic on D1.
+  const nowMs = Date.now();
+  const DAY_MS = 86_400_000;
+  const days = (key: string) => sql.raw(`CAST(json_extract(s.value, '$.${key}') AS TEXT)`);
+  const digits = (key: string) =>
+    sql`(${days(key)} IS NOT NULL AND length(${days(key)}) BETWEEN 1 AND 4 AND ${days(key)} NOT GLOB '*[^0-9]*')`;
+  const rows = await db.all<{ id: number; project_id: number }>(sql`
+    UPDATE issue
+    SET archived_at = ${nowMs}
+    WHERE archived_at IS NULL
+      AND id IN (
+        SELECT i.id
+        FROM issue i
+        JOIN project_column c ON c.id = i.column_id
+        JOIN project_setting s ON s.project_id = i.project_id AND s.key = 'auto_archive'
+        JOIN project p ON p.id = i.project_id
+        WHERE p.archived_at IS NULL
+          AND i.archived_at IS NULL
+          AND (
+            (c.state_type = 'completed'
+              AND ${digits('completedDays')}
+              AND i.updated_at < ${nowMs} - CAST(${days('completedDays')} AS INTEGER) * ${DAY_MS})
+            OR
+            (c.state_type = 'canceled'
+              AND ${digits('canceledDays')}
+              AND i.updated_at < ${nowMs} - CAST(${days('canceledDays')} AS INTEGER) * ${DAY_MS})
+          )
       )
-    RETURNING i.id, i.project_id
+    RETURNING id, project_id
   `);
-  const archivedRows = rows as unknown as Array<{ id: number; project_id: number }>;
+  const archivedRows = rows;
   const archived = archivedRows.map((row) => row.id);
   const actor = { system: 'Auto-archive' };
-  await recordActivityForIssues(archived, { action: 'archived' }, actor);
+  await recordActivityForIssues(db, archived, { action: 'archived' }, actor);
   const idsByProject = new Map<number, number[]>();
   for (const row of archivedRows) {
     const ids = idsByProject.get(row.project_id) ?? [];

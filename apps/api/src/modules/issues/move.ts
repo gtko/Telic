@@ -1,5 +1,7 @@
 import {
   type Db,
+  batchAll,
+  chunk,
   agentRun,
   customField,
   customFieldOption,
@@ -117,110 +119,105 @@ export async function moveIssue(
   const labels = await mapLabels(db, movedIds, target.id);
   const fields = await mapFields(db, movedIds, target.id);
 
-  await db.transaction(async (tx) => {
-    // Everything above was read without a lock. A concurrent move of the same issue, or
-    // a subtask added since, would otherwise write over that state.
-    const [locked] = await tx
-      .select({ projectId: issue.projectId })
-      .from(issue)
-      .where(eq(issue.id, issueId))
-      .for('update');
-    const current = await tx
-      .select({ id: issue.id })
-      .from(issue)
-      .where(or(eq(issue.id, issueId), eq(issue.parentId, issueId)));
-    if (
-      locked?.projectId !== root.projectId ||
-      current.length !== movedIds.length ||
-      current.some((r) => !movedIds.includes(r.id))
-    )
-      throw new HttpError(409, 'The issue changed while it was being moved; try again');
-
-    const [seqRow] = await tx
-      .update(projectTable)
-      .set({ nextSequence: sql`next_sequence + ${moved.length}` })
-      .where(eq(projectTable.id, target.id))
-      .returning({ first: sql<number>`next_sequence - ${moved.length}` });
-    await tx.insert(issueKeyAlias).values(
-      moved.map((r) => ({
-        projectId: root.projectId,
-        sequenceNumber: r.sequenceNumber,
-        issueId: r.id,
-      })),
-    );
-    for (const [i, p] of plans.entries()) {
-      const [posRow] = await tx
-        .select({ pos: sql<number>`COALESCE(MAX(${issue.position}), 0) + 1000` })
-        .from(issue)
-        .where(eq(issue.columnId, p.newColumnId));
-      await tx
-        .update(issue)
-        .set({
-          projectId: target.id,
-          sequenceNumber: Number(seqRow.first) + i,
-          columnId: p.newColumnId,
-          typeId: p.newTypeId,
-          parentId: p.id === issueId ? null : p.parentId,
-          cycleId: null,
-          initiativeId: null,
-          assigneeUserId: member(p.assigneeUserId),
-          delegateUserId: member(p.delegateUserId),
-          position: Number(posRow.pos),
-          updatedAt: sql`now()`,
-        })
-        .where(eq(issue.id, p.id));
-    }
-
-    await tx.delete(issueLabel).where(inArray(issueLabel.issueId, movedIds));
-    if (labels.length) await tx.insert(issueLabel).values(labels);
-
-    await tx.delete(issueFieldOption).where(inArray(issueFieldOption.issueId, movedIds));
-    if (fields.options.length) await tx.insert(issueFieldOption).values(fields.options);
-    for (const v of fields.values) {
-      if (v.fieldId === null) {
-        await tx.delete(issueFieldValue).where(eq(issueFieldValue.id, v.id));
-      } else {
-        await tx
-          .update(issueFieldValue)
+  // One atomic D1 batch. Everything above was read without a lock, so the batch checks
+  // for itself that nothing moved meanwhile: the alias rows below take each moved issue's
+  // id from a sub-select that is NULL (a NOT NULL violation that rolls the whole batch
+  // back) when the issue already left the source project, or when the root gained a
+  // subtask since it was read. The numbers are reserved by the first statement and read
+  // back by the updates, so a simultaneous move into the same project gets other ones.
+  const stillThere = (id: number) =>
+    id === issueId
+      ? sql<number>`(select ${issue.id} from ${issue} where ${issue.id} = ${id} and ${issue.projectId} = ${root.projectId} and (select count(*) from ${issue} where ${issue.parentId} = ${id}) = ${moved.length - 1})`
+      : sql<number>`(select ${issue.id} from ${issue} where ${issue.id} = ${id} and ${issue.projectId} = ${root.projectId})`;
+  const newSequence = (i: number) =>
+    sql<number>`(select ${projectTable.nextSequence} - ${moved.length} + ${i} from ${projectTable} where ${projectTable.id} = ${target.id})`;
+  const memberIds = JSON.stringify([...members]);
+  try {
+    await batchAll(db, [
+      ...moved.map((r) =>
+        db.insert(issueKeyAlias).values({
+          projectId: root.projectId,
+          sequenceNumber: r.sequenceNumber,
+          issueId: stillThere(r.id),
+        }),
+      ),
+      db
+        .update(projectTable)
+        .set({ nextSequence: sql`${projectTable.nextSequence} + ${moved.length}` })
+        .where(eq(projectTable.id, target.id)),
+      ...plans.map((p, i) =>
+        db
+          .update(issue)
           .set({
-            fieldId: v.fieldId,
-            ...(v.valueUserId ? { valueUserId: member(v.valueUserId) } : {}),
+            projectId: target.id,
+            sequenceNumber: newSequence(i),
+            columnId: p.newColumnId,
+            typeId: p.newTypeId,
+            parentId: p.id === issueId ? null : p.parentId,
+            cycleId: null,
+            initiativeId: null,
+            assigneeUserId: member(p.assigneeUserId),
+            delegateUserId: member(p.delegateUserId),
+            position: sql`(select coalesce(max(${issue.position}), 0) + 1000 from ${issue} where ${issue.columnId} = ${p.newColumnId})`,
+            updatedAt: new Date(),
           })
-          .where(eq(issueFieldValue.id, v.id));
-      }
-    }
-
-    await tx
-      .delete(issueLink)
-      .where(
-        or(
-          and(
-            inArray(issueLink.sourceIssueId, movedIds),
-            notInArray(issueLink.targetIssueId, movedIds),
-          ),
-          and(
-            inArray(issueLink.targetIssueId, movedIds),
-            notInArray(issueLink.sourceIssueId, movedIds),
+          .where(eq(issue.id, p.id)),
+      ),
+      db.delete(issueLabel).where(inArray(issueLabel.issueId, movedIds)),
+      ...chunk(labels, 40).map((rows) => db.insert(issueLabel).values(rows)),
+      db.delete(issueFieldOption).where(inArray(issueFieldOption.issueId, movedIds)),
+      ...chunk(fields.options, 30).map((rows) => db.insert(issueFieldOption).values(rows)),
+      ...fields.values.map((v) =>
+        v.fieldId === null
+          ? db.delete(issueFieldValue).where(eq(issueFieldValue.id, v.id))
+          : db
+              .update(issueFieldValue)
+              .set({
+                fieldId: v.fieldId,
+                ...(v.valueUserId ? { valueUserId: member(v.valueUserId) } : {}),
+              })
+              .where(eq(issueFieldValue.id, v.id)),
+      ),
+      db
+        .delete(issueLink)
+        .where(
+          or(
+            and(
+              inArray(issueLink.sourceIssueId, movedIds),
+              notInArray(issueLink.targetIssueId, movedIds),
+            ),
+            and(
+              inArray(issueLink.targetIssueId, movedIds),
+              notInArray(issueLink.sourceIssueId, movedIds),
+            ),
           ),
         ),
-      );
-    await tx.delete(projectDocumentIssue).where(inArray(projectDocumentIssue.issueId, movedIds));
-    await tx
-      .delete(issueWatcher)
-      .where(
-        and(inArray(issueWatcher.issueId, movedIds), notInArray(issueWatcher.userId, [...members])),
-      );
-    await tx
-      .update(agentRun)
-      .set({ status: 'canceled', executionStartedAt: null, finishedAt: sql`now()` })
-      .where(and(inArray(agentRun.issueId, movedIds), eq(agentRun.status, 'pending')));
-  });
+      db.delete(projectDocumentIssue).where(inArray(projectDocumentIssue.issueId, movedIds)),
+      db
+        .delete(issueWatcher)
+        .where(
+          and(
+            inArray(issueWatcher.issueId, movedIds),
+            sql`${issueWatcher.userId} NOT IN (SELECT value FROM json_each(${memberIds}))`,
+          ),
+        ),
+      db
+        .update(agentRun)
+        .set({ status: 'canceled', executionStartedAt: null, finishedAt: new Date() })
+        .where(and(inArray(agentRun.issueId, movedIds), eq(agentRun.status, 'pending'))),
+    ]);
+  } catch (error) {
+    if (/NOT NULL/i.test(String(error) + String((error as Error)?.cause ?? '')))
+      throw new HttpError(409, 'The issue changed while it was being moved; try again');
+    throw error;
+  }
 
   for (const p of plans) {
     await recordStatusChange(db, [p.id], p.newColumnId);
     await recordCycleChange(db, p.id, p.cycleId, null);
     const after = (await getIssue(db, p.id))!;
     await recordActivity(
+      db,
       p.id,
       [
         {

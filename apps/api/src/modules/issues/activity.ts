@@ -1,5 +1,8 @@
 import {
   type Db,
+  type BatchStatement,
+  batchAll,
+  chunk,
   issue,
   issueActivity,
   user,
@@ -147,7 +150,7 @@ export async function listFeed(
       payload: issueActivity.payload,
       createdAt: issueActivity.createdAt,
       editedAt: issueActivity.editedAt,
-      cursorTs: sql<string>`${issueActivity.createdAt}::text`,
+      cursorTs: sql<string>`CAST(${issueActivity.createdAt} AS TEXT)`,
     })
     .from(issueActivity)
     .where(
@@ -156,7 +159,7 @@ export async function listFeed(
         isNull(issueActivity.replyToId),
         feedFilterCondition(opts.filter),
         cursor
-          ? sql`(${issueActivity.createdAt}, ${issueActivity.id}) ${pastCursor} (${cursor.ts}::timestamptz, ${cursor.id}::integer)`
+          ? sql`(${issueActivity.createdAt}, ${issueActivity.id}) ${pastCursor} (CAST(${cursor.ts} AS INTEGER), CAST(${cursor.id} AS INTEGER))`
           : undefined,
       ),
     )
@@ -189,15 +192,13 @@ export interface FeedCounts {
 export async function countFeed(db: Db, issueId: number): Promise<FeedCounts> {
   const [counts] = await db
     .select({
-      comments: sql<number>`count(*) FILTER (WHERE ${issueActivity.kind} = 'comment')`.mapWith(
-        Number,
-      ),
+      comments: sql<number>`coalesce(sum(${issueActivity.kind} = 'comment'), 0)`.mapWith(Number),
       worklog:
-        sql<number>`count(*) FILTER (WHERE ${issueActivity.kind} = 'activity' AND ${issueActivity.action} = 'worklog')`.mapWith(
+        sql<number>`coalesce(sum(${issueActivity.kind} = 'activity' AND ${issueActivity.action} = 'worklog'), 0)`.mapWith(
           Number,
         ),
       history:
-        sql<number>`count(*) FILTER (WHERE ${issueActivity.kind} = 'activity' AND ${issueActivity.action} <> 'worklog')`.mapWith(
+        sql<number>`coalesce(sum(${issueActivity.kind} = 'activity' AND ${issueActivity.action} <> 'worklog'), 0)`.mapWith(
           Number,
         ),
     })
@@ -432,7 +433,7 @@ export async function updateComment(
   if (!row) throw new HttpError(404, 'Comment not found');
   const comment = mapFeedItem(row);
 
-  await recordActivity(comment.issueId, [{ action: 'comment_edited' }], actorUserId);
+  await recordActivity(db, comment.issueId, [{ action: 'comment_edited' }], actorUserId);
   await emitCommentEvent(db, projectId, 'comment.updated', comment, actorUserId);
 
   const added = addedMentionHandles(before.body ?? '', body);
@@ -467,7 +468,7 @@ export async function deleteComment(
     .where(and(eq(issueActivity.id, commentId), eq(issueActivity.kind, 'comment')));
   if (!before) return false;
   await db.delete(issueActivity).where(eq(issueActivity.id, commentId));
-  await recordActivity(before.issueId as number, [{ action: 'comment_deleted' }], actorUserId);
+  await recordActivity(db, before.issueId as number, [{ action: 'comment_deleted' }], actorUserId);
   await emitCommentEvent(db, projectId, 'comment.deleted', mapFeedItem(before), actorUserId);
   return true;
 }
@@ -559,47 +560,50 @@ export function actorId(actor: ActivityActor): string | null {
   return typeof actor === 'string' ? actor : null;
 }
 
-// What a write runs on: the pool, or the transaction the caller is inside.
-type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
-
 // Records the given events for an issue. actor_name is snapshotted from the actor
 // so the entry survives the user being renamed or deleted.
 export async function recordActivity(
+  db: Db,
   issueId: number,
   events: ActivityInput[],
   actor?: ActivityActor,
 ): Promise<{ id: number; action: string | null }[]> {
   return recordActivityEntries(
+    db,
     events.map((event) => ({ issueId, event })),
     actor,
   );
 }
 
-// Records one event for a set of issues in a single insert. For the writes that
-// change many issues at once (deleting a column reassigns all of its issues),
-// where a recordActivity per issue would be a query each.
+// Records one event for a set of issues. For the writes that change many issues at once
+// (deleting a column reassigns all of its issues), where a recordActivity per issue
+// would be a query each.
 export async function recordActivityForIssues(
+  db: Db,
   issueIds: number[],
   event: ActivityInput,
   actor?: ActivityActor,
 ): Promise<void> {
   await recordActivityEntries(
+    db,
     issueIds.map((issueId) => ({ issueId, event })),
     actor,
   );
 }
 
-// Records a set of (issue, event) pairs in one insert, for a write that logs a
-// different event on each of the issues it touches — linking two issues writes the
-// relation to both, each from its own side. `on` runs it inside the caller's
-// transaction. The actor name snapshot is a sub-select, so this stays one query.
-export async function recordActivityEntries(
+// Rows per INSERT: an entry binds 6 parameters and D1 allows 100 per statement.
+const ACTIVITY_ROWS_PER_STATEMENT = 15;
+
+// The INSERT statements recording a set of (issue, event) pairs, not yet run: a write
+// that logs a different event on each of the issues it touches (linking two issues
+// writes the relation to both, each from its own side) adds them to its own
+// `db.batch`, so the entries land or fail with the write. The actor name snapshot is a
+// sub-select. One statement per 15 entries, the D1 limit on bound parameters.
+export function activityStatements(
   db: Db,
   entries: { issueId: number; event: ActivityInput }[],
   actor?: ActivityActor,
-  on: Executor = db,
-): Promise<{ id: number; action: string | null }[]> {
-  if (!entries.length) return [];
+): BatchStatement[] {
   const resolvedActorId = actorId(actor);
   const actorName =
     actor && typeof actor === 'object'
@@ -609,19 +613,32 @@ export async function recordActivityEntries(
             string | null
           >`(select ${user.name} from ${user} where ${user.id} = ${resolvedActorId})`
         : null;
-  return on
-    .insert(issueActivity)
-    .values(
-      entries.map(({ issueId, event: { action, ...payload } }) => ({
-        issueId,
-        kind: 'activity' as const,
-        actorUserId: resolvedActorId,
-        actorName,
-        action,
-        payload,
-      })),
-    )
-    .returning({ id: issueActivity.id, action: issueActivity.action });
+  return chunk(entries, ACTIVITY_ROWS_PER_STATEMENT).map((rows) =>
+    db
+      .insert(issueActivity)
+      .values(
+        rows.map(({ issueId, event: { action, ...payload } }) => ({
+          issueId,
+          kind: 'activity' as const,
+          actorUserId: resolvedActorId,
+          actorName,
+          action,
+          payload,
+        })),
+      )
+      .returning({ id: issueActivity.id, action: issueActivity.action }),
+  );
+}
+
+// Records a set of (issue, event) pairs, in one atomic batch.
+export async function recordActivityEntries(
+  db: Db,
+  entries: { issueId: number; event: ActivityInput }[],
+  actor?: ActivityActor,
+): Promise<{ id: number; action: string | null }[]> {
+  if (!entries.length) return [];
+  const results = await batchAll(db, activityStatements(db, entries, actor));
+  return (results as { id: number; action: string | null }[][]).flat();
 }
 
 // The sides that read their text from the row they name, looked up at change time.
@@ -795,7 +812,7 @@ export async function logIssueUpdate(
       from: textSide(before.dueDate),
       to: textSide(after.dueDate),
     });
-  const inserted = await recordActivity(after.id, events, actor);
+  const inserted = await recordActivity(db, after.id, events, actor);
 
   // Inbox notifications for the events with a dedicated notification type: a new
   // assignee, a status change, and the mentions a rewritten description added. Each

@@ -1,5 +1,7 @@
 import {
   type Db,
+  batchAll,
+  chunk,
   project as projectTable,
   issue,
   issueStatus,
@@ -21,8 +23,6 @@ import {
   eq,
   exists,
   gte,
-  ilike,
-  inArray,
   isNotNull,
   isNull,
   lt,
@@ -34,7 +34,8 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import type { IssueQuery } from '#modules/agents/core/issue-query';
-import { iso, num, numOrNull, HttpError } from '#shared/lib';
+import { iso, num, HttpError } from '#shared/lib';
+import { escapeLike, inIds, likeText } from './sql-helpers';
 import type { ProjectRow } from '#modules/projects/service';
 import { assertProjectFeature } from '#shared/access';
 import {
@@ -165,7 +166,7 @@ function mapIssue(row: typeof issue.$inferSelect, projectKey: string): IssueRow 
     title: row.title,
     description: row.description,
     priority: row.priority,
-    estimatePoints: numOrNull(row.estimatePoints),
+    estimatePoints: row.estimatePoints,
     estimateMinutes: row.estimateMinutes,
     loggedMinutes: 0,
     startDate: row.startDate,
@@ -192,7 +193,7 @@ async function attachStatusSince(db: Db, issues: IssueRow[]): Promise<void> {
     .from(issueStatus)
     .where(
       and(
-        inArray(
+        inIds(
           issueStatus.issueId,
           issues.map((i) => i.id),
         ),
@@ -289,14 +290,8 @@ const completedAt = sql<Date | null>`(
      AND NOT EXISTS (
            SELECT 1 FROM ${issueStatus} p
             WHERE p.issue_id = s.issue_id
-              AND p.state_type IS DISTINCT FROM 'completed'
+              AND p.state_type IS NOT 'completed'
               AND (p.entered_at, p.id) > (s.entered_at, s.id)))`.mapWith(issueStatus.enteredAt);
-
-// Escapes LIKE metacharacters so the query is matched literally (Postgres LIKE uses
-// '\' as the default escape character).
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
 
 // Server-side issue read backing two routes: text search (search_issues) and the
 // filtered list (list_issues). Text search (filters.query) matches, case-
@@ -332,14 +327,17 @@ export async function searchIssues(
       if (m && m[1].toLowerCase() === project.key.toLowerCase()) seqMatch = Number(m[2]);
     }
     const textConds: SQL[] = [
-      ilike(issue.title, pattern),
-      ilike(issue.description, pattern),
+      likeText(issue.title, pattern),
+      likeText(issue.description, pattern),
       exists(
         db
           .select({ one: sql`1` })
           .from(issueFieldValue)
           .where(
-            and(eq(issueFieldValue.issueId, issue.id), ilike(issueFieldValue.valueText, pattern)),
+            and(
+              eq(issueFieldValue.issueId, issue.id),
+              likeText(issueFieldValue.valueText, pattern),
+            ),
           ),
       ),
       exists(
@@ -348,7 +346,7 @@ export async function searchIssues(
           .from(issueFieldOption)
           .innerJoin(customFieldOption, eq(customFieldOption.id, issueFieldOption.optionId))
           .where(
-            and(eq(issueFieldOption.issueId, issue.id), ilike(customFieldOption.value, pattern)),
+            and(eq(issueFieldOption.issueId, issue.id), likeText(customFieldOption.value, pattern)),
           ),
       ),
     ];
@@ -479,14 +477,14 @@ export async function archiveIssue(
 ): Promise<IssueRow | null> {
   const [row] = await db
     .update(issue)
-    .set({ archivedAt: sql`now()` })
+    .set({ archivedAt: new Date() })
     .where(and(eq(issue.id, id), isNull(issue.archivedAt)))
     .returning({ id: issue.id });
   if (!row) {
     // Either not found, or already archived. Distinguish so a missing issue 404s.
     return getIssue(db, id);
   }
-  await recordActivity(id, [{ action: 'archived' }], actorUserId);
+  await recordActivity(db, id, [{ action: 'archived' }], actorUserId);
   const archived = await getIssue(db, id);
   if (archived) await emitIssueEvent(db, 'issue.updated', archived, actorUserId);
   return archived;
@@ -505,7 +503,7 @@ export async function restoreIssue(
     .where(and(eq(issue.id, id), isNotNull(issue.archivedAt)))
     .returning({ id: issue.id });
   if (!row) return getIssue(db, id);
-  await recordActivity(id, [{ action: 'restored' }], actorUserId);
+  await recordActivity(db, id, [{ action: 'restored' }], actorUserId);
   const restored = await getIssue(db, id);
   if (restored) await emitIssueEvent(db, 'issue.updated', restored, actorUserId);
   return restored;
@@ -534,7 +532,7 @@ async function attachGroupings(db: Db, issues: IssueRow[]): Promise<void> {
     .leftJoin(cycle, eq(cycle.id, issue.cycleId))
     .where(
       and(
-        inArray(
+        inIds(
           issue.id,
           issues.map((i) => i.id),
         ),
@@ -570,7 +568,7 @@ async function attachLabels<T extends { id: number; labelIds: number[] }>(
     .select({ issueId: issueLabel.issueId, labelId: issueLabel.labelId })
     .from(issueLabel)
     .where(
-      inArray(
+      inIds(
         issueLabel.issueId,
         issues.map((i) => i.id),
       ),
@@ -605,7 +603,7 @@ async function attachFieldValues(db: Db, issues: IssueRow[]): Promise<void> {
         valueUserId: issueFieldValue.valueUserId,
       })
       .from(issueFieldValue)
-      .where(inArray(issueFieldValue.issueId, issueIds)),
+      .where(inIds(issueFieldValue.issueId, issueIds)),
     db
       .select({
         issueId: issueFieldOption.issueId,
@@ -613,7 +611,7 @@ async function attachFieldValues(db: Db, issues: IssueRow[]): Promise<void> {
         optionId: issueFieldOption.optionId,
       })
       .from(issueFieldOption)
-      .where(inArray(issueFieldOption.issueId, issueIds)),
+      .where(inIds(issueFieldOption.issueId, issueIds)),
   ]);
 
   // issueId -> fieldId -> entry, built up from both queries then flushed onto
@@ -671,7 +669,7 @@ async function loadSnapshot(
     .from(issue)
     .where(eq(issue.id, id));
   const row = rows[0];
-  return row ? { ...row, estimatePoints: numOrNull(row.estimatePoints) } : null;
+  return row ?? null;
 }
 
 export async function getIssue(db: Db, id: number): Promise<IssueRow | null> {
@@ -687,7 +685,7 @@ export async function getIssues(db: Db, ids: number[]): Promise<IssueRow[]> {
     .select({ issue, projectKey: projectTable.key })
     .from(issue)
     .innerJoin(projectTable, eq(projectTable.id, issue.projectId))
-    .where(inArray(issue.id, ids));
+    .where(inIds(issue.id, ids));
   const issues = rows.map((row) => mapIssue(row.issue, row.projectKey));
   await attachLabels(db, issues);
   await attachStatusSince(db, issues);
@@ -888,7 +886,7 @@ async function assertIssueLabels(db: Db, projectId: number, labelIds?: number[])
   const rows = await db
     .select({ id: label.id })
     .from(label)
-    .where(and(eq(label.projectId, projectId), inArray(label.id, ids)));
+    .where(and(eq(label.projectId, projectId), inIds(label.id, ids)));
   if (rows.length !== ids.length) throw new HttpError(400, 'Labels must belong to this project');
 }
 
@@ -921,22 +919,20 @@ export async function createIssue(
   // An issue created in a column enters it the same way a moved one does, so the
   // column's auto-assignee applies. An assignee sent with the create wins over it.
   const assigneeUserId = input.assigneeUserId ?? (await columnAutoAssignee(db, input.columnId));
-  const { id: issueId, createdAt } = await db.transaction(async (tx) => {
-    const [seqRow] = await tx
+  // One atomic D1 batch. The first statement reserves the number (SET next_sequence =
+  // next_sequence + 1; D1 runs one write batch at a time), the INSERT reads it back, so
+  // two simultaneous creations never share a number and consecutive ones get consecutive
+  // numbers. The position is computed by the INSERT too (highest in the column + 1000).
+  const [, created0] = (await db.batch([
+    db
       .update(projectTable)
-      .set({ nextSequence: sql`next_sequence + 1` })
-      .where(eq(projectTable.id, project.id))
-      .returning({ seq: sql<number>`next_sequence - 1` });
-    const sequenceNumber = Number(seqRow.seq);
-    const [posRow] = await tx
-      .select({ pos: sql<number>`COALESCE(MAX(${issue.position}), 0) + 1000` })
-      .from(issue)
-      .where(eq(issue.columnId, input.columnId));
-    const [row] = await tx
+      .set({ nextSequence: sql`${projectTable.nextSequence} + 1` })
+      .where(eq(projectTable.id, project.id)),
+    db
       .insert(issue)
       .values({
         projectId: project.id,
-        sequenceNumber,
+        sequenceNumber: sql`(select ${projectTable.nextSequence} - 1 from ${projectTable} where ${projectTable.id} = ${project.id})`,
         typeId: input.typeId ?? null,
         initiativeId: input.initiativeId ?? null,
         cycleId: input.cycleId ?? null,
@@ -947,20 +943,20 @@ export async function createIssue(
         title: input.title,
         description: input.description ?? '',
         priority: input.priority ?? null,
-        estimatePoints: input.estimatePoints == null ? null : String(input.estimatePoints),
+        estimatePoints: input.estimatePoints ?? null,
         estimateMinutes: input.estimateMinutes ?? null,
         startDate: input.startDate ?? null,
         dueDate: input.dueDate ?? null,
-        position: Number(posRow.pos),
+        position: sql`(select coalesce(max(${issue.position}), 0) + 1000 from ${issue} where ${issue.columnId} = ${input.columnId})`,
       })
-      .returning({ id: issue.id, createdAt: issue.createdAt });
-    return row;
-  });
+      .returning({ id: issue.id, createdAt: issue.createdAt }),
+  ])) as unknown as [unknown, { id: number; createdAt: Date }[]];
+  const { id: issueId, createdAt } = created0[0];
 
   // The first stretch of the status history starts when the issue does, so the
   // entries of its creation fall inside it.
   await recordStatusChange(db, [issueId], input.columnId, createdAt);
-  await recordActivity(issueId, [{ action: 'created' }], actorUserId);
+  await recordActivity(db, issueId, [{ action: 'created' }], actorUserId);
   if (input.cycleId != null) await recordCycleChange(db, issueId, null, input.cycleId);
   if (input.parentId != null)
     await recordParentChange(db, issueId, null, input.parentId, actorUserId);
@@ -1009,7 +1005,7 @@ async function identifiers(db: Db, ids: number[]): Promise<Map<number, string>> 
     .select({ id: issue.id, key: projectTable.key, seq: issue.sequenceNumber })
     .from(issue)
     .innerJoin(projectTable, eq(projectTable.id, issue.projectId))
-    .where(inArray(issue.id, ids));
+    .where(inIds(issue.id, ids));
   for (const row of rows) out.set(row.id, `${row.key}-${row.seq}`);
   return out;
 }
@@ -1045,7 +1041,7 @@ export async function recordParentChange(
       issueId: after,
       event: { action: 'subtask_add', to: child },
     });
-  await recordActivityEntries(entries, actor);
+  await recordActivityEntries(db, entries, actor);
 }
 
 export interface IssuePatch {
@@ -1126,15 +1122,14 @@ export async function updateIssue(
   if (patch.title !== undefined) set.title = patch.title;
   if (patch.description !== undefined) set.description = patch.description;
   if (patch.priority !== undefined) set.priority = patch.priority;
-  if (patch.estimatePoints !== undefined)
-    set.estimatePoints = patch.estimatePoints == null ? null : String(patch.estimatePoints);
+  if (patch.estimatePoints !== undefined) set.estimatePoints = patch.estimatePoints ?? null;
   if (patch.estimateMinutes !== undefined) set.estimateMinutes = patch.estimateMinutes;
   if (patch.startDate !== undefined) set.startDate = patch.startDate;
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
 
   const changed = Object.keys(set).length > 0;
   if (changed) {
-    set.updatedAt = sql`now()` as unknown as Date;
+    set.updatedAt = new Date();
     const guard =
       opts?.onlyIfColumnId == null
         ? eq(issue.id, id)
@@ -1199,14 +1194,12 @@ export async function deleteIssue(
   // Read before the delete: the issue.deleted payload is the issue as it last read.
   const deleted = await getIssue(db, issueId);
   if (!deleted) return null;
-  const attachments = await db.transaction(async (tx) => {
-    const attachmentRows = await tx
-      .select()
-      .from(issueAttachment)
-      .where(eq(issueAttachment.issueId, issueId));
-    const removed = await tx.delete(issue).where(eq(issue.id, issueId)).returning({ id: issue.id });
-    return removed.length ? attachmentRows.map(mapAttachment) : null;
-  });
+  // Attachments are read and the issue deleted in one atomic batch.
+  const [attachmentRows, removed] = await db.batch([
+    db.select().from(issueAttachment).where(eq(issueAttachment.issueId, issueId)),
+    db.delete(issue).where(eq(issue.id, issueId)).returning({ id: issue.id }),
+  ]);
+  const attachments = removed.length ? attachmentRows.map(mapAttachment) : null;
   if (!attachments) return null;
   await emitIssueEvent(db, 'issue.deleted', deleted, actorUserId);
   return attachments;
@@ -1231,25 +1224,23 @@ export async function setIssueLabels(
   const before = beforeRows.map((r) => r.labelId);
   const next = [...new Set(labelIds)];
 
-  await db.delete(issueLabel).where(eq(issueLabel.issueId, issueId));
-  if (next.length) {
-    await db
-      .insert(issueLabel)
-      .values(next.map((labelId) => ({ issueId, labelId })))
-      .onConflictDoNothing();
-  }
-
   const added = next.filter((x) => !before.includes(x));
   const removed = before.filter((x) => !next.includes(x));
 
-  // A label change is an edit of the issue, and sorting by "recently updated" has
-  // to place it accordingly.
-  if (added.length > 0 || removed.length > 0) {
-    await db
-      .update(issue)
-      .set({ updatedAt: sql`now()` })
-      .where(eq(issue.id, issueId));
-  }
+  // The replacement is one atomic batch. A label change is an edit of the issue, and
+  // sorting by "recently updated" has to place it accordingly.
+  await batchAll(db, [
+    db.delete(issueLabel).where(eq(issueLabel.issueId, issueId)),
+    ...chunk(next, 40).map((ids) =>
+      db
+        .insert(issueLabel)
+        .values(ids.map((labelId) => ({ issueId, labelId })))
+        .onConflictDoNothing(),
+    ),
+    ...(added.length > 0 || removed.length > 0
+      ? [db.update(issue).set({ updatedAt: new Date() }).where(eq(issue.id, issueId))]
+      : []),
+  ]);
 
   const names = await labelNames(db, projectId, [...added, ...removed]);
   const events: ActivityInput[] = [];
@@ -1257,7 +1248,7 @@ export async function setIssueLabels(
     events.push({ action: 'label_add', to: rowSide(names.get(labelId), labelId) });
   for (const labelId of removed)
     events.push({ action: 'label_remove', from: rowSide(names.get(labelId), labelId) });
-  await recordActivity(issueId, events, actorUserId);
+  await recordActivity(db, issueId, events, actorUserId);
 
   if (emitEvent && (added.length > 0 || removed.length > 0)) {
     const issueRow = await getIssue(db, issueId);
@@ -1284,7 +1275,7 @@ async function issuesInProject(db: Db, projectId: number, ids: number[]): Promis
   const rows = await db
     .select({ id: issue.id })
     .from(issue)
-    .where(and(eq(issue.projectId, projectId), inArray(issue.id, ids)));
+    .where(and(eq(issue.projectId, projectId), inIds(issue.id, ids)));
   return rows.map((r) => r.id);
 }
 
@@ -1345,9 +1336,9 @@ export async function bulkUpdateIssues(
 async function countEnteringColumn(db: Db, ids: number[], columnId: number): Promise<number> {
   if (ids.length === 0) return 0;
   const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(issue)
-    .where(and(inArray(issue.id, ids), ne(issue.columnId, columnId)));
+    .where(and(inIds(issue.id, ids), ne(issue.columnId, columnId)));
   return count;
 }
 
@@ -1369,7 +1360,7 @@ export async function bulkAddLabels(
   const rows = await db
     .select({ issueId: issueLabel.issueId, labelId: issueLabel.labelId })
     .from(issueLabel)
-    .where(inArray(issueLabel.issueId, valid));
+    .where(inIds(issueLabel.issueId, valid));
   const current = new Map<number, number[]>();
   for (const r of rows) {
     let list = current.get(r.issueId);
@@ -1432,7 +1423,7 @@ export interface IssueFieldValueRow {
 
 function pickScalarValue(row: {
   valueText: string | null;
-  valueNumber: string | null;
+  valueNumber: number | null;
   valueBool: boolean | null;
   valueDate: string | null;
   valueDatetime: Date | null;
@@ -1682,14 +1673,14 @@ export async function setIssueFieldValue(
       return option.value;
     });
 
-    await db
-      .delete(issueFieldOption)
-      .where(and(eq(issueFieldOption.issueId, issueId), eq(issueFieldOption.fieldId, fieldId)));
-    if (optionIds.length) {
-      await db
-        .insert(issueFieldOption)
-        .values(optionIds.map((optionId) => ({ issueId, fieldId, optionId })));
-    }
+    await batchAll(db, [
+      db
+        .delete(issueFieldOption)
+        .where(and(eq(issueFieldOption.issueId, issueId), eq(issueFieldOption.fieldId, fieldId))),
+      ...chunk(optionIds, 30).map((ids) =>
+        db.insert(issueFieldOption).values(ids.map((optionId) => ({ issueId, fieldId, optionId }))),
+      ),
+    ]);
     loggedValue = names.length ? names.join(', ') : null;
     loggedId = optionIds.length === 1 ? optionIds[0] : null;
   } else {
@@ -1698,7 +1689,7 @@ export async function setIssueFieldValue(
     let column: Partial<typeof issueFieldValue.$inferInsert>;
     switch (field.fieldType) {
       case 'number':
-        column = { valueNumber: input.value == null ? null : String(input.value) };
+        column = { valueNumber: input.value == null ? null : Number(input.value) };
         break;
       case 'boolean':
         column = { valueBool: input.value == null ? null : Boolean(input.value) };
@@ -1748,6 +1739,7 @@ export async function setIssueFieldValue(
   }
 
   const [entry] = await recordActivity(
+    db,
     issueId,
     [
       {

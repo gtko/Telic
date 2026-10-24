@@ -1,5 +1,6 @@
 import { type Db, issue, issueWorklog, user } from '@repo/db';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
+import { inIds } from './sql-helpers';
 import { HttpError, iso } from '#shared/lib';
 import { recordActivity, timeText } from './activity';
 
@@ -75,11 +76,11 @@ export async function attachLoggedMinutes<T extends { id: number; loggedMinutes:
   const rows = await db
     .select({
       issueId: issueWorklog.issueId,
-      minutes: sql<number>`sum(${issueWorklog.minutes})::int`,
+      minutes: sql<number>`sum(${issueWorklog.minutes})`,
     })
     .from(issueWorklog)
     .where(
-      inArray(
+      inIds(
         issueWorklog.issueId,
         issues.map((i) => i.id),
       ),
@@ -127,6 +128,7 @@ export async function createWorklog(
     .returning({ id: issueWorklog.id });
 
   await recordActivity(
+    db,
     issueId,
     [{ action: 'worklog', to: worklogSide({ id: row.id, ...input }) }],
     userId,
@@ -177,6 +179,7 @@ export async function updateWorklog(
 
   if (row.minutes !== previous.minutes || row.spentOn !== previous.spentOn) {
     await recordActivity(
+      db,
       previous.issueId,
       [
         {
@@ -207,6 +210,7 @@ export async function deleteWorklog(
   if (!removed) return false;
 
   await recordActivity(
+    db,
     removed.issueId,
     [{ action: 'worklog', from: worklogSide(removed) }],
     actorUserId,

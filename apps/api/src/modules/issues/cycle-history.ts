@@ -31,7 +31,7 @@ export async function recordCycleChange(
   if (before !== null) {
     await db
       .update(issueCycle)
-      .set({ leftAt: sql`now()` })
+      .set({ leftAt: new Date() })
       .where(
         and(
           eq(issueCycle.issueId, issueId),
@@ -73,7 +73,7 @@ export async function listIssueCycles(db: Db, issueId: number): Promise<IssueCyc
         // finished early, which ended it at that moment.
         or(
           isNull(issueCycle.leftAt),
-          sql`${issueCycle.leftAt} >= coalesce(${cycle.completedAt}, (${cycle.endDate} + interval '1 day') at time zone 'utc')`,
+          sql`${issueCycle.leftAt} >= coalesce(${cycle.completedAt}, unixepoch(${cycle.endDate}, '+1 day') * 1000)`,
         ),
       ),
     )

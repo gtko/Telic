@@ -735,6 +735,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         if (result.link.number == null)
           throw new HttpError(500, 'Linked pull request has no number');
         await recordActivity(
+          db,
           params.issueId,
           [
             {

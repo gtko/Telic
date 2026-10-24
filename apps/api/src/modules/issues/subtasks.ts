@@ -1,6 +1,6 @@
 import { type Db, issue, project as projectTable } from '@repo/db';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { HttpError } from '#shared/lib';
 import { archiveIssue, deleteIssue, restoreIssue, updateIssue } from './service';
 import type { AttachmentRow } from '#modules/attachments/service';
@@ -70,7 +70,7 @@ export async function attachSubtaskCounts<T extends { id: number }>(
 ): Promise<(T & { subtaskCount: number })[]> {
   const parent = alias(issue, 'parent_issue');
   const rows = await db
-    .select({ parentId: issue.parentId, count: sql<number>`count(*)::int` })
+    .select({ parentId: issue.parentId, count: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(parent, eq(parent.id, issue.parentId))
     .where(eq(parent.projectId, projectId))
