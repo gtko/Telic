@@ -515,14 +515,14 @@ async function claimMessage(db: Db, agent: RunnerAgent): Promise<ClaimedChat | n
       AND m.next_attempt_at <= ${now}
       AND m.attempts < ${maxAttempts}
     RETURNING
-      m.id AS id,
-      m.thread_id AS threadId,
-      m.attempts AS attempts,
+      id,
+      thread_id AS threadId,
+      attempts,
       (SELECT u.name FROM agent_chat_thread t JOIN "user" u ON u.id = t.user_id
-         WHERE t.id = m.thread_id) AS requesterName,
+         WHERE t.id = thread_id) AS requesterName,
       (SELECT u.username FROM agent_chat_thread t JOIN "user" u ON u.id = t.user_id
-         WHERE t.id = m.thread_id) AS requesterUsername,
-      (SELECT cli_session_id FROM agent_chat_thread t WHERE t.id = m.thread_id) AS sessionId
+         WHERE t.id = thread_id) AS requesterUsername,
+      (SELECT cli_session_id FROM agent_chat_thread t WHERE t.id = thread_id) AS sessionId
   `);
   const row = rows[0];
   if (!row) return null;
