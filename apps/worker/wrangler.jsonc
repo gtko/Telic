@@ -1,5 +1,5 @@
 {
-  // The worker: Cron Triggers (webhook deliveries, notifications, agent schedules, import
+  // The worker: Cron Triggers (webhook deliveries, notifications, import
   // wake-ups, telemetry) and the Queue consumer that drains the heavy jobs (source imports,
   // notification bursts). `wrangler dev --test-scheduled --local` never contacts Cloudflare.
   "$schema": "node_modules/wrangler/config-schema.json",

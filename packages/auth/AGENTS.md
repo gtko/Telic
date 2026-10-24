@@ -22,8 +22,7 @@ the person (`ensurePersonalWorkspace`): the `"god"` account always, every other 
 while `personalWorkspaces` is on in the auth settings. apps/api
 calls the same function on every request, so an account made before, by SCIM (a direct
 insert, which passes no hook) or while the setting was off gets its own on its next
-request. It remembers per process who needs nothing, so a request costs a lookup; an
-agent's bot user never gets one.
+request. It remembers per process who needs nothing, so a request costs a lookup.
 
 ## Instance settings (`src/instance.ts`)
 
@@ -89,16 +88,7 @@ derives one from the address — the local part, with everything the plugin's va
 rejects removed — and appends three random digits when that name is taken or is shorter
 than the 3-character minimum. The owner changes it afterwards through `updateUser`, which
 is where the plugin enforces uniqueness. Accounts that predate the column are filled in by
-`drizzle/0087_username_backfill.sql`, which repeats the same rule in SQL; agent bot users
-are skipped there, and their direct insert never reaches the hook, so their username stays
-NULL.
-
-A username also addresses an agent in a mention, and a mention is resolved against the
-project's members and its agents at once, so the two share one namespace. Every path that
-sets a member's name checks it against `ai_agent`: `hooks.before` refuses an `/update-user`
-that takes a name an agent already uses, `databaseHooks.user.create.before` refuses a
-sign-up that carried one, and `generateUsername` skips such a name. The check for the other
-direction sits in the api, where an agent is created or renamed.
+`drizzle/0087_username_backfill.sql`, which repeats the same rule in SQL.
 
 The plugin's `/is-username-available` is in `disabledPaths` and answers 404. It takes no
 session, and a username comes from the address, so it would tell a stranger which
@@ -217,8 +207,7 @@ That last one reveals that the address was invited, so it is given only where th
 is proven (provider, magic link); the email form, open to anyone, gets `INVITE_ONLY`. Its
 `APIError`s carry a `code` because the provider callback and the magic link turn that into
 the `?error=` they redirect with; without one the callback fails the request instead
-(`invite-forms.test.ts` pins `INVITE_EXPIRED` and `INVITE_ONLY`). Agent bot users are
-written with a direct insert and never reach the hook.
+(`invite-forms.test.ts` pins `INVITE_EXPIRED` and `INVITE_ONLY`).
 
 A domain in `allowedEmailDomains` matches the part of the address after the "@" exactly, so
 a subdomain is listed on its own. The list applies to new accounts only; the api also
@@ -245,11 +234,6 @@ planner API, and the account is managed from a signed-in session. It reads `ctx.
 which a server-side `auth.api.*` call does not carry, so `issueKey` and
 `getSessionFromHeaders` are unaffected. `hooks.before` also refuses an `/api-key/update`
 that carries `expiresIn`: a longer life is a new key.
-
-An agent's key is the exception and carries no expiry — an agent replays its stored secret
-with nothing that would renew it, and an external agent's operator rotates it through
-`regenerate-key`. The plugin applies the default to every key it creates, so `issueKey` in
-`apps/api/src/modules/agents/core/service.ts` clears `expires_at` on the row afterwards.
 
 A key the plugin will not accept makes it throw out of `auth.api.getSession` rather than
 return no session. `getSessionFromHeaders` turns that back into "no session", so an expired

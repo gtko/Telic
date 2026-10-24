@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  aiAgent,
-  agentRun,
-  agentSchedule,
   importJob,
   notificationDelivery,
   project,
@@ -17,7 +14,6 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { claimDueImportJobs } from '../../import-store';
 import { claimDueNotifications } from '../../notification-delivery';
-import { enqueueDueSchedules } from '../../schedules';
 import {
   claimDueDeliveries,
   cleanupOldDeliveries,
@@ -72,14 +68,6 @@ async function seedWebhook(db: Db, projectId: number, deliveries: number) {
     ids.push(row!.id);
   }
   return { webhookId: hook!.id, ids };
-}
-
-async function makeAgent(db: Db, teamId: number, userId: string): Promise<number> {
-  const [agent] = await db
-    .insert(aiAgent)
-    .values({ teamId, userId, username: `bot-${userId.slice(0, 6)}`, kind: 'internal' })
-    .returning({ id: aiAgent.id });
-  return agent!.id;
 }
 
 afterEach(() => {
@@ -249,74 +237,5 @@ describe('import job claim', () => {
       .from(importJob)
       .where(inArray(importJob.id, ids));
     expect(rows.every((r) => r.attempts === 1)).toBe(true);
-  });
-});
-
-describe('schedule planning', () => {
-  it('queues one run per due schedule however many workers plan at once', async () => {
-    const { teamId, projectId, userId } = await makeProject(ctx.db);
-    const agentId = await makeAgent(ctx.db, teamId, userId);
-    const due = new Date(Date.now() - 60_000);
-    const scheduleIds: number[] = [];
-    for (let i = 0; i < 3; i++) {
-      const [row] = await ctx.db
-        .insert(agentSchedule)
-        .values({
-          agentId,
-          projectId,
-          name: `S${i}`,
-          prompt: 'Summarise',
-          cron: '*/5 * * * *',
-          timezone: 'UTC',
-          nextRunAt: due,
-        })
-        .returning({ id: agentSchedule.id });
-      scheduleIds.push(row!.id);
-    }
-    await Promise.all(
-      Array.from({ length: CONSUMERS }, () => enqueueDueSchedules(ctx.db, Date.now())),
-    );
-
-    const runs = await ctx.db
-      .select({
-        scheduleId: agentRun.scheduleId,
-        trigger: agentRun.trigger,
-        at: agentRun.scheduledFor,
-      })
-      .from(agentRun)
-      .where(inArray(agentRun.scheduleId, scheduleIds));
-    expect(runs).toHaveLength(3);
-    expect(new Set(runs.map((r) => r.scheduleId)).size).toBe(3);
-    expect(runs.every((r) => r.trigger === 'schedule' && r.at!.getTime() === due.getTime())).toBe(
-      true,
-    );
-    const schedules = await ctx.db
-      .select()
-      .from(agentSchedule)
-      .where(inArray(agentSchedule.id, scheduleIds));
-    for (const s of schedules) {
-      expect(s.nextRunAt!.getTime()).toBeGreaterThan(Date.now());
-      expect(s.lastRunAt!.getTime()).toBe(due.getTime());
-    }
-  });
-
-  it('pauses a schedule whose cron no longer parses instead of looping on it', async () => {
-    const { teamId, projectId, userId } = await makeProject(ctx.db);
-    const agentId = await makeAgent(ctx.db, teamId, userId);
-    const [row] = await ctx.db
-      .insert(agentSchedule)
-      .values({
-        agentId,
-        projectId,
-        name: 'Broken',
-        prompt: 'x',
-        cron: 'not a cron',
-        timezone: 'UTC',
-        nextRunAt: new Date(Date.now() - 1000),
-      })
-      .returning({ id: agentSchedule.id });
-    await enqueueDueSchedules(ctx.db, Date.now());
-    const [after] = await ctx.db.select().from(agentSchedule).where(eq(agentSchedule.id, row!.id));
-    expect(after!.status).toBe('paused');
   });
 });

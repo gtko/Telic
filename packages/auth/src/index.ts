@@ -441,8 +441,7 @@ function randomSuffix(): string {
   return String(100 + randomInt(900));
 }
 
-// Accounts that need no personal workspace made: they own a workspace, or are an agent's
-// bot user. Kept per process, so once an account is known a request costs a lookup here
+// Accounts that need no personal workspace made: they own a workspace. Kept per process, so once an account is known a request costs a lookup here
 // and nothing in the database. The entries describe the rows of the database, which is
 // the one deployment's D1; forgetPersonalWorkspace drops one when its account stops
 // owning a workspace.
@@ -453,7 +452,6 @@ const settled = new Set<string>();
 // it, and apps/api on every request, so an account made before personal workspaces, by
 // SCIM, or while they were off gets its own without signing in again. Nothing in the API
 // creates a workspace; an edition that lets a person own more mounts a route of its own.
-// An agent's bot user is no person.
 // ponytail: an account with no workspace while they are off reads the setting on each
 // request; cache it with the setting if that ever shows.
 export async function ensurePersonalWorkspace(
@@ -470,7 +468,7 @@ export async function ensurePersonalWorkspace(
   if (!person) return;
   const name = (person.name.trim() || person.email.split('@')[0]!).slice(0, 60);
   // One batch, so the workspace and its owner row land together, and only while the account
-  // still owns no workspace and is no agent's bot user. Each guard reads the rows the batch
+  // still owns no workspace. Each guard reads the rows the batch
   // writes: D1 runs the statements in order, so when two sign-ins race, the second one
   // finds the first one's owner row, and its insert then matches nothing (changes() is
   // 0 after a statement that wrote no row). This replaces a row lock held over the read.
@@ -485,8 +483,7 @@ export async function ensurePersonalWorkspace(
          WHERE u.id = ?
            AND NOT EXISTS (
              SELECT 1 FROM workspace_manager m WHERE m.user_id = u.id AND m.role = 'owner'
-           )
-           AND NOT EXISTS (SELECT 1 FROM ai_agent a WHERE a.user_id = u.id)`,
+           )`,
       )
       .bind(name, userId),
     client
@@ -506,21 +503,6 @@ export function forgetPersonalWorkspace(userId: string): void {
   settled.delete(userId);
 }
 
-// True when an agent of some project already answers to this handle. A mention is
-// resolved against members and agents at once, so the two share one namespace: a
-// member cannot take a name an agent uses, and the check for the other direction
-// sits where an agent is created. Agent handles are stored as typed, so the
-// comparison is case-insensitive.
-async function isAgentHandle(db: Db, handle: string): Promise<boolean> {
-  const normalized = handle.trim().toLowerCase();
-  if (!normalized) return false;
-  const taken = await db.$count(
-    schema.aiAgent,
-    eq(sql`lower(${schema.aiAgent.username})`, normalized),
-  );
-  return taken > 0;
-}
-
 // Nobody is asked for a username at sign-up: it is derived from the address — the
 // local part, with everything the plugin's validator rejects removed — and the owner
 // changes it later in the profile. A name already in use gets a random suffix, and
@@ -534,9 +516,7 @@ export async function generateUsername(db: Db, email: string): Promise<string> {
       .slice(0, USERNAME_MAX_LENGTH - SUFFIX_LENGTH) || 'user';
   let candidate = stem.length >= USERNAME_MIN_LENGTH ? stem : stem + randomSuffix();
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const taken =
-      (await db.$count(schema.user, eq(schema.user.username, candidate))) > 0 ||
-      (await isAgentHandle(db, candidate));
+    const taken = (await db.$count(schema.user, eq(schema.user.username, candidate))) > 0;
     if (!taken) break;
     candidate = stem + randomSuffix();
   }
@@ -799,8 +779,7 @@ export function createAuth(env: AuthEnv, db: Db) {
         // session sets up outlives the key: a passkey enrolled with it still signs in
         // after the key is deleted and the password reset, and a new key starts a fresh
         // lifetime. A key is for the planner API; the account is managed from a signed-in
-        // session. A server-side call, such as the one issuing an agent's key, carries
-        // no request and passes.
+        // session. A server-side call carries no request and passes.
         if (ctx.request?.headers.get('x-api-key')) {
           throw new APIError('FORBIDDEN', {
             message: 'An API key cannot manage the account. Sign in to do this.',
@@ -889,18 +868,6 @@ export function createAuth(env: AuthEnv, db: Db) {
           return;
         }
 
-        // The profile form changes the username here. The plugin only checks it against
-        // the other accounts, so the agents are checked on this side.
-        if (ctx.path === '/update-user') {
-          const handle = (ctx.body as { username?: string } | undefined)?.username;
-          if (handle && (await isAgentHandle(db, handle))) {
-            throw new APIError('BAD_REQUEST', {
-              message: 'Username is already taken. Please try another.',
-            });
-          }
-          return;
-        }
-
         // The lifetime of a key is fixed at creation; a longer one is a new key.
         if (ctx.path === '/api-key/update') {
           const body = ctx.body as { expiresIn?: number | null } | undefined;
@@ -917,8 +884,7 @@ export function createAuth(env: AuthEnv, db: Db) {
       user: {
         create: {
           // Every account creation passes here, whichever method made it, so this is
-          // where the registration gate applies to Google. Agent bot users are written
-          // with a direct insert and never reach this hook.
+          // where the registration gate applies to Google.
           //
           // Assign the role before the row is inserted: first user ever → "god",
           // everyone else → "user".
@@ -929,16 +895,7 @@ export function createAuth(env: AuthEnv, db: Db) {
               await assertRegistrationAllowed(db, user.email, { addressProven: true });
             }
             const isFirstUser = (await db.$count(schema.user)) === 0;
-            // A sign-up that carried its own username has passed the plugin's own
-            // check against the other accounts by now, but not the one against the
-            // agents; only an account without one gets a derived name.
             const carried = typeof user.username === 'string' ? user.username : null;
-            if (carried && (await isAgentHandle(db, carried))) {
-              throw new APIError('BAD_REQUEST', {
-                code: 'USERNAME_IS_ALREADY_TAKEN',
-                message: 'Username is already taken. Please try another.',
-              });
-            }
             const derived = carried ?? (await generateUsername(db, user.email));
             return {
               data: {
@@ -991,17 +948,15 @@ export function createAuth(env: AuthEnv, db: Db) {
       // to the key owner's session, so getSession (and every planner guard built on it)
       // accepts API keys without any change in apps/api. Rate limit: 100 requests per
       // second per key (timeWindow is in milliseconds). The ceiling is set for the
-      // heaviest legitimate caller rather than a typical one: an internal AI agent runs
-      // on its own key and dispatches every tool call through a route, and a model that
-      // emits a batch of tool calls in one step turns them into a burst of requests.
+      // heaviest legitimate caller rather than a typical one: an integration that sends a
+      // burst of requests on its own key.
       apiKey({
         enableSessionForAPIKeys: true,
         // Brand prefix so a leaked key is identifiable by secret scanners and in logs.
         // The trailing underscore separates it from the random part (itp_<64 chars>).
         defaultPrefix: 'itp_',
         // A key is a full-account credential, so one that was forgotten stops working
-        // on its own. The caller may pick a shorter or longer life up to the maximum;
-        // an agent's key is the exception, cleared where it is issued in apps/api.
+        // on its own. The caller may pick a shorter or longer life up to the maximum.
         keyExpiration: {
           defaultExpiresIn: API_KEY_DEFAULT_EXPIRES_IN_SEC,
           maxExpiresIn: API_KEY_MAX_EXPIRES_IN_DAYS,
