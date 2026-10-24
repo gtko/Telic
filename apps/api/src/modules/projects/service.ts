@@ -244,7 +244,9 @@ async function readProjects(
   const latestActivity = db
     .select({
       projectId: issue.projectId,
-      createdAt: sql<Date>`max(${issueActivity.createdAt})`.mapWith(issueActivity.createdAt),
+      createdAt: sql<Date>`max(${issueActivity.createdAt})`
+        .mapWith(issueActivity.createdAt)
+        .as('last_activity_at'),
     })
     .from(issueActivity)
     .innerJoin(issue, eq(issue.id, issueActivity.issueId))

@@ -305,16 +305,20 @@ export const app = new Elysia({ adapter: CloudflareAdapter })
   // callback gets one extra step afterwards: folding the provider's `groups` claim
   // into the SCIM group tables, so a group mapped to a project in god mode grants
   // access on an OIDC-only instance too, not just one that also runs a SCIM sync.
-  .all('/api/auth/*', async ({ request, db, auth }) => {
-    const url = new URL(request.url);
-    if (url.pathname === LEGACY_OIDC_CALLBACK) {
-      url.pathname = OIDC_CALLBACK;
-      request = new Request(url.href, request);
-    }
-    const response = await auth.handler(request);
-    if (url.pathname === OIDC_CALLBACK) await syncOidcGroupsAfterCallback(db, auth, response);
-    return response;
-  })
+  .all(
+    '/api/auth/*',
+    async ({ request, db, auth }) => {
+      const url = new URL(request.url);
+      if (url.pathname === LEGACY_OIDC_CALLBACK) {
+        url.pathname = OIDC_CALLBACK;
+        request = new Request(url.href, request);
+      }
+      const response = await auth.handler(request);
+      if (url.pathname === OIDC_CALLBACK) await syncOidcGroupsAfterCallback(db, auth, response);
+      return response;
+    },
+    { parse: 'none' },
+  )
   .use(currentUserRoutes)
   // What the sign-in and sign-up screens need before there is a session: whether
   // registration is open, invite-only, or closed, and which sign-in methods are
