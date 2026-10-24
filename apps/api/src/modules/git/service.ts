@@ -101,7 +101,7 @@ export async function getOrCreateGitSettings(db: Db, projectId: number): Promise
   return toDto(winner ?? fresh);
 }
 
-// Merges the given fields into the stored jsonb in one UPDATE, so concurrent
+// Merges the given fields into the stored JSON in one UPDATE, so concurrent
 // writers (a settings edit, a secret rotation, a delivery stamping telemetry)
 // can never clobber each other's fields with a stale read.
 async function mergeGitSettings(
@@ -154,7 +154,7 @@ export async function regenerateGitSecret(db: Db, projectId: number): Promise<Gi
 }
 
 // Resolves an incoming delivery's webhook id to its project. The id is stored
-// inside the jsonb value, so this scans the 'git' settings rows by expression.
+// inside the JSON value, so this scans the 'git' settings rows by expression.
 export async function findProjectByGitWebhookId(
   db: Db,
   webhookId: string,

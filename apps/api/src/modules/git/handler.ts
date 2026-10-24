@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import { getIssueBySequence, updateIssue } from '#modules/issues/service';
 import { recordActivity, textSide, type ActivityActor } from '#modules/issues/activity';
 import {
@@ -57,6 +58,7 @@ async function resolveIssues(
 }
 
 export async function handleGitEvent(
+  db: Db,
   project: { id: number; key: string; teamRef: string },
   settings: GitSettings,
   providerKey: GitProviderKey,
@@ -64,21 +66,22 @@ export async function handleGitEvent(
   event: GitEvent,
 ): Promise<PullRequestOutcome | 'branch' | 'pipeline' | 'check'> {
   if (event.kind === 'check') {
-    await updateCheckLinks(project.id, providerKey, event);
+    await updateCheckLinks(db, project.id, providerKey, event);
     return 'check';
   }
   if (event.kind === 'pipeline') {
-    await updatePipelineLinks(project.id, providerKey, event);
+    await updatePipelineLinks(db, project.id, providerKey, event);
     return 'pipeline';
   }
 
   if (event.kind === 'branch') {
     if (event.action === 'deleted') {
-      await removeBranchLinks(project.id, null, providerKey, event.repo, event.branch);
+      await removeBranchLinks(db, project.id, null, providerKey, event.repo, event.branch);
       return 'branch';
     }
     const branchIssues = await resolveIssues(project, parseIssueIdentifiers(event.branch));
     await upsertBranchLinks(
+      db,
       branchIssues.map((issue) => issue.id),
       providerKey,
       event,
@@ -86,7 +89,7 @@ export async function handleGitEvent(
     return 'branch';
   }
 
-  await updatePullRequestLinks(project.id, providerKey, event);
+  await updatePullRequestLinks(db, project.id, providerKey, event);
   const magic = parseMagicWords(`${event.title}\n${event.body}`);
   const skipped = new Set(magic.skipped.map(refId));
   const branchRefs = parseIssueIdentifiers(event.sourceBranch ?? '').filter(
@@ -101,12 +104,14 @@ export async function handleGitEvent(
   };
   const skippedIssues = await resolveIssues(project, magic.skipped);
   await removePullRequestLinks(
+    db,
     skippedIssues.map((issue) => issue.id),
     providerKey,
     event,
   );
   if (event.sourceBranch) {
     await removeBranchLinks(
+      db,
       project.id,
       skippedIssues.map((issue) => issue.id),
       providerKey,
@@ -117,11 +122,13 @@ export async function handleGitEvent(
   const projectKey = project.key.toUpperCase();
   const uniqueIssues = await resolveIssues(project, [...refs.closes, ...refs.references]);
   const promotedIssueIds = await promoteBranchLinksToPullRequest(
+    db,
     uniqueIssues.map((issue) => issue.id),
     providerKey,
     event,
   );
   const insertedIssueIds = await upsertPullRequestLinks(
+    db,
     uniqueIssues.map((item) => item.id),
     providerKey,
     event,
@@ -139,6 +146,7 @@ export async function handleGitEvent(
       });
     try {
       await postPullRequestLinkback(
+        db,
         project.id,
         providerKey,
         event.repo,
@@ -150,10 +158,11 @@ export async function handleGitEvent(
       // not make a verified webhook fail or repeat its issue automation.
     }
   }
-  return handlePullRequestEvent(project, settings, providerLabel, event, refs);
+  return handlePullRequestEvent(db, project, settings, providerLabel, event, refs);
 }
 
 export async function handlePullRequestEvent(
+  db: Db,
   project: { id: number; key: string },
   settings: GitSettings,
   providerLabel: string,
@@ -174,7 +183,7 @@ export async function handlePullRequestEvent(
 
   if (event.action === 'merged') {
     if (event.defaultBranch != null && event.targetBranch !== event.defaultBranch) return 'ignored';
-    const targetId = await mergeTargetColumnId(project.id, settings);
+    const targetId = await mergeTargetColumnId(db, project.id, settings);
     if (targetId == null) return 'ignored';
     for (const ref of inProject(parsed.closes)) {
       const issue = await getIssueBySequence(project.id, ref.sequenceNumber);
@@ -183,8 +192,8 @@ export async function handlePullRequestEvent(
       if (!issue || issue.archivedAt || issue.projectId !== project.id) continue;
       // A task may need several pull requests. Wait for all linked work to leave
       // the open state before applying the merge automation, as Linear does.
-      if (await hasOpenDevelopmentLinks(issue.id)) continue;
-      const stateType = (await columnStateTypes([issue.columnId])).get(issue.columnId);
+      if (await hasOpenDevelopmentLinks(db, issue.id)) continue;
+      const stateType = (await columnStateTypes(db, [issue.columnId])).get(issue.columnId);
       if (stateType && CLOSED_STATE_TYPES.includes(stateType)) continue;
       await recordActivity(issue.id, [prEntry('merged')], actor);
       await updateIssue(issue.id, { columnId: targetId }, actor, {
@@ -197,13 +206,13 @@ export async function handlePullRequestEvent(
   if (event.action === 'updated' || event.action === 'closed') return 'ignored';
 
   if (event.draft) return 'ignored';
-  const targetId = await openTargetColumnId(settings);
+  const targetId = await openTargetColumnId(db, settings);
   for (const ref of inProject([...parsed.closes, ...parsed.references])) {
     const issue = await getIssueBySequence(project.id, ref.sequenceNumber);
     if (!issue || issue.archivedAt) continue;
     await recordActivity(issue.id, [prEntry('opened')], actor);
     if (targetId == null || issue.columnId === targetId || issue.projectId !== project.id) continue;
-    const stateType = (await columnStateTypes([issue.columnId])).get(issue.columnId);
+    const stateType = (await columnStateTypes(db, [issue.columnId])).get(issue.columnId);
     // Only pull work forward: an issue already started or closed stays put.
     // The guard makes that atomic — a user moving the issue between this read
     // and the write wins over the automation.
@@ -218,19 +227,20 @@ export async function handlePullRequestEvent(
 
 // The configured merge target if it still exists, else the first completed column.
 async function mergeTargetColumnId(
+  db: Db,
   projectId: number,
   settings: GitSettings,
 ): Promise<number | null> {
   const configured = settings.onMergeColumnId;
-  if (configured != null && (await columnStateTypes([configured])).has(configured))
+  if (configured != null && (await columnStateTypes(db, [configured])).has(configured))
     return configured;
-  return firstCompletedColumnId(projectId);
+  return firstCompletedColumnId(db, projectId);
 }
 
 // The configured open target if it still exists; null means the automation is off.
-async function openTargetColumnId(settings: GitSettings): Promise<number | null> {
+async function openTargetColumnId(db: Db, settings: GitSettings): Promise<number | null> {
   const configured = settings.onOpenColumnId;
-  if (configured != null && (await columnStateTypes([configured])).has(configured))
+  if (configured != null && (await columnStateTypes(db, [configured])).has(configured))
     return configured;
   return null;
 }

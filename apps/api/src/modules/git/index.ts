@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { guards } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { noContent } from '#shared/http';
 import { accessErrors, commonErrors, errors } from '#shared/responses';
 import {
@@ -33,10 +34,11 @@ export const gitSettingsRoutes = new Elysia({
   detail: { tags: ['Git'] },
 })
   .use(authContext)
+  .use(dbContext)
   .use(guards)
   .get(
     '/teams/:teamId/settings/git/connections',
-    ({ membership }) => listTeamGitProviderConnections(membership.teamId),
+    ({ db, membership }) => listTeamGitProviderConnections(db, membership.teamId),
     {
       teamManager: true,
       response: { 200: GitProviderConnectionListResponse, ...accessErrors },
@@ -45,8 +47,8 @@ export const gitSettingsRoutes = new Elysia({
   )
   .post(
     '/teams/:teamId/settings/git/connections',
-    async ({ membership, body, set }) => {
-      const connection = await connectGitProvider(membership.teamId, body);
+    async ({ db, membership, body, set }) => {
+      const connection = await connectGitProvider(db, membership.teamId, body);
       set.status = 201;
       return connection;
     },
@@ -59,8 +61,8 @@ export const gitSettingsRoutes = new Elysia({
   )
   .delete(
     '/teams/:teamId/settings/git/connections/:connectionId',
-    async ({ membership, params }) => {
-      await disconnectGitProvider(membership.teamId, params.connectionId);
+    async ({ db, membership, params }) => {
+      await disconnectGitProvider(db, membership.teamId, params.connectionId);
       return noContent();
     },
     {
@@ -70,18 +72,22 @@ export const gitSettingsRoutes = new Elysia({
       detail: { summary: 'Disconnect a team Git provider account and its managed webhooks' },
     },
   )
-  .get('/projects/:projectKey/settings/git', ({ project }) => getOrCreateGitSettings(project.id), {
-    permission: ['repositories', 'edit'],
-    response: { 200: GitSettingsResponse, ...accessErrors },
-    detail: {
-      summary: "Get a project's repository integration settings",
-      description:
-        'Return the webhook endpoint, enabled events, merge automation, and the secret only when the caller may edit integrations.',
+  .get(
+    '/projects/:projectKey/settings/git',
+    ({ db, project }) => getOrCreateGitSettings(db, project.id),
+    {
+      permission: ['repositories', 'edit'],
+      response: { 200: GitSettingsResponse, ...accessErrors },
+      detail: {
+        summary: "Get a project's repository integration settings",
+        description:
+          'Return the webhook endpoint, enabled events, merge automation, and the secret only when the caller may edit integrations.',
+      },
     },
-  })
+  )
   .patch(
     '/projects/:projectKey/settings/git',
-    ({ project, body }) => updateGitSettings(project.id, body),
+    ({ db, project, body }) => updateGitSettings(db, project.id, body),
     {
       permission: ['repositories', 'edit'],
       body: updateGitSettingsBody,
@@ -95,9 +101,9 @@ export const gitSettingsRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/settings/git/secret',
-    async ({ project }) => {
-      const settings = await regenerateGitSecret(project.id);
-      await reconcileManagedWebhooks(project.id, settings);
+    async ({ db, project }) => {
+      const settings = await regenerateGitSecret(db, project.id);
+      await reconcileManagedWebhooks(db, project.id, settings);
       return settings;
     },
     {
@@ -112,7 +118,7 @@ export const gitSettingsRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/settings/git/connections',
-    ({ project }) => listGitProviderConnections(project.id),
+    ({ db, project }) => listGitProviderConnections(db, project.id),
     {
       permission: ['repositories', 'edit'],
       response: { 200: GitProviderConnectionListResponse, ...accessErrors },
@@ -125,8 +131,9 @@ export const gitSettingsRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/settings/git/connections/:connectionId/repositories',
-    ({ project, params, query }) =>
+    ({ db, project, params, query }) =>
       listAvailableRepositories(
+        db,
         project.id,
         params.connectionId,
         query.page ?? 1,
@@ -146,8 +153,8 @@ export const gitSettingsRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/settings/git/connections/:connectionId/repositories',
-    ({ project, params, body }) =>
-      connectRepositories(project.id, params.connectionId, body.externalIds),
+    ({ db, project, params, body }) =>
+      connectRepositories(db, project.id, params.connectionId, body.externalIds),
     {
       permission: ['repositories', 'edit'],
       params: gitProviderConnectionParams,
@@ -162,8 +169,8 @@ export const gitSettingsRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/settings/git/connections/:connectionId/repositories/:repositoryId',
-    async ({ project, params }) => {
-      await disconnectRepository(project.id, params.connectionId, params.repositoryId);
+    async ({ db, project, params }) => {
+      await disconnectRepository(db, project.id, params.connectionId, params.repositoryId);
       return noContent();
     },
     {

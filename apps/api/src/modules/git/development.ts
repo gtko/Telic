@@ -64,7 +64,7 @@ function pullRequestState(event: PullRequestEvent): PullRequestState {
   return 'open';
 }
 
-function projectIssue(projectId: number) {
+function projectIssue(db: Db, projectId: number) {
   return inArray(
     issueDevelopmentLink.issueId,
     db.select({ id: issue.id }).from(issue).where(eq(issue.projectId, projectId)),
@@ -81,7 +81,10 @@ function aggregateChecks(checks: DevelopmentCheck[]): PipelineStatus | null {
   return 'success';
 }
 
-export async function listIssueDevelopmentLinks(issueId: number): Promise<DevelopmentLink[]> {
+export async function listIssueDevelopmentLinks(
+  db: Db,
+  issueId: number,
+): Promise<DevelopmentLink[]> {
   const links = await db
     .select()
     .from(issueDevelopmentLink)
@@ -123,13 +126,14 @@ export async function listIssueDevelopmentLinks(issueId: number): Promise<Develo
 }
 
 export async function listLinkablePullRequests(
+  db: Db,
   projectId: number,
   issueId: number,
   repositoryId: number,
   state: 'open' | 'all',
   page: number,
 ): Promise<LinkablePullRequestPage> {
-  const result = await listManagedPullRequests(projectId, repositoryId, state, page);
+  const result = await listManagedPullRequests(db, projectId, repositoryId, state, page);
   const linked = result.page.pullRequests.length
     ? await db
         .select({ number: issueDevelopmentLink.number })
@@ -157,14 +161,15 @@ export async function listLinkablePullRequests(
 }
 
 async function storePullRequestLink(
+  db: Db,
   projectId: number,
   issueId: number,
   provider: 'github' | 'gitlab',
   details: ProviderPullRequestDetails,
 ): Promise<{ link: DevelopmentLink; created: boolean }> {
-  const createdIssueIds = await upsertPullRequestLinks([issueId], provider, details.event);
-  if (details.run) await updatePipelineLinks(projectId, provider, details.run);
-  const links = await listIssueDevelopmentLinks(issueId);
+  const createdIssueIds = await upsertPullRequestLinks(db, [issueId], provider, details.event);
+  if (details.run) await updatePipelineLinks(db, projectId, provider, details.run);
+  const links = await listIssueDevelopmentLinks(db, issueId);
   const link = links.find(
     (item) =>
       item.provider === provider &&
@@ -176,26 +181,28 @@ async function storePullRequestLink(
 }
 
 export async function linkExistingPullRequest(
+  db: Db,
   projectId: number,
   issueId: number,
   repositoryId: number,
   number: number,
 ): Promise<{ link: DevelopmentLink; created: boolean }> {
-  const result = await getManagedPullRequest(projectId, repositoryId, number);
-  return storePullRequestLink(projectId, issueId, result.provider, result.details);
+  const result = await getManagedPullRequest(db, projectId, repositoryId, number);
+  return storePullRequestLink(db, projectId, issueId, result.provider, result.details);
 }
 
 export async function createAndLinkPullRequest(
+  db: Db,
   projectId: number,
   issueId: number,
   repositoryId: number,
   input: CreateProviderPullRequestInput,
 ): Promise<{ link: DevelopmentLink; created: boolean }> {
-  const result = await createManagedPullRequest(projectId, repositoryId, input);
-  return storePullRequestLink(projectId, issueId, result.provider, result.details);
+  const result = await createManagedPullRequest(db, projectId, repositoryId, input);
+  return storePullRequestLink(db, projectId, issueId, result.provider, result.details);
 }
 
-export async function hasOpenDevelopmentLinks(issueId: number): Promise<boolean> {
+export async function hasOpenDevelopmentLinks(db: Db, issueId: number): Promise<boolean> {
   const [link] = await db
     .select({ id: issueDevelopmentLink.id })
     .from(issueDevelopmentLink)
@@ -211,6 +218,7 @@ export async function hasOpenDevelopmentLinks(issueId: number): Promise<boolean>
 }
 
 export async function removeIssueDevelopmentLink(
+  db: Db,
   issueId: number,
   linkId: number,
 ): Promise<boolean> {
@@ -252,6 +260,7 @@ function pullRequestUpdateValues(event: PullRequestEvent, updatedAt: Date) {
 }
 
 export async function updatePullRequestLinks(
+  db: Db,
   projectId: number,
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -264,12 +273,13 @@ export async function updatePullRequestLinks(
         eq(issueDevelopmentLink.provider, provider),
         eq(issueDevelopmentLink.repository, event.repo),
         eq(issueDevelopmentLink.externalKey, `pull_request:${event.number}`),
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
 }
 
 export async function upsertPullRequestLinks(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -312,6 +322,7 @@ export async function upsertPullRequestLinks(
 }
 
 export async function removePullRequestLinks(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: PullRequestEvent,
@@ -330,6 +341,7 @@ export async function removePullRequestLinks(
 }
 
 export async function upsertBranchLinks(
+  db: Db,
   issueIds: number[],
   provider: GitProviderKey,
   event: BranchEvent,
@@ -374,6 +386,7 @@ export async function upsertBranchLinks(
 }
 
 export async function removeBranchLinks(
+  db: Db,
   projectId: number,
   issueIds: number[] | null,
   provider: GitProviderKey,
@@ -389,7 +402,7 @@ export async function removeBranchLinks(
         eq(issueDevelopmentLink.provider, provider),
         eq(issueDevelopmentLink.repository, repo),
         eq(issueDevelopmentLink.externalKey, `branch:${branch}`),
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
 }
@@ -455,6 +468,7 @@ export async function promoteBranchLinksToPullRequest(
 }
 
 export async function updatePipelineLinks(
+  db: Db,
   projectId: number,
   provider: GitProviderKey,
   event: PipelineEvent,
@@ -482,12 +496,13 @@ export async function updatePipelineLinks(
         eq(issueDevelopmentLink.repository, event.repo),
         identity,
         currentHead,
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
 }
 
 export async function updateCheckLinks(
+  db: Db,
   projectId: number,
   provider: GitProviderKey,
   event: CheckEvent,
@@ -507,7 +522,7 @@ export async function updateCheckLinks(
         eq(issueDevelopmentLink.repository, event.repo),
         identity,
         eq(issueDevelopmentLink.headSha, event.headSha),
-        projectIssue(projectId),
+        projectIssue(db, projectId),
       ),
     );
   if (links.length === 0) return;
