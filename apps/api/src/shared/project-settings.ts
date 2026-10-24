@@ -1,5 +1,5 @@
 import { projectSetting, type Db } from '@repo/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 // Instance settings (app_setting) are read through getSetting/setSetting in
 // @repo/db, because @repo/auth reads them too.
@@ -31,6 +31,6 @@ export async function setProjectSetting(
     .values({ projectId, key, value })
     .onConflictDoUpdate({
       target: [projectSetting.projectId, projectSetting.key],
-      set: { value, updatedAt: sql`now()` },
+      set: { value, updatedAt: new Date() },
     });
 }

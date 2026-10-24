@@ -20,6 +20,7 @@ import {
   projectView,
   workspaceManager,
   type Db,
+  chunk,
 } from '@repo/db';
 import {
   and,
@@ -35,7 +36,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
+import type { AnySQLiteColumn, SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { accountsManagedByScim } from '@repo/auth';
 import { iso } from '#shared/lib';
 import { deleteAccount } from '#shared/account-deletion';
@@ -215,12 +216,15 @@ export type UserKind = (typeof USER_KINDS)[number];
 // One page of accounts, newest first. `search` matches the name or the email;
 // `kind` narrows to people or agent bot users. Both filters run in SQL, so the page
 // window and the total count agree.
-export async function listInstanceUsers(options: {
-  search?: string;
-  kind: UserKind;
-  limit: number;
-  offset: number;
-}): Promise<InstanceUserPage> {
+export async function listInstanceUsers(
+  db: Db,
+  options: {
+    search?: string;
+    kind: UserKind;
+    limit: number;
+    offset: number;
+  },
+): Promise<InstanceUserPage> {
   const term = options.search?.trim();
   const isAgent = db
     .select({ n: sql`1` })
@@ -420,17 +424,21 @@ export interface InstanceProjectPage {
 // so two projects of one team report the same number.
 async function countByTeamOfProject(
   db: Db,
-  table: PgTable,
-  teamIdColumn: AnyPgColumn,
+  table: SQLiteTable,
+  teamIdColumn: AnySQLiteColumn,
   projectIds: number[],
 ): Promise<Map<number, number>> {
-  const rows = await db
-    .select({ projectId: project.id, count: sql<number>`count(${teamIdColumn})` })
-    .from(project)
-    .leftJoin(table, eq(teamIdColumn, project.teamId))
-    .where(inArray(project.id, projectIds))
-    .groupBy(project.id);
-  return new Map(rows.map((r) => [r.projectId, r.count]));
+  const counts = new Map<number, number>();
+  for (const slice of chunk(projectIds, 90)) {
+    const rows = await db
+      .select({ projectId: project.id, count: sql<number>`count(${teamIdColumn})` })
+      .from(project)
+      .leftJoin(table, eq(teamIdColumn, project.teamId))
+      .where(inArray(project.id, slice))
+      .groupBy(project.id);
+    for (const r of rows) counts.set(r.projectId, r.count);
+  }
+  return counts;
 }
 
 const countAt = (counts: Map<number, number>, id: number) => counts.get(id) ?? 0;
@@ -439,17 +447,22 @@ const countAt = (counts: Map<number, number>, id: number) => counts.get(id) ?? 0
 // the owner id: a project-scoped table by project, a team-scoped one by team.
 async function countByOwner(
   db: Db,
-  table: PgTable,
-  ownerIdColumn: AnyPgColumn,
+  table: SQLiteTable,
+  ownerIdColumn: AnySQLiteColumn,
   ownerIds: number[],
   extra?: SQL,
 ): Promise<Map<number, number>> {
-  const rows = await db
-    .select({ ownerId: ownerIdColumn, count: sql<number>`count(*)` })
-    .from(table)
-    .where(and(inArray(ownerIdColumn, ownerIds), extra))
-    .groupBy(ownerIdColumn);
-  return new Map(rows.map((r) => [r.ownerId as number, r.count]));
+  // D1 binds at most 100 parameters per statement: long owner lists go in slices.
+  const counts = new Map<number, number>();
+  for (const slice of chunk(ownerIds, 90)) {
+    const rows = await db
+      .select({ ownerId: ownerIdColumn, count: sql<number>`count(*)` })
+      .from(table)
+      .where(and(inArray(ownerIdColumn, slice), extra))
+      .groupBy(ownerIdColumn);
+    for (const r of rows) counts.set(r.ownerId as number, r.count);
+  }
+  return counts;
 }
 
 type ProjectFacts = InstanceProjectCounts & { lastActivityAt: string | null };
@@ -553,11 +566,14 @@ function toProjectRow(r: ProjectRow, facts: ProjectFacts): InstanceProjectRow {
 
 // One page of projects, newest first. `search` matches the key or the name and runs
 // in SQL, so the page window and the total count agree.
-export async function listInstanceProjects(options: {
-  search?: string;
-  limit: number;
-  offset: number;
-}): Promise<InstanceProjectPage> {
+export async function listInstanceProjects(
+  db: Db,
+  options: {
+    search?: string;
+    limit: number;
+    offset: number;
+  },
+): Promise<InstanceProjectPage> {
   const term = options.search?.trim();
   const where = term
     ? or(like(project.key, `%${term}%`), like(project.name, `%${term}%`))
@@ -747,11 +763,14 @@ function toTeamRow(r: TeamRow, counts: InstanceTeamCounts): InstanceTeamRow {
 
 // One page of teams, newest first. `search` matches the name and runs in SQL, so the
 // page window and the total count agree.
-export async function listInstanceTeams(options: {
-  search?: string;
-  limit: number;
-  offset: number;
-}): Promise<InstanceTeamPage> {
+export async function listInstanceTeams(
+  db: Db,
+  options: {
+    search?: string;
+    limit: number;
+    offset: number;
+  },
+): Promise<InstanceTeamPage> {
   const term = options.search?.trim();
   const where = term ? like(team.name, `%${term}%`) : undefined;
 

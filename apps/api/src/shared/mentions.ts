@@ -1,4 +1,4 @@
-import { projectMember, user, aiAgent, type Db } from '@repo/db';
+import { chunk, projectMember, user, aiAgent, type Db } from '@repo/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 // Mentions in a comment, an issue description or a markdown custom field. A mention
@@ -58,22 +58,35 @@ export async function resolveMentionHandles(
   handles: string[],
 ): Promise<MentionedUsers> {
   if (handles.length === 0) return { memberIds: [], agentUserIds: [] };
+  // D1 binds at most 100 parameters per statement: long handle lists go in slices.
+  const slices = chunk(handles, 80);
   const [memberRows, agentRows] = await Promise.all([
-    db
-      .select({ userId: projectMember.userId })
-      .from(projectMember)
-      .innerJoin(user, eq(user.id, projectMember.userId))
-      .where(
-        and(eq(projectMember.projectId, projectId), inArray(sql`lower(${user.username})`, handles)),
+    Promise.all(
+      slices.map((slice) =>
+        db
+          .select({ userId: projectMember.userId })
+          .from(projectMember)
+          .innerJoin(user, eq(user.id, projectMember.userId))
+          .where(
+            and(
+              eq(projectMember.projectId, projectId),
+              inArray(sql`lower(${user.username})`, slice),
+            ),
+          ),
       ),
-    db
-      .select({ userId: aiAgent.userId })
-      .from(aiAgent)
-      .innerJoin(
-        projectMember,
-        and(eq(projectMember.userId, aiAgent.userId), eq(projectMember.projectId, projectId)),
-      )
-      .where(inArray(sql`lower(${aiAgent.username})`, handles)),
+    ).then((parts) => parts.flat()),
+    Promise.all(
+      slices.map((slice) =>
+        db
+          .select({ userId: aiAgent.userId })
+          .from(aiAgent)
+          .innerJoin(
+            projectMember,
+            and(eq(projectMember.userId, aiAgent.userId), eq(projectMember.projectId, projectId)),
+          )
+          .where(inArray(sql`lower(${aiAgent.username})`, slice)),
+      ),
+    ).then((parts) => parts.flat()),
   ]);
   return {
     memberIds: memberRows.map((row) => row.userId),

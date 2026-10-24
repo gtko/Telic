@@ -6,11 +6,14 @@ import {
   scimGroupMember,
   scimUser,
   teamMember,
+  appSetting,
+  batchAll,
+  setSetting,
   teamWorkspaceId,
   user,
   type Db,
 } from '@repo/db';
-import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { workspacesWithOwnScim } from '@repo/auth';
 import { removeMember, setMembership, type MemberRole } from '#modules/members/service';
 import { listSeatHolderIds } from '#modules/teams/service';
@@ -29,10 +32,70 @@ interface Desired {
   roleId: number | null;
 }
 
-export async function reconcileProjects(db: Db, projectIds: number[]): Promise<void> {
-  for (const projectId of new Set(projectIds)) {
-    await reconcileProject(db, projectId);
+// A Worker invocation may run about 1000 D1 queries. A reconciliation over many projects
+// or a large group can exceed that, so it spends from a budget and, when the budget runs
+// out, parks the projects it did not finish as pending cursors; `resumeReconcile` (run by
+// the scheduled handler, one tick at a time) picks them up. Choice: a cron re-trigger
+// rather than a queue message, since no queue binding exists for it and the work is
+// idempotent — a tick recomputes each pending project's difference and applies what is
+// still missing, so a crash, a duplicate tick or a half-done project loses nothing.
+export const RECONCILE_QUERY_BUDGET = 900;
+// What reading one project (its mappings, members, limits, seats) costs at most, before
+// any write: a project is not started with less than this left.
+const PROJECT_READ_COST = 12;
+const PENDING_PREFIX = 'scim.reconcile.pending.';
+
+export class QueryBudget {
+  constructor(public left: number) {}
+  // Takes `n` queries from the budget; false (and nothing taken) when too few are left.
+  spend(n = 1): boolean {
+    if (this.left < n) return false;
+    this.left -= n;
+    return true;
   }
+}
+
+// One setting key per project, so two requests parking projects never overwrite each
+// other (a single list would be a read-modify-write that D1 cannot make atomic).
+async function parkPending(db: Db, projectIds: number[]): Promise<void> {
+  for (const id of projectIds) await setSetting(db, `${PENDING_PREFIX}${id}`, 1);
+}
+
+export async function pendingReconcileProjects(db: Db): Promise<number[]> {
+  const rows = await db
+    .select({ key: appSetting.key })
+    .from(appSetting)
+    .where(like(appSetting.key, `${PENDING_PREFIX}%`))
+    .orderBy(appSetting.key);
+  return rows.map((row) => Number(row.key.slice(PENDING_PREFIX.length)));
+}
+
+// Reconciles the projects within the query budget and parks the rest. Returns whether
+// all of them finished.
+export async function reconcileProjects(
+  db: Db,
+  projectIds: number[],
+  budget = new QueryBudget(RECONCILE_QUERY_BUDGET),
+): Promise<boolean> {
+  const todo = [...new Set(projectIds)];
+  for (let i = 0; i < todo.length; i += 1) {
+    const projectId = todo[i]!;
+    if (budget.left >= PROJECT_READ_COST && (await reconcileProject(db, projectId, budget))) {
+      await db.delete(appSetting).where(eq(appSetting.key, `${PENDING_PREFIX}${projectId}`));
+      continue;
+    }
+    await parkPending(db, todo.slice(i));
+    return false;
+  }
+  return true;
+}
+
+// One tick of the scheduled handler: continues the parked projects with a fresh budget.
+export async function resumeReconcile(db: Db): Promise<{ remaining: number }> {
+  const pending = await pendingReconcileProjects(db);
+  if (pending.length === 0) return { remaining: 0 };
+  await reconcileProjects(db, pending);
+  return { remaining: (await pendingReconcileProjects(db)).length };
 }
 
 // The group members whose mappings grant a project of this workspace, as a condition on
@@ -70,7 +133,7 @@ async function desiredMembers(
     .leftJoin(
       scimUser,
       and(
-        sql`${scimUser.workspaceId} IS NOT DISTINCT FROM ${scimGroup.workspaceId}`,
+        sql`${scimUser.workspaceId} IS ${scimGroup.workspaceId}`,
         eq(scimUser.userId, scimGroupMember.userId),
       ),
     )
@@ -88,12 +151,15 @@ async function desiredMembers(
   return desired;
 }
 
-async function reconcileProject(db: Db, projectId: number): Promise<void> {
+// False when the budget ran out before the project was fully reconciled: what was
+// written stays, and the next run recomputes the difference.
+async function reconcileProject(db: Db, projectId: number, budget: QueryBudget): Promise<boolean> {
   const [owner] = await db
     .select({ teamId: project.teamId })
     .from(project)
     .where(eq(project.id, projectId));
-  if (!owner) return;
+  budget.spend(PROJECT_READ_COST);
+  if (!owner) return true;
   const workspaceId = await teamWorkspaceId(owner.teamId, db);
   const desired = await desiredMembers(db, projectId, workspaceId);
   const existing = await db
@@ -124,18 +190,22 @@ async function reconcileProject(db: Db, projectId: number): Promise<void> {
         seats.add(userId);
       }
       // A project membership only exists on top of one in the team that owns the
-      // project, so the group grants that first. It never raises an existing rank.
-      await db
-        .insert(teamMember)
-        .values({ teamId: owner.teamId, userId, role: 'member', source: 'scim' })
-        .onConflictDoNothing();
-      await db.insert(projectMember).values({
-        projectId,
-        userId,
-        role: want.role,
-        roleId: want.roleId,
-        source: 'scim',
-      });
+      // project, so the group grants that first. It never raises an existing rank. One
+      // atomic batch: the team row never stands without its project row.
+      if (!budget.spend(2)) return false;
+      await batchAll(db, [
+        db
+          .insert(teamMember)
+          .values({ teamId: owner.teamId, userId, role: 'member', source: 'scim' })
+          .onConflictDoNothing(),
+        db.insert(projectMember).values({
+          projectId,
+          userId,
+          role: want.role,
+          roleId: want.roleId,
+          source: 'scim',
+        }),
+      ]);
       if (want.role === 'owner') owners += 1;
       continue;
     }
@@ -144,6 +214,7 @@ async function reconcileProject(db: Db, projectId: number): Promise<void> {
     if (have.source !== 'scim') continue;
     if (have.role === want.role && have.roleId === want.roleId) continue;
     if (have.role === 'owner' && want.role !== 'owner' && owners <= 1) continue;
+    if (!budget.spend(2)) return false;
     await setMembership(db, projectId, userId, want.role, want.roleId);
     if (have.role === 'owner' && want.role !== 'owner') owners -= 1;
     if (have.role !== 'owner' && want.role === 'owner') owners += 1;
@@ -154,10 +225,12 @@ async function reconcileProject(db: Db, projectId: number): Promise<void> {
     // A project without an owner has nobody who can manage its members, so the
     // last one stays even when the group no longer grants it.
     if (row.role === 'owner' && owners <= 1) continue;
+    if (!budget.spend(4)) return false;
     await removeMember(db, projectId, row.userId);
     await dropUnusedTeamMembership(db, owner.teamId, row.userId);
     if (row.role === 'owner') owners -= 1;
   }
+  return true;
 }
 
 // The team membership the group granted goes when the last project it granted in

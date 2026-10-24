@@ -1,5 +1,5 @@
 import { appSetting, userPreference, type Db } from '@repo/db';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { AuthUser } from '#shared/access';
 import { getAppVersion, releasesSince, type Release } from './updates';
 
@@ -62,18 +62,18 @@ export async function getWhatsNew(db: Db, user: AuthUser): Promise<WhatsNew> {
     .from(userPreference)
     .where(eq(userPreference.userId, user.id));
   const admin = user.role === 'god';
-  const releases = await releasesSince(db, preference?.seenVersion ?? null);
+  const releases = await releasesSince(preference?.seenVersion ?? null);
   const [backup, applied] = admin
     ? await Promise.all([
-        readSetting<BackupInfo>(BACKUP_KEY),
-        readSetting<{ migrations: string[] }>(MIGRATION_RUN_KEY),
+        readSetting<BackupInfo>(db, BACKUP_KEY),
+        readSetting<{ migrations: string[] }>(db, MIGRATION_RUN_KEY),
       ])
     : [null, null];
   // The report belongs to the upgrade that applied its migration. A later release,
   // and a fresh install where the migration ran over an empty database, leave it out:
   // the row it wrote stays for an operator reading app_setting by hand.
   const migration = applied?.migrations.some((tag) => tag.endsWith(MIGRATION_TAG_SUFFIX))
-    ? await readSetting<TeamsMigrationReport>(MIGRATION_REPORT_KEY)
+    ? await readSetting<TeamsMigrationReport>(db, MIGRATION_REPORT_KEY)
     : null;
   return {
     version,
@@ -92,6 +92,6 @@ export async function markWhatsNewSeen(db: Db, userId: string): Promise<void> {
     .values({ userId, seenVersion: getAppVersion() })
     .onConflictDoUpdate({
       target: userPreference.userId,
-      set: { seenVersion: getAppVersion(), updatedAt: sql`now()` },
+      set: { seenVersion: getAppVersion(), updatedAt: new Date() },
     });
 }

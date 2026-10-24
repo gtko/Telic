@@ -1,5 +1,5 @@
-import type { Db } from '@repo/db';
 import pkg from '../../../../../package.json';
+import { CHANGELOG_MARKDOWN } from './changelog.generated';
 
 // Whether a newer release is published, plus the notes to show. The repository's
 // releases atom feed is the source of the history; the CHANGELOG.md of this build
@@ -20,8 +20,6 @@ const FEED_TTL_MS = 30 * 60_000;
 // Fixed: an instance checks the project it is built from, so there is nothing to
 // configure.
 const FEED_URL = 'https://github.com/croffasia/itsaplan/releases.atom';
-
-const CHANGELOG_PATH = `${import.meta.dir}/../../../../../CHANGELOG.md`;
 
 export interface Release {
   tag: string;
@@ -124,11 +122,12 @@ export function parseChangelog(markdown: string): Release[] {
 
 let changelog: Release[] | null = null;
 
-// The file ships with the build and never changes at runtime, so it is read once.
+// The changelog is embedded in the bundle (changelog.generated.ts) and never changes at
+// runtime, so it is parsed once.
 async function localHistory(): Promise<Release[]> {
   if (changelog) return changelog;
   try {
-    changelog = parseChangelog(await Bun.file(CHANGELOG_PATH).text());
+    changelog = parseChangelog(CHANGELOG_MARKDOWN);
   } catch (err) {
     console.error('[updates] changelog unreadable:', err);
     changelog = [];
@@ -154,7 +153,7 @@ let feed: FeedRead | null = null;
 
 // Null when the feed has never been read, so the caller answers from the local
 // history alone instead of reporting a check that did not happen.
-async function publishedReleases(db: Db, force = false): Promise<FeedRead | null> {
+async function publishedReleases(force = false): Promise<FeedRead | null> {
   // The suite must not depend on github.com being reachable, and the same
   // NODE_ENV already gates the db reset helper.
   if (process.env.NODE_ENV === 'test') return null;
@@ -179,8 +178,8 @@ export function mergeHistory(published: Release[], local: Release[]): Release[] 
 // the releases page the screen links to.
 const HISTORY_LIMIT = 10;
 
-export async function getUpdateStatus(db: Db, force = false): Promise<UpdateStatus> {
-  const checked = await publishedReleases(db, force);
+export async function getUpdateStatus(force = false): Promise<UpdateStatus> {
+  const checked = await publishedReleases(force);
   const published = checked?.releases ?? [];
   const currentVersion = getAppVersion();
   return {
@@ -197,9 +196,9 @@ export async function getUpdateStatus(db: Db, force = false): Promise<UpdateStat
 // — it gets the running release alone rather than the whole history. The feed's notes
 // are preferred over the changelog section of the same version: the changelog is
 // generated from commit subjects, the release page is written for a reader.
-export async function releasesSince(db: Db, seenVersion: string | null): Promise<Release[]> {
+export async function releasesSince(seenVersion: string | null): Promise<Release[]> {
   const current = getAppVersion();
-  const history = mergeHistory((await publishedReleases(db))?.releases ?? [], await localHistory());
+  const history = mergeHistory((await publishedReleases())?.releases ?? [], await localHistory());
   return history.filter((r) => {
     if (compareVersions(r.version, current) > 0) return false;
     return seenVersion ? compareVersions(r.version, seenVersion) > 0 : r.version === current;

@@ -151,9 +151,9 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/auth-settings',
-    async () => ({
+    async ({ db }) => ({
       ...(await getAuthSettings()),
-      hasEmailProvider: await hasConfiguredEmailProvider(),
+      hasEmailProvider: await hasConfiguredEmailProvider(db),
       hasSsoProvider: await hasSsoProvider(),
     }),
     {
@@ -168,8 +168,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/auth-settings',
-    async ({ body }) => {
-      const ready = await hasConfiguredEmailProvider();
+    async ({ db, body }) => {
+      const ready = await hasConfiguredEmailProvider(db);
       // Verification mail and magic links have no way to reach the user without a
       // provider, so they cannot be turned on before one is configured.
       if (!ready && (body.requireEmailVerification || body.magicLink)) {
@@ -372,7 +372,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/scim/groups', () => listProvisionedGroups(db, null), {
+  .get('/god/scim/groups', ({ db }) => listProvisionedGroups(db, null), {
     response: { 200: t.Array(ProvisionedGroupResponse), ...errors(401, 403) },
     detail: {
       summary: 'List provisioned groups',
@@ -398,7 +398,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   )
 
-  .get('/god/scim/projects', () => listMappableProjects(db, null), {
+  .get('/god/scim/projects', ({ db }) => listMappableProjects(db, null), {
     response: { 200: MappableProjectListResponse, ...errors(401, 403) },
     detail: {
       summary: 'List mappable projects',
@@ -408,7 +408,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/storage-settings', () => getStorageSettings(), {
+  .get('/god/storage-settings', ({ db }) => getStorageSettings(db), {
     response: { 200: StorageSettingsSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get storage limits',
@@ -416,7 +416,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/storage-settings', ({ body }) => setStorageSettings(body), {
+  .put('/god/storage-settings', ({ db, body }) => setStorageSettings(db, body), {
     body: StorageSettingsBody,
     response: { 200: StorageSettingsSchema, ...errors(400, 401, 403) },
     detail: {
@@ -426,7 +426,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/project-defaults', () => getProjectDefaults(), {
+  .get('/god/project-defaults', ({ db }) => getProjectDefaults(db), {
     response: { 200: ProjectDefaultsSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get project defaults',
@@ -434,7 +434,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/project-defaults', ({ body }) => setProjectDefaults(body), {
+  .put('/god/project-defaults', ({ db, body }) => setProjectDefaults(db, body), {
     body: ProjectDefaultsSchema,
     response: { 200: ProjectDefaultsSchema, ...errors(400, 401, 403) },
     detail: {
@@ -444,7 +444,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/agent-settings', () => getAgentSettings(), {
+  .get('/god/agent-settings', ({ db }) => getAgentSettings(db), {
     response: { 200: AgentSettingsSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get instance agent settings',
@@ -452,7 +452,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/agent-settings', ({ body }) => setAgentSettings(body), {
+  .put('/god/agent-settings', ({ db, body }) => setAgentSettings(db, body), {
     body: t.Partial(AgentSettingsSchema),
     response: { 200: AgentSettingsSchema, ...errors(400, 401, 403) },
     detail: {
@@ -463,7 +463,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/hotkey-settings', () => getHotkeySettings(), {
+  .get('/god/hotkey-settings', ({ db }) => getHotkeySettings(db), {
     response: { 200: HotkeyCombosSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get instance keyboard shortcuts',
@@ -472,7 +472,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .put('/god/hotkey-settings', ({ body }) => setHotkeySettings(body), {
+  .put('/god/hotkey-settings', ({ db, body }) => setHotkeySettings(db, body), {
     body: HotkeyCombosSchema,
     response: { 200: HotkeyCombosSchema, ...errors(400, 401, 403) },
     detail: {
@@ -486,7 +486,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
   // running one. Owner-only: they are the one who upgrades the instance, and the
   // sidebar hides the indicator from everyone else. The version alone is readable by
   // any signed-in user (/settings/version).
-  .get('/god/updates', () => getUpdateStatus(db), {
+  .get('/god/updates', () => getUpdateStatus(), {
     response: { 200: UpdateStatusSchema, ...errors(401, 403) },
     detail: {
       summary: 'Get the update status',
@@ -495,7 +495,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .post('/god/updates/check', () => getUpdateStatus(db, true), {
+  .post('/god/updates/check', () => getUpdateStatus(true), {
     response: { 200: UpdateStatusSchema, ...errors(401, 403) },
     detail: {
       summary: 'Check for updates now',
@@ -504,7 +504,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/telegram-settings', () => getInstanceBotSettings(db), {
+  .get('/god/telegram-settings', ({ db }) => getInstanceBotSettings(db), {
     response: { 200: TelegramSettingsResponse, ...errors(401, 403) },
     detail: {
       summary: 'Get Telegram bot settings',
@@ -543,9 +543,9 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/users',
-    ({ query }) =>
+    ({ db, query }) =>
       paginate(query, (window) =>
-        listInstanceUsers({ search: query.search, kind: query.kind ?? 'human', ...window }),
+        listInstanceUsers(db, { search: query.search, kind: query.kind ?? 'human', ...window }),
       ),
     {
       query: listUsersQuery,
@@ -685,8 +685,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/projects',
-    ({ query }) =>
-      paginate(query, (window) => listInstanceProjects({ search: query.search, ...window })),
+    ({ db, query }) =>
+      paginate(query, (window) => listInstanceProjects(db, { search: query.search, ...window })),
     {
       query: searchPageQuery,
       response: { 200: InstanceProjectPageResponse, ...errors(400, 401, 403) },
@@ -717,8 +717,8 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .get(
     '/god/teams',
-    ({ query }) =>
-      paginate(query, (window) => listInstanceTeams({ search: query.search, ...window })),
+    ({ db, query }) =>
+      paginate(query, (window) => listInstanceTeams(db, { search: query.search, ...window })),
     {
       query: searchPageQuery,
       response: { 200: InstanceTeamPageResponse, ...errors(400, 401, 403) },
