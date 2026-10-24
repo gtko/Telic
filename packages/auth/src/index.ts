@@ -1,5 +1,4 @@
 import { randomInt } from 'node:crypto';
-import { createWorkspace, db } from '@repo/db';
 import { and, eq, gt, isNull, sql, type SQL } from 'drizzle-orm';
 import { betterAuth, type BetterAuthPlugin } from 'better-auth';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
@@ -13,6 +12,7 @@ import {
 } from '@better-auth/oauth-provider';
 import { jwt, openAPI, magicLink, username, genericOAuth } from 'better-auth/plugins';
 import { createLocalJWKSet, jwtVerify } from 'jose';
+import type { Db } from '@repo/db';
 import * as schema from '@repo/db/schema';
 import {
   getAuthSettings,
@@ -29,15 +29,19 @@ import {
 import { sendAuthEmail } from './mail';
 import { readAuthExtensions } from './extensions';
 
-// Frontend origins allowed to call the auth handler. Mandatory config: cookies, the
-// WebAuthn relying party and the cookie domain are all derived from it, so a deploy
-// that misses it has to fail at startup instead of running on a localhost default.
-export const trustedOrigins = (process.env.APP_URL ?? '')
-  .split(',')
-  .map((origin) => origin.trim().replace(/\/+$/, ''))
-  .filter(Boolean);
-if (trustedOrigins.length === 0) {
-  throw new Error('APP_URL is not set: public origin(s) of the web app.');
+// The variables the auth instance reads. They are passed in, not read from the process:
+// a Worker hands over its own env, a Bun process hands over process.env. Nothing here is
+// read at import time, so importing this module never needs the configuration.
+export interface AuthEnv {
+  APP_URL?: string;
+  API_URL?: string;
+  BETTER_AUTH_SECRET?: string;
+  COOKIE_DOMAIN?: string;
+  PASSKEY_RP_ID?: string;
+  PASSKEY_RP_NAME?: string;
+  CLIENT_IP_HEADER?: string;
+  TRUSTED_PROXIES?: string;
+  NODE_ENV?: string;
 }
 
 // Parent domain for a cross-subdomain session cookie (".example.com" from
@@ -67,80 +71,151 @@ function safeUrl(value: string | undefined): URL | undefined {
   }
 }
 
-// parentDomain() would widen the cookie to sibling subdomains even when web and api
-// share a host, where a host-only cookie is enough.
-const sameHost = safeUrl(trustedOrigins[0])?.hostname === safeUrl(process.env.API_URL)?.hostname;
-
-// COOKIE_DOMAIN wins (multi-label TLDs, deep subdomains); otherwise host-only when web
-// and api share a host, else the parent domain of the frontend.
-const cookieDomain =
-  process.env.COOKIE_DOMAIN || (sameHost ? undefined : parentDomain(trustedOrigins[0]));
-
-// WebAuthn relying-party id: the frontend domain the passkey is bound to (no port,
-// no scheme). The WebAuthn ceremony runs in the frontend JS, so the expected origin
-// is the frontend origin(s) — the same trustedOrigins list. On localhost this all
-// works over http (localhost is a secure context). In prod set PASSKEY_RP_ID to the
-// public frontend hostname.
-const passkeyRpID = process.env.PASSKEY_RP_ID ?? new URL(trustedOrigins[0]).hostname;
-
-// The client IP keys the rate limit. Unset, better-auth reads X-Forwarded-For and takes
-// it only when it holds one address; TRUSTED_PROXIES lets it read a chain.
-const clientIpHeader = process.env.CLIENT_IP_HEADER;
-const trustedProxies = process.env.TRUSTED_PROXIES?.split(',')
-  .map((entry) => entry.trim())
-  .filter(Boolean);
-
-// Public URL of the backend, with the path a subpath proxy adds; the links in auth
-// emails and the OAuth redirect URIs are built from it.
-const apiPublicUrl = (process.env.API_URL ?? '').replace(/\/+$/, '');
-if (!apiPublicUrl) {
-  throw new Error('API_URL is not set: public URL of the backend.');
-}
-const apiUrl = safeUrl(apiPublicUrl);
-if (!apiUrl) {
-  throw new Error(`API_URL is not a valid URL: ${apiPublicUrl}`);
+// Everything derived from the environment, computed from it on every call. Mandatory
+// config: cookies, the WebAuthn relying party and the cookie domain are all derived from
+// it, so a deploy that misses it fails here instead of running on a localhost default.
+interface AuthConfig {
+  trustedOrigins: string[];
+  apiPublicUrl: string;
+  baseURL: string;
+  apiHasPath: boolean;
+  cookieDomain: string | undefined;
+  hostPrefixedCookies: boolean;
+  passkeyRpID: string;
+  clientIpHeader: string | undefined;
+  trustedProxies: string[] | undefined;
+  mcpOAuth: boolean;
+  mcpIssuer: string;
+  mcpResource: string;
+  oauthErrorURL: string;
+  googleRedirectUri: string;
+  oidcRedirectUri: string;
 }
 
-// A baseURL with a path replaces better-auth's /api/auth basePath and the api's fixed
-// mount stops matching, so it only gets the origin.
-const baseURL = apiUrl.origin;
-const apiHasPath = apiUrl.pathname !== '/';
-
-// Over HTTPS with a host-only cookie the session cookies carry the __Host- prefix:
-// the browser then refuses a cookie of that name planted by a sibling subdomain (with
-// a Domain, or a narrower Path), which __Secure- does not prevent. better-auth only
-// writes __Secure-, so its automatic prefix is turned off and both prefixes are written
-// into the names here.
-const hostPrefixedCookies = baseURL.startsWith('https://') && !cookieDomain;
 const SESSION_COOKIES = ['session_token', 'session_data', 'account_data', 'dont_remember'];
 
-// better-auth builds the links it hands to the mailers from the origin-only baseURL;
-// this puts the path back.
-function withPublicOrigin(url: string): string {
-  return url.startsWith(baseURL) ? apiPublicUrl + url.slice(baseURL.length) : url;
+function authConfig(env: AuthEnv): AuthConfig {
+  // Frontend origins allowed to call the auth handler.
+  const trustedOrigins = (env.APP_URL ?? '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  if (trustedOrigins.length === 0) {
+    throw new Error('APP_URL is not set: public origin(s) of the web app.');
+  }
+
+  // Public URL of the backend, with the path a subpath proxy adds; the links in auth
+  // emails and the OAuth redirect URIs are built from it.
+  const apiPublicUrl = (env.API_URL ?? '').replace(/\/+$/, '');
+  if (!apiPublicUrl) {
+    throw new Error('API_URL is not set: public URL of the backend.');
+  }
+  const apiUrl = safeUrl(apiPublicUrl);
+  if (!apiUrl) {
+    throw new Error(`API_URL is not a valid URL: ${apiPublicUrl}`);
+  }
+
+  // parentDomain() would widen the cookie to sibling subdomains even when web and api
+  // share a host, where a host-only cookie is enough.
+  const sameHost = safeUrl(trustedOrigins[0])?.hostname === safeUrl(env.API_URL)?.hostname;
+
+  // COOKIE_DOMAIN wins (multi-label TLDs, deep subdomains); otherwise host-only when web
+  // and api share a host, else the parent domain of the frontend.
+  const cookieDomain =
+    env.COOKIE_DOMAIN || (sameHost ? undefined : parentDomain(trustedOrigins[0]));
+
+  // WebAuthn relying-party id: the frontend domain the passkey is bound to (no port,
+  // no scheme). In prod set PASSKEY_RP_ID to the public frontend hostname.
+  const passkeyRpID = env.PASSKEY_RP_ID ?? new URL(trustedOrigins[0]!).hostname;
+
+  // The client IP keys the rate limit. Unset, better-auth reads X-Forwarded-For and takes
+  // it only when it holds one address; TRUSTED_PROXIES lets it read a chain.
+  const clientIpHeader = env.CLIENT_IP_HEADER;
+  const trustedProxies = env.TRUSTED_PROXIES?.split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  // A baseURL with a path replaces better-auth's /api/auth basePath and the api's fixed
+  // mount stops matching, so it only gets the origin.
+  const baseURL = apiUrl.origin;
+  const apiHasPath = apiUrl.pathname !== '/';
+
+  // Over HTTPS with a host-only cookie the session cookies carry the __Host- prefix.
+  const hostPrefixedCookies = baseURL.startsWith('https://') && !cookieDomain;
+
+  // The MCP authorization server. Its issuer is the public URL of the api, so the access
+  // tokens, the authorization responses and the discovery documents name the URL a
+  // client reaches, behind a path prefix too.
+  const mcpIssuer = apiPublicUrl;
+  const mcpResource = `${apiPublicUrl}/mcp`;
+
+  // better-auth accepts a plain-HTTP MCP resource only on a loopback host. Any other
+  // instance without HTTPS serves MCP to personal API keys only.
+  const mcpOAuth =
+    apiUrl.protocol === 'https:' ||
+    apiUrl.hostname === 'localhost' ||
+    apiUrl.hostname === '[::1]' ||
+    apiUrl.hostname.startsWith('127.');
+
+  return {
+    trustedOrigins,
+    apiPublicUrl,
+    baseURL,
+    apiHasPath,
+    cookieDomain,
+    hostPrefixedCookies,
+    passkeyRpID,
+    clientIpHeader,
+    trustedProxies,
+    mcpOAuth,
+    mcpIssuer,
+    mcpResource,
+    // An error better-auth cannot hand back to the page that started the flow lands here.
+    // Its own /api/auth/error is outside a path prefix and, on the api's own host, sends a
+    // production browser to the api's root; /login turns ?error= into a message.
+    oauthErrorURL: `${trustedOrigins[0]}/login`,
+    // The exact authorized redirect URI to register in the Google Cloud console; god mode
+    // shows it for copying.
+    googleRedirectUri: `${apiPublicUrl}/api/auth/callback/google`,
+    // The redirect URI to register with the identity provider; god mode shows it for
+    // copying. better-auth serves the callback at /callback/oidc and the api passes this
+    // path on to it, so a provider registered with it keeps working.
+    oidcRedirectUri: `${apiPublicUrl}/api/auth/oauth2/callback/${OIDC_PROVIDER_ID}`,
+  };
 }
 
-// The MCP authorization server. Its issuer is the public URL of the api, so the access
-// tokens, the authorization responses and the discovery documents name the URL a
-// client reaches, behind a path prefix too.
-const MCP_ISSUER = apiPublicUrl;
-const MCP_RESOURCE = `${apiPublicUrl}/mcp`;
+// The frontend origins the auth handler accepts, from the environment.
+export function trustedOriginsOf(env: AuthEnv): string[] {
+  return authConfig(env).trustedOrigins;
+}
 
-// better-auth accepts a plain-HTTP MCP resource only on a loopback host. Any other
-// instance without HTTPS serves MCP to personal API keys only.
-const mcpOAuth =
-  apiUrl.protocol === 'https:' ||
-  apiUrl.hostname === 'localhost' ||
-  apiUrl.hostname === '[::1]' ||
-  apiUrl.hostname.startsWith('127.');
+// The redirect URIs god mode shows for copying (see authConfig).
+export function googleRedirectUri(env: AuthEnv): string {
+  return authConfig(env).googleRedirectUri;
+}
+
+export function oidcRedirectUri(env: AuthEnv): string {
+  return authConfig(env).oidcRedirectUri;
+}
+
+// The generic OIDC provider. One per instance, so its id is a constant: it is what
+// the `account` rows store.
+export const OIDC_PROVIDER_ID = 'oidc';
+
+// A better-auth instance is built per request by createAuth(env, db): nothing here holds
+// a connection, so every query goes to the database the caller passed in.
+export type Auth = ReturnType<typeof createAuth>;
+export type Session = Auth['$Infer']['Session'];
 
 // The discovery documents list endpoints built from the origin-only baseURL; behind a
 // path prefix they would land on whatever serves the root of the host.
-async function withPublicDiscoveryUrls(response: Response): Promise<Response> {
-  if (!apiHasPath || !response.ok) return response;
-  const authBase = `${baseURL}/api/auth`;
+async function withPublicDiscoveryUrls(cfg: AuthConfig, response: Response): Promise<Response> {
+  if (!cfg.apiHasPath || !response.ok) return response;
+  const authBase = `${cfg.baseURL}/api/auth`;
   const toPublic = (value: unknown) =>
-    typeof value === 'string' && value.startsWith(authBase) ? withPublicOrigin(value) : value;
+    typeof value === 'string' && value.startsWith(authBase)
+      ? cfg.apiPublicUrl + value.slice(cfg.baseURL.length)
+      : value;
   const metadata = (await response.json()) as Record<string, unknown>;
   for (const [key, value] of Object.entries(metadata)) {
     metadata[key] = Array.isArray(value) ? value.map(toPublic) : toPublic(value);
@@ -150,30 +225,50 @@ async function withPublicDiscoveryUrls(response: Response): Promise<Response> {
 
 const notFound = () => new Response(null, { status: 404 });
 
-export async function oauthAuthorizationServerMetadata(request: Request): Promise<Response> {
-  if (!mcpOAuth) return notFound();
-  return withPublicDiscoveryUrls(await oauthProviderAuthServerMetadata(auth)(request));
+export async function oauthAuthorizationServerMetadata(
+  env: AuthEnv,
+  db: Db,
+  request: Request,
+): Promise<Response> {
+  const cfg = authConfig(env);
+  if (!cfg.mcpOAuth) return notFound();
+  return withPublicDiscoveryUrls(
+    cfg,
+    await oauthProviderAuthServerMetadata(createAuth(env, db))(request),
+  );
 }
 
-export async function openIdConfiguration(request: Request): Promise<Response> {
-  if (!mcpOAuth) return notFound();
-  return withPublicDiscoveryUrls(await oauthProviderOpenIdConfigMetadata(auth)(request));
+export async function openIdConfiguration(
+  env: AuthEnv,
+  db: Db,
+  request: Request,
+): Promise<Response> {
+  const cfg = authConfig(env);
+  if (!cfg.mcpOAuth) return notFound();
+  return withPublicDiscoveryUrls(
+    cfg,
+    await oauthProviderOpenIdConfigMetadata(createAuth(env, db))(request),
+  );
 }
 
 // The mcp plugin serves this document itself, for a request under its own path.
-export async function oauthProtectedResourceMetadata(): Promise<Response> {
-  if (!mcpOAuth) return notFound();
-  return auth.handler(new Request(`${baseURL}/.well-known/oauth-protected-resource`));
+export async function oauthProtectedResourceMetadata(env: AuthEnv, db: Db): Promise<Response> {
+  const cfg = authConfig(env);
+  if (!cfg.mcpOAuth) return notFound();
+  return createAuth(env, db).handler(
+    new Request(`${cfg.baseURL}/.well-known/oauth-protected-resource`),
+  );
 }
 
 // The answer to an MCP request without a usable credential. The challenge names the
 // resource metadata, which is where an MCP client starts the OAuth flow.
-export function mcpUnauthorized(): Response {
+export function mcpUnauthorized(env: AuthEnv): Response {
+  const cfg = authConfig(env);
   const headers = new Headers({ 'Content-Type': 'application/json' });
-  if (mcpOAuth) {
+  if (cfg.mcpOAuth) {
     headers.set(
       'WWW-Authenticate',
-      `Bearer resource_metadata="${apiPublicUrl}/.well-known/oauth-protected-resource/mcp"`,
+      `Bearer resource_metadata="${cfg.apiPublicUrl}/.well-known/oauth-protected-resource/mcp"`,
     );
   }
   return new Response(
@@ -190,14 +285,20 @@ export function mcpUnauthorized(): Response {
 // introspection does: a token issued in a session ends with it, and so does every
 // token of a deactivated account. A DPoP-bound token is valid only with its proof,
 // which this check does not take.
-export async function verifyMcpAccessToken(token: string): Promise<string | null> {
-  if (!mcpOAuth) return null;
+export async function verifyMcpAccessToken(
+  env: AuthEnv,
+  db: Db,
+  token: string,
+): Promise<string | null> {
+  const cfg = authConfig(env);
+  if (!cfg.mcpOAuth) return null;
   let claims: { sub?: string; sid?: unknown; cnf?: unknown; client_id?: unknown };
   try {
-    ({ payload: claims } = await jwtVerify(token, createLocalJWKSet(await auth.api.getJwks()), {
-      issuer: MCP_ISSUER,
-      audience: MCP_RESOURCE,
-    }));
+    ({ payload: claims } = await jwtVerify(
+      token,
+      createLocalJWKSet(await createAuth(env, db).api.getJwks()),
+      { issuer: cfg.mcpIssuer, audience: cfg.mcpResource },
+    ));
   } catch {
     return null;
   }
@@ -209,7 +310,7 @@ export async function verifyMcpAccessToken(token: string): Promise<string | null
   if (!account || isAccountDeactivated(account)) return null;
   // Disconnecting the application on the account's Security page ends its tokens at once.
   if (typeof claims.client_id !== 'string') return null;
-  if (!(await isClientConnected(claims.sub, claims.client_id))) return null;
+  if (!(await isClientConnected(db, claims.sub, claims.client_id))) return null;
   if (typeof claims.sid === 'string') {
     const [open] = await db
       .select({ n: sql`1` })
@@ -222,7 +323,7 @@ export async function verifyMcpAccessToken(token: string): Promise<string | null
 
 // Connected while the person's consent stands or a refresh token can still mint tokens,
 // the same rule the Security page lists applications by.
-async function isClientConnected(userId: string, clientId: string): Promise<boolean> {
+async function isClientConnected(db: Db, userId: string, clientId: string): Promise<boolean> {
   const [consent] = await db
     .select({ n: sql`1` })
     .from(schema.oauthConsent)
@@ -244,153 +345,22 @@ async function isClientConnected(userId: string, clientId: string): Promise<bool
   return Boolean(refresh);
 }
 
-// An error better-auth cannot hand back to the page that started the flow lands here.
-// Its own /api/auth/error is outside a path prefix and, on the api's own host, sends a
-// production browser to the api's root; /login turns ?error= into a message.
-const oauthErrorURL = `${trustedOrigins[0]}/login`;
-
 // User roles. "god" is the owner of the instance: the very first registered user
 // gets it automatically; everyone after is a plain "user". The role is assigned
 // server-side (input: false) so a client cannot request it at sign-up.
 export const USER_ROLES = ['god', 'user'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-// The exact authorized redirect URI to register in the Google Cloud console;
-// god mode shows it for copying.
-export const GOOGLE_REDIRECT_URI = `${apiPublicUrl}/api/auth/callback/google`;
-
-// Google OAuth credentials live in the database (god mode), not in env. The provider
-// is built once at startup, but it keeps this options object by reference and reads
-// clientId / clientSecret off it on every call, so refreshing the object per request
-// is what lets the owner change or revoke the credentials without a restart.
-// redirectURI is explicit: the one inferred from the origin-only baseURL lacks the path.
-const googleOptions = { clientId: '', clientSecret: '', redirectURI: GOOGLE_REDIRECT_URI };
-
-// Loads the stored credentials into that object and reports whether Google sign-in
-// can run. A read failure disables the provider rather than failing the request with
-// a stale secret.
-async function refreshGoogleOptions(): Promise<boolean> {
-  try {
-    const config = await getGoogleConfig();
-    googleOptions.clientId = config.clientId;
-    googleOptions.clientSecret = config.clientSecret;
-    return isGoogleUsable(config);
-  } catch (error) {
-    console.error('[auth] could not read the Google credentials:', error);
-    return false;
-  }
-}
-
-// The generic OIDC provider. One per instance, so its id is a constant: it is what
-// the `account` rows store.
-export const OIDC_PROVIDER_ID = 'oidc';
-
-// The redirect URI to register with the identity provider; god mode shows it for
-// copying. better-auth serves the callback at /callback/oidc and the api passes this
-// path on to it, so a provider registered with it keeps working.
-export const OIDC_REDIRECT_URI = `${apiPublicUrl}/api/auth/oauth2/callback/${OIDC_PROVIDER_ID}`;
-
 type PluginContext = Parameters<NonNullable<BetterAuthPlugin['init']>>[0];
 type SocialProvider = PluginContext['socialProviders'][number];
-
-// genericOAuth reads the discovery document once, when the plugin starts, and keeps
-// the endpoints it found, while this provider is configured in god mode and changes
-// without a restart. So better-auth holds this proxy, and every read on it goes to a
-// provider genericOAuth built from the stored settings.
-let oidc: { settings: string; provider: SocialProvider } | undefined;
-const oidcProvider = new Proxy({ id: OIDC_PROVIDER_ID } as SocialProvider, {
-  get: (fallback, key) => Reflect.get(oidc?.provider ?? fallback, key),
-});
-
-// Rebuilds the provider when the stored settings changed and reports whether OIDC
-// sign-in can run. A failed read or discovery disables the provider rather than
-// running the request on stale settings.
-async function refreshOidcProvider(): Promise<boolean> {
-  try {
-    const config = await getOidcConfig();
-    if (!isOidcUsable(config)) return false;
-    const settings = JSON.stringify(config);
-    if (oidc?.settings === settings) return true;
-    const plugin = genericOAuth({
-      config: [
-        {
-          providerId: OIDC_PROVIDER_ID,
-          clientId: config.clientId,
-          clientSecret: config.clientSecret,
-          discoveryUrl: config.discoveryUrl,
-          scopes: config.scopes,
-          pkce: config.pkce,
-          // redirectURI is explicit for the same reason as in googleOptions.
-          redirectURI: OIDC_REDIRECT_URI,
-          // The `account` rows hold the OIDC subject. genericOAuth reads `id` instead
-          // when the discovery document lists no id_token signing algorithms.
-          accountSubject: ({ profile }) => String(profile.sub ?? ''),
-          // genericOAuth passes email_verified on as sent, and some providers send a
-          // string (Amazon Cognito's userinfo does): "false" would count as verified.
-          mapProfileToUser: (profile) => {
-            const claim: unknown = profile.email_verified;
-            return { emailVerified: claim === true || claim === 'true' };
-          },
-          // Signing out of the app leaves the session at the identity provider alone.
-          disableProviderLogout: true,
-        },
-      ],
-    });
-    const built = await plugin.init({ ...pluginContext!, socialProviders: [] });
-    // genericOAuth skips a provider whose discovery failed, and logs why.
-    const provider = built?.context?.socialProviders?.[0];
-    if (!provider) return false;
-    oidc = { settings, provider };
-    return true;
-  } catch (error) {
-    console.error('[auth] could not load the OIDC provider:', error);
-    return false;
-  }
-}
-
-// The context genericOAuth builds a provider in; kept from startup, when better-auth
-// hands it to the plugin below.
-let pluginContext: PluginContext | undefined;
-
-const instanceOidc = (): BetterAuthPlugin => ({
-  id: 'instance-oidc',
-  init: (context) => {
-    pluginContext = context;
-    return { context: { socialProviders: [oidcProvider, ...context.socialProviders] } };
-  },
-});
 
 // The two conditions better-auth checks before linking an address to an account that
 // already has it are read from different places: `trustedProviders` per request,
 // through the resolver below, and `requireLocalEmailVerified` off the options object
 // at the moment of the decision. The resolver runs first, in the same request, and
-// leaves the setting here for the getter to read.
-let trustProviderEmails = false;
-
-// The trusted providers for one request. The settings are read where a provider's
-// sign-in comes back — an OAuth callback, or a SAML response posted to `/acs/` — only:
-// the resolver runs on every request to the auth API, and a session check has no linking
-// decision to make.
+// leaves the setting in the instance's state for the getter to read.
 const PROVIDER_RETURN = /\/(callback|acs)\//;
 
-async function resolveTrustedProviders(request?: Request): Promise<string[]> {
-  if (!request || !PROVIDER_RETURN.test(new URL(request.url).pathname)) return [];
-  trustProviderEmails = (await getAuthSettings()).trustProviderEmails;
-  return trustProviderEmails ? ['google', OIDC_PROVIDER_ID] : [];
-}
-
-// Whether a new account has to confirm its address before it gets a session. An
-// instance setting, read in `hooks.before` on every password endpoint and served to
-// better-auth through the getter on `emailAndPassword` below: sign-up reads the
-// option off the options object at the moment it decides whether to open a session,
-// so a getter is what lets the stored setting reach a config that is built once.
-let verificationRequired = false;
-
-// The endpoints of the email/password form, including the two the magic link uses.
-// Turning password authentication off refuses all of them, so a link issued before
-// the switch was flipped cannot still be redeemed. Passkey sign-in is not here: a
-// passkey is only ever added to an account that already exists, so it cannot be used
-// to get around single sign-on.
 const PASSWORD_PATHS = new Set([
   '/sign-up/email',
   '/sign-in/email',
@@ -421,14 +391,15 @@ function refuseRegistration(code: keyof typeof REGISTRATION_REFUSALS): never {
 // carries a `code`, which is what the provider callback and the magic link turn into the
 // ?error= they redirect with; without one the callback would fail the request instead.
 async function assertRegistrationAllowed(
+  db: Db,
   email: string,
   { addressProven }: { addressProven: boolean },
 ): Promise<void> {
-  const settings = await getAuthSettings();
+  const settings = await getAuthSettings(db);
   if (settings.registration === 'closed') refuseRegistration('REGISTRATION_CLOSED');
-  if (!(await registrationEmailAllowed(email))) refuseRegistration('EMAIL_DOMAIN_NOT_ALLOWED');
-  if (settings.registration === 'invite' && !(await hasPendingInvite(email))) {
-    const expired = addressProven && (await hasExpiredInvite(email));
+  if (!(await registrationEmailAllowed(db, email))) refuseRegistration('EMAIL_DOMAIN_NOT_ALLOWED');
+  if (settings.registration === 'invite' && !(await hasPendingInvite(db, email))) {
+    const expired = addressProven && (await hasExpiredInvite(db, email));
     refuseRegistration(expired ? 'INVITE_EXPIRED' : 'INVITE_ONLY');
   }
 }
@@ -437,7 +408,7 @@ async function assertRegistrationAllowed(
 // its address. Used to hold back sign-in while the instance requires verification. An
 // unknown identifier is not "unverified" — it falls through to better-auth's own
 // invalid-credentials answer, so this never reveals whether an account exists.
-async function isUnverified(where: SQL): Promise<boolean> {
+async function isUnverified(db: Db, where: SQL): Promise<boolean> {
   const rows = await db
     .select({ emailVerified: schema.user.emailVerified })
     .from(schema.user)
@@ -460,7 +431,9 @@ function randomSuffix(): string {
 
 // Accounts that need no personal workspace made: they own a workspace, or are an agent's
 // bot user. Kept per process, so once an account is known a request costs a lookup here
-// and nothing in the database.
+// and nothing in the database. The entries describe the rows of the database, which is
+// the one deployment's D1; forgetPersonalWorkspace drops one when its account stops
+// owning a workspace.
 const settled = new Set<string>();
 
 // The personal workspace of an account that owns none, named after the person: the
@@ -471,37 +444,48 @@ const settled = new Set<string>();
 // An agent's bot user is no person.
 // ponytail: an account with no workspace while they are off reads the setting on each
 // request; cache it with the setting if that ever shows.
-export async function ensurePersonalWorkspace(account: {
-  id: string;
-  role?: string | null;
-}): Promise<void> {
+export async function ensurePersonalWorkspace(
+  db: Db,
+  account: { id: string; role?: string | null },
+): Promise<void> {
   const userId = account.id;
   if (settled.has(userId)) return;
-  if (account.role !== 'god' && !(await getAuthSettings()).personalWorkspaces) return;
-  await db.transaction(async (tx) => {
-    // Two sign-ins at once would otherwise both find none.
-    const [person] = await tx
-      .select({ name: schema.user.name, email: schema.user.email })
-      .from(schema.user)
-      .where(eq(schema.user.id, userId))
-      .for('update');
-    if (!person) return;
-    const [owned] = await tx
-      .select({ n: sql`1` })
-      .from(schema.workspaceManager)
-      .where(
-        and(eq(schema.workspaceManager.userId, userId), eq(schema.workspaceManager.role, 'owner')),
+  if (account.role !== 'god' && !(await getAuthSettings(db)).personalWorkspaces) return;
+  const [person] = await db
+    .select({ name: schema.user.name, email: schema.user.email })
+    .from(schema.user)
+    .where(eq(schema.user.id, userId));
+  if (!person) return;
+  const name = (person.name.trim() || person.email.split('@')[0]!).slice(0, 60);
+  // One batch, so the workspace and its owner row land together, and only while the account
+  // still owns no workspace and is no agent's bot user. Each guard reads the rows the batch
+  // writes: D1 runs the statements in order, so when two sign-ins race, the second one
+  // finds the first one's owner row, and its insert then matches nothing (changes() is
+  // 0 after a statement that wrote no row). This replaces a row lock held over the read.
+  // drizzle's batch takes query builders only, so the two statements go to the D1 binding
+  // directly: its batch is the same atomic unit.
+  // The typed Db has no $client in drizzle 0.45; the D1 driver sets it at runtime.
+  const client = (db as unknown as { $client: D1Database }).$client;
+  await client.batch([
+    client
+      .prepare(
+        `INSERT INTO workspace (name)
+         SELECT ? FROM "user" u
+         WHERE u.id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM workspace_manager m WHERE m.user_id = u.id AND m.role = 'owner'
+           )
+           AND NOT EXISTS (SELECT 1 FROM ai_agent a WHERE a.user_id = u.id)`,
       )
-      .limit(1);
-    const [agent] = await tx
-      .select({ n: sql`1` })
-      .from(schema.aiAgent)
-      .where(eq(schema.aiAgent.userId, userId))
-      .limit(1);
-    if (owned || agent) return;
-    const name = (person.name.trim() || person.email.split('@')[0]!).slice(0, 60);
-    await createWorkspace(tx, name, userId);
-  });
+      .bind(name, userId),
+    client
+      .prepare(
+        `INSERT INTO workspace_manager (workspace_id, user_id, role)
+         SELECT last_insert_rowid(), ?, 'owner'
+         WHERE changes() > 0`,
+      )
+      .bind(userId),
+  ]);
   settled.add(userId);
 }
 
@@ -516,7 +500,7 @@ export function forgetPersonalWorkspace(userId: string): void {
 // member cannot take a name an agent uses, and the check for the other direction
 // sits where an agent is created. Agent handles are stored as typed, so the
 // comparison is case-insensitive.
-async function isAgentHandle(handle: string): Promise<boolean> {
+async function isAgentHandle(db: Db, handle: string): Promise<boolean> {
   const normalized = handle.trim().toLowerCase();
   if (!normalized) return false;
   const taken = await db.$count(
@@ -530,7 +514,7 @@ async function isAgentHandle(handle: string): Promise<boolean> {
 // local part, with everything the plugin's validator rejects removed — and the owner
 // changes it later in the profile. A name already in use gets a random suffix, and
 // the check repeats until the name is free.
-export async function generateUsername(email: string): Promise<string> {
+export async function generateUsername(db: Db, email: string): Promise<string> {
   const stem =
     email
       .split('@')[0]
@@ -541,7 +525,7 @@ export async function generateUsername(email: string): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const taken =
       (await db.$count(schema.user, eq(schema.user.username, candidate))) > 0 ||
-      (await isAgentHandle(candidate));
+      (await isAgentHandle(db, candidate));
     if (!taken) break;
     candidate = stem + randomSuffix();
   }
@@ -555,17 +539,134 @@ const DAY_SEC = 24 * 60 * 60;
 export const API_KEY_DEFAULT_EXPIRES_IN_SEC = 90 * DAY_SEC;
 export const API_KEY_MAX_EXPIRES_IN_DAYS = 365;
 
-// Created on first use rather than on import, so a build's extendAuth (./extensions) takes
-// effect wherever a bundler puts its module, as long as it runs before the first request.
-function createAuth() {
+// The better-auth instance for one request, over the database the caller passes in. Built
+// on every call, so nothing in it outlives the request except what the database holds:
+// the per-instance state below (the Google and OIDC providers, the verification flags) is
+// local to this instance, and a build's extendAuth (./extensions) takes effect as long
+// as it runs before the first request.
+export function createAuth(env: AuthEnv, db: Db) {
+  const cfg = authConfig(env);
+  const { trustedOrigins, baseURL, apiPublicUrl, mcpOAuth } = cfg;
   const extensions = readAuthExtensions();
+
+  // State the better-auth options read through getters or hooks, one set per instance.
+  const state = {
+    // While this is true, sign-up answers without a session and a duplicate address
+    // gets the same answer as a new one; sign-in of an unconfirmed account is refused in
+    // the hook below before better-auth's own check runs.
+    verificationRequired: false,
+    // Set by the resolver below, read by the getter on the account-linking option.
+    trustProviderEmails: false,
+    pluginContext: undefined as PluginContext | undefined,
+    oidc: undefined as { settings: string; provider: SocialProvider } | undefined,
+  };
+
+  const withPublicOrigin = (url: string): string =>
+    url.startsWith(baseURL) ? apiPublicUrl + url.slice(baseURL.length) : url;
+
+  // Google credentials live in the database (god mode), not in env. The provider is built
+  // once per instance, but it keeps this options object by reference and reads
+  // clientId / clientSecret off it on every call, so refreshing the object per request
+  // is what lets the owner change or revoke the credentials without a restart.
+  // redirectURI is explicit: the one inferred from the origin-only baseURL lacks the path.
+  const googleOptions = { clientId: '', clientSecret: '', redirectURI: cfg.googleRedirectUri };
+
+  // Loads the stored credentials into that object and reports whether Google sign-in
+  // can run. A read failure disables the provider rather than failing the request with
+  // a stale secret.
+  async function refreshGoogleOptions(): Promise<boolean> {
+    try {
+      const config = await getGoogleConfig(db);
+      googleOptions.clientId = config.clientId;
+      googleOptions.clientSecret = config.clientSecret;
+      return isGoogleUsable(config);
+    } catch (error) {
+      console.error('[auth] could not read the Google credentials:', error);
+      return false;
+    }
+  }
+
+  // genericOAuth reads the discovery document once, when the plugin starts, and keeps
+  // the endpoints it found, while this provider is configured in god mode and changes
+  // without a restart. So better-auth holds this proxy, and every read on it goes to a
+  // provider genericOAuth built from the stored settings.
+  const oidcProvider = new Proxy({ id: OIDC_PROVIDER_ID } as SocialProvider, {
+    get: (fallback, key) => Reflect.get(state.oidc?.provider ?? fallback, key),
+  });
+
+  // Rebuilds the provider when the stored settings changed and reports whether OIDC
+  // sign-in can run. A failed read or discovery disables the provider rather than
+  // running the request on stale settings.
+  async function refreshOidcProvider(): Promise<boolean> {
+    try {
+      const config = await getOidcConfig(db);
+      if (!isOidcUsable(config)) return false;
+      const settings = JSON.stringify(config);
+      if (state.oidc?.settings === settings) return true;
+      const plugin = genericOAuth({
+        config: [
+          {
+            providerId: OIDC_PROVIDER_ID,
+            clientId: config.clientId,
+            clientSecret: config.clientSecret,
+            discoveryUrl: config.discoveryUrl,
+            scopes: config.scopes,
+            pkce: config.pkce,
+            // redirectURI is explicit for the same reason as in googleOptions.
+            redirectURI: cfg.oidcRedirectUri,
+            // The `account` rows hold the OIDC subject. genericOAuth reads `id` instead
+            // when the discovery document lists no id_token signing algorithms.
+            accountSubject: ({ profile }) => String(profile.sub ?? ''),
+            // genericOAuth passes email_verified on as sent, and some providers send a
+            // string (Amazon Cognito's userinfo does): "false" would count as verified.
+            mapProfileToUser: (profile) => {
+              const claim: unknown = profile.email_verified;
+              return { emailVerified: claim === true || claim === 'true' };
+            },
+            // Signing out of the app leaves the session at the identity provider alone.
+            disableProviderLogout: true,
+          },
+        ],
+      });
+      const built = await plugin.init({ ...state.pluginContext!, socialProviders: [] });
+      // genericOAuth skips a provider whose discovery failed, and logs why.
+      const provider = built?.context?.socialProviders?.[0];
+      if (!provider) return false;
+      state.oidc = { settings, provider };
+      return true;
+    } catch (error) {
+      console.error('[auth] could not load the OIDC provider:', error);
+      return false;
+    }
+  }
+
+  // The context genericOAuth builds a provider in; kept from the first request, when
+  // better-auth hands it to the plugin below.
+  const instanceOidc = (): BetterAuthPlugin => ({
+    id: 'instance-oidc',
+    init: (context) => {
+      state.pluginContext = context;
+      return { context: { socialProviders: [oidcProvider, ...context.socialProviders] } };
+    },
+  });
+
+  // The trusted providers for one request. The settings are read where a provider's
+  // sign-in comes back — an OAuth callback, or a SAML response posted to `/acs/` — only:
+  // the resolver runs on every request to the auth API, and a session check has no linking
+  // decision to make.
+  async function resolveTrustedProviders(request?: Request): Promise<string[]> {
+    if (!request || !PROVIDER_RETURN.test(new URL(request.url).pathname)) return [];
+    state.trustProviderEmails = (await getAuthSettings(db)).trustProviderEmails;
+    return state.trustProviderEmails ? ['google', OIDC_PROVIDER_ID] : [];
+  }
+
   return betterAuth({
     baseURL,
-    secret: process.env.BETTER_AUTH_SECRET,
-    onAPIError: { errorURL: oauthErrorURL },
+    secret: env.BETTER_AUTH_SECRET,
+    onAPIError: { errorURL: cfg.oauthErrorURL },
 
     database: drizzleAdapter(db, {
-      provider: 'pg',
+      provider: 'sqlite',
       schema: {
         user: schema.user,
         session: schema.session,
@@ -587,11 +688,8 @@ function createAuth() {
 
     emailAndPassword: {
       enabled: true,
-      // While this is true, sign-up answers without a session and a duplicate address
-      // gets the same answer as a new one; sign-in of an unconfirmed account is
-      // refused in the hook below before better-auth's own check runs.
       get requireEmailVerification() {
-        return verificationRequired;
+        return state.verificationRequired;
       },
       autoSignIn: true,
       // A reset is how a stolen password is dealt with, so every session opened with
@@ -599,7 +697,7 @@ function createAuth() {
       // revokeOtherSessions for the same reason.
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
-        await sendAuthEmail({
+        await sendAuthEmail(db, {
           to: user.email,
           subject: 'Reset your password',
           text: 'Use the link below to set a new password. Ignore this email if you did not ask for it.',
@@ -614,9 +712,9 @@ function createAuth() {
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
-        const settings = await getAuthSettings();
+        const settings = await getAuthSettings(db);
         if (!settings.requireEmailVerification) return;
-        await sendAuthEmail({
+        await sendAuthEmail(db, {
           to: user.email,
           subject: 'Confirm your email address',
           text: 'Use the link below to confirm this address and finish signing up.',
@@ -627,7 +725,7 @@ function createAuth() {
 
     // Google sign-in. The provider is always mounted; whether it may run is decided per
     // request in the hook below, the same way the magic link is handled. The factory
-    // runs once, at startup, and returns the shared options object described above.
+    // runs once per instance and returns the options object described above.
     socialProviders: {
       google: async () => {
         await refreshGoogleOptions();
@@ -646,7 +744,7 @@ function createAuth() {
       accountLinking: {
         trustedProviders: resolveTrustedProviders,
         get requireLocalEmailVerified() {
-          return !trustProviderEmails;
+          return !state.trustProviderEmails;
         },
       },
       // The id_token is stored unencrypted, so this covers only the access and refresh
@@ -693,8 +791,9 @@ function createAuth() {
 
         // Read here so the two sign-in endpoints, which also go through the
         // verification gate below, make one query instead of two.
-        const passwordSettings = PASSWORD_PATHS.has(ctx.path) ? await getAuthSettings() : null;
-        if (passwordSettings) verificationRequired = passwordSettings.requireEmailVerification;
+        const passwordSettings = PASSWORD_PATHS.has(ctx.path) ? await getAuthSettings(db) : null;
+        if (passwordSettings)
+          state.verificationRequired = passwordSettings.requireEmailVerification;
         // The api will not let the switch be turned off while no OAuth provider is
         // configured, so this cannot leave an instance with no way in.
         if (passwordSettings && !passwordSettings.emailPassword) {
@@ -706,6 +805,7 @@ function createAuth() {
 
         if (ctx.path === '/sign-up/email') {
           await assertRegistrationAllowed(
+            db,
             (ctx.body as { email?: string } | undefined)?.email ?? '',
             {
               addressProven: false,
@@ -753,14 +853,14 @@ function createAuth() {
         // /sign-in/email or /sign-in/username depending on what was typed, and the
         // instance gate has to apply either way.
         if (ctx.path === '/sign-in/email' || ctx.path === '/sign-in/username') {
-          const settings = passwordSettings ?? (await getAuthSettings());
+          const settings = passwordSettings ?? (await getAuthSettings(db));
           if (!settings.requireEmailVerification) return;
           const body = ctx.body as { email?: string; username?: string } | undefined;
           const identifier =
             ctx.path === '/sign-in/email'
               ? eq(schema.user.email, (body?.email ?? '').trim().toLowerCase())
               : eq(schema.user.username, (body?.username ?? '').trim().toLowerCase());
-          if (await isUnverified(identifier)) {
+          if (await isUnverified(db, identifier)) {
             // The code is better-auth's own for this refusal; the sign-in form tells it
             // apart from the other 403s, such as a deactivated account, by it.
             throw new APIError('FORBIDDEN', {
@@ -775,7 +875,7 @@ function createAuth() {
         // the other accounts, so the agents are checked on this side.
         if (ctx.path === '/update-user') {
           const handle = (ctx.body as { username?: string } | undefined)?.username;
-          if (handle && (await isAgentHandle(handle))) {
+          if (handle && (await isAgentHandle(db, handle))) {
             throw new APIError('BAD_REQUEST', {
               message: 'Username is already taken. Please try another.',
             });
@@ -807,21 +907,21 @@ function createAuth() {
           before: async (user, ctx) => {
             // The email form is refused up front unless its invite is valid, so a refusal
             // here comes from a provider or a magic link, which prove the address.
-            if (!(await admittedPastGate(user.email, ctx))) {
-              await assertRegistrationAllowed(user.email, { addressProven: true });
+            if (!(await admittedPastGate(db, user.email, ctx))) {
+              await assertRegistrationAllowed(db, user.email, { addressProven: true });
             }
             const isFirstUser = (await db.$count(schema.user)) === 0;
             // A sign-up that carried its own username has passed the plugin's own
             // check against the other accounts by now, but not the one against the
             // agents; only an account without one gets a derived name.
             const carried = typeof user.username === 'string' ? user.username : null;
-            if (carried && (await isAgentHandle(carried))) {
+            if (carried && (await isAgentHandle(db, carried))) {
               throw new APIError('BAD_REQUEST', {
                 code: 'USERNAME_IS_ALREADY_TAKEN',
                 message: 'Username is already taken. Please try another.',
               });
             }
-            const derived = carried ?? (await generateUsername(user.email));
+            const derived = carried ?? (await generateUsername(db, user.email));
             return {
               data: {
                 ...user,
@@ -832,7 +932,7 @@ function createAuth() {
             };
           },
           after: async (user) => {
-            await ensurePersonalWorkspace(user);
+            await ensurePersonalWorkspace(db, user);
           },
         },
       },
@@ -862,8 +962,8 @@ function createAuth() {
       // passkey is added to an already signed-in account (passkey.addPasskey) and
       // then used to sign in (signIn.passkey). Adds the `passkey` table.
       passkey({
-        rpID: passkeyRpID,
-        rpName: process.env.PASSKEY_RP_NAME ?? "It's a Plan",
+        rpID: cfg.passkeyRpID,
+        rpName: env.PASSKEY_RP_NAME ?? "It's a Plan",
         // Expected origin(s) of the WebAuthn ceremony — the frontend origins.
         origin: trustedOrigins,
       }),
@@ -902,13 +1002,13 @@ function createAuth() {
         // Stored plain, an OAuth state also passes as a token (GHSA-965c-763c-88jm).
         storeToken: 'hashed',
         sendMagicLink: async ({ email, url }) => {
-          const settings = await getAuthSettings();
+          const settings = await getAuthSettings(db);
           if (!settings.magicLink) {
             throw new APIError('FORBIDDEN', {
               message: 'Magic links are disabled on this instance',
             });
           }
-          await sendAuthEmail({
+          await sendAuthEmail(db, {
             to: email,
             subject: 'Your sign-in link',
             text: 'Use the link below to sign in. It works once and expires shortly.',
@@ -933,9 +1033,9 @@ function createAuth() {
       // on every session response.
       ...(mcpOAuth
         ? [
-            jwt({ disableSettingJwtHeader: true, jwt: { issuer: MCP_ISSUER } }),
+            jwt({ disableSettingJwtHeader: true, jwt: { issuer: cfg.mcpIssuer } }),
             mcp({
-              resource: MCP_RESOURCE,
+              resource: cfg.mcpResource,
               loginPage: `${trustedOrigins[0]}/login`,
               consentPage: `${trustedOrigins[0]}/oauth/consent`,
               // Every token acts for a person; client_credentials would mint one for none.
@@ -972,17 +1072,17 @@ function createAuth() {
       // it the cookie is host-only for the api origin, so the SSR web app on another
       // subdomain cannot read the session. Leave COOKIE_DOMAIN unset on localhost
       // (single host), where "lax" host-only cookies already work across ports.
-      ...(cookieDomain
+      ...(cfg.cookieDomain
         ? {
             crossSubDomainCookies: {
               enabled: true,
-              domain: cookieDomain,
+              domain: cfg.cookieDomain,
             },
           }
         : {}),
       // For a single site (localhost / one domain) "lax" is enough. Subdomains of one
       // registrable domain are same-site, so "lax" cookies are still sent between them.
-      ...(hostPrefixedCookies
+      ...(cfg.hostPrefixedCookies
         ? {
             useSecureCookies: false,
             cookiePrefix: '__Secure-better-auth',
@@ -996,26 +1096,15 @@ function createAuth() {
         : {}),
       defaultCookieAttributes: {
         sameSite: 'lax',
-        secure: hostPrefixedCookies || process.env.NODE_ENV === 'production',
+        secure: cfg.hostPrefixedCookies || env.NODE_ENV === 'production',
       },
       ipAddress: {
-        ipAddressHeaders: clientIpHeader ? [clientIpHeader] : undefined,
-        trustedProxies,
+        ipAddressHeaders: cfg.clientIpHeader ? [cfg.clientIpHeader] : undefined,
+        trustedProxies: cfg.trustedProxies,
       },
     },
   });
 }
-
-let instance: ReturnType<typeof createAuth> | undefined;
-const instanceOf = () => (instance ??= createAuth());
-
-export const auth = new Proxy({} as ReturnType<typeof createAuth>, {
-  get: (_target, key) => Reflect.get(instanceOf(), key),
-  has: (_target, key) => Reflect.has(instanceOf(), key),
-});
-
-export type Auth = typeof auth;
-export type Session = Auth['$Infer']['Session'];
 
 // A key the apiKey plugin will not accept — expired, revoked or malformed — makes
 // it throw out of getSession instead of returning no session, which a caller can
@@ -1024,8 +1113,9 @@ export type Session = Auth['$Infer']['Session'];
 // request. A refusal for another reason, a rate-limited key among them, still
 // propagates: it is not the same answer.
 export async function getSessionFromHeaders(
+  auth: Auth,
   headers: Headers,
-): Promise<Awaited<ReturnType<typeof auth.api.getSession>>> {
+): Promise<Awaited<ReturnType<Auth['api']['getSession']>>> {
   try {
     return await auth.api.getSession({ headers });
   } catch (error) {
