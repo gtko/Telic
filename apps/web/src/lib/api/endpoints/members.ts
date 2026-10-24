@@ -10,7 +10,7 @@ export interface MemberRow {
   userId: string;
   name: string;
   email: string;
-  // The sign-in name. null for an AI agent's bot user, which never gets one.
+  // The sign-in name. null for a member who has none.
   username: string | null;
   image: string | null;
   // The zone this member reads timestamps in, from their preferences.
@@ -22,18 +22,14 @@ export interface MemberRow {
   roleName: string | null;
   // What this member does in the project, set by an owner. Empty string when unset.
   description: string;
-  // True when this member is an AI agent's bot user. It joins and leaves with its AI
-  // Agent config, so this list does not revoke it; its role is set here like a
-  // person's.
-  isAgent: boolean;
   // 'scim' when a provisioned group granted this membership. The sync rewrites such
   // a row on every run, so the role and remove actions are refused for it.
   source: 'invite' | 'scim';
   createdAt: string;
 }
 
-// Which members a list asks for: everyone, the people, or the AI agents.
-export type MemberKind = 'all' | 'human' | 'agent';
+// Which members a list asks for: everyone or the people.
+export type MemberKind = 'all' | 'human';
 
 // How many members own the project is what a page window cannot answer, and the last
 // owner's row is the one that may not be removed.
@@ -60,7 +56,6 @@ export interface MemberCandidate {
   email: string;
   username: string | null;
   image: string | null;
-  isAgent: boolean;
 }
 
 // Members: list who is on a project, add someone from its team, and revoke access

@@ -38,14 +38,11 @@
     "documents": "المستندات",
     "actions": "الإجراءات",
     "configuration": "التهيئة",
-    "webhooks": "خطافات الويب (webhooks)",
-    "agents": "الوكلاء (agents)",
-    "schedules": "الجدولات"
+    "webhooks": "خطافات الويب (webhooks)"
   },
   "title": "مشروع جديد",
   "copyTitle": "نسخ المشروع \"{name}\"",
   "create": "إنشاء مشروع",
   "copyAction": "نسخ المشروع",
-  "defaultAgents": "الوكلاء الذين سينضمون إلى هذا المشروع: {names}",
   "copyName": "نسخة {name}"
 }

@@ -93,7 +93,6 @@ export default function IssueCustomFieldControl({
     return (
       <MemberSelect
         assignees={assignees}
-        scope={def.memberScope ?? 'all'}
         value={(current?.value as string | null) ?? null}
         placeholder={def.name}
         onChange={(userId) => onChange({ value: userId })}

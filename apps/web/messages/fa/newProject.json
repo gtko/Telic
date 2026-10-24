@@ -38,14 +38,11 @@
     "documents": "مستندات",
     "actions": "اکشن‌ها",
     "configuration": "پیکربندی",
-    "webhooks": "وب‌هوک‌ها",
-    "agents": "ایجنت‌ها",
-    "schedules": "زمان‌بندی‌ها"
+    "webhooks": "وب‌هوک‌ها"
   },
   "title": "پروژه جدید",
   "copyTitle": "کپی پروژه «{name}»",
   "create": "ایجاد پروژه",
   "copyAction": "کپی پروژه",
-  "defaultAgents": "ایجنت‌هایی که به این پروژه می‌پیوندند: {names}",
   "copyName": "کپی {name}"
 }

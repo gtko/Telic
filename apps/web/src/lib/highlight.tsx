@@ -1,8 +1,7 @@
 import { common, createLowlight } from 'lowlight';
 import type { ReactNode } from 'react';
 
-// Highlighting for what a chat shows: the JSON of a tool call and whatever code a tool
-// answered with. The `hljs-*` class names lowlight emits are coloured by the `.md-content`
+// Highlighting for code blocks. The `hljs-*` class names lowlight emits are coloured by the `.md-content`
 // palette in globals.css, so a block has to be rendered inside it.
 
 const lowlight = createLowlight(common);

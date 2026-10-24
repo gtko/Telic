@@ -56,7 +56,7 @@ export function useIssueDetail(
   const [descEditor, setDescEditor] = useState<Editor | null>(null);
 
   // Live detail: refetch the issue and its feed on any change, so edits and new
-  // comments (including an agent's reply to a mention) show without a manual reload.
+  // comments show without a manual reload.
   useLiveRefresh({
     scope: revScope.issue(issueId),
     targets: [

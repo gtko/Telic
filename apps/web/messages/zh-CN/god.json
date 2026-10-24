@@ -7,12 +7,6 @@
   "users": {
     "empty": "没有符合筛选条件的账户。",
     "searchPlaceholder": "按姓名或邮箱搜索",
-    "kind": "账户类型",
-    "kinds": {
-      "human": "人员",
-      "agent": "AI 代理",
-      "all": "所有账户"
-    },
     "columns": {
       "account": "账户",
       "role": "角色",
@@ -25,7 +19,6 @@
     "registered": "注册于 {date}",
     "roleGod": "实例管理员",
     "roleUser": "用户",
-    "agent": "代理",
     "noProviders": "无",
     "neverSeen": "从未登录",
     "verified": "已验证",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "实例所有者始终处于启用状态。",
-      "agent": "代理的账号随其代理而定。",
       "scim": "由你的身份提供方（SCIM）决定哪些账号处于启用状态。"
     },
     "deactivateTitle": "停用 {email}？",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "实例管理员",
     "user": "用户",
-    "aiAgent": "AI 代理",
     "emailVerified": "邮箱已验证",
     "unconfirmedTitle": "邮箱未验证",
     "unconfirmedHint": "确认验证邮件未送达后可手动标记。",
@@ -87,7 +78,6 @@
       "project": "项目",
       "members": "成员",
       "issues": "工作项",
-      "agents": "代理",
       "lastActivity": "最近活动",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "计划",
       "members": "成员",
       "dashboards": "仪表盘",
-      "views": "视图",
-      "agents": "AI 代理",
-      "skills": "技能",
-      "tools": "工具"
+      "views": "视图"
     },
     "members": "成员",
     "noMembersTitle": "暂无成员",
@@ -129,7 +116,6 @@
       "projects": "项目",
       "members": "成员",
       "issues": "工作项",
-      "agents": "代理",
       "mcp": "MCP"
     },
     "mcpEnabled": "已启用",
@@ -146,9 +132,6 @@
       "projects": "项目",
       "issues": "工作项",
       "members": "成员",
-      "agents": "AI 代理",
-      "skills": "技能",
-      "tools": "工具",
       "roles": "项目角色"
     },
     "projects": "项目",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "所有者",
       "manager": "管理员",
-      "member": "成员",
-      "agent": "代理"
+      "member": "成员"
     },
     "joined": "加入于 {date}"
   },
@@ -178,17 +160,7 @@
     "workspacesSaved": "工作区设置已保存",
     "workspaces": "工作区",
     "personalWorkspaces": "每人一个工作区",
-    "personalWorkspacesHint": "每个账户都会获得一个以其姓名命名的专属工作区。关闭后，成员只能在被添加到的工作区中工作。",
-    "agents": "代理",
-    "agentsSaved": "代理设置已保存",
-    "traceRetention": "保留运行追踪",
-    "traceRetentionHint": "代理的每次运行都会记录模型和工具调用。用量面板只统计仍保留的运行。",
-    "traceDays": "{days} 天",
-    "traceForever": "永久",
-    "maxRunTime": "最长运行时间",
-    "maxRunTimeHint": "单次智能体运行在被停止并记为失败之前可持续的时间。智能体自身的上限不能超过此值。",
-    "runMinutes": "{minutes, plural, other {# 分钟}}",
-    "runSeconds": "{seconds} 秒"
+    "personalWorkspacesHint": "每个账户都会获得一个以其姓名命名的专属工作区。关闭后，成员只能在被添加到的工作区中工作。"
   },
   "authentication": {
     "saved": "身份验证设置已保存",

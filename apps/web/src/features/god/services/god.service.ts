@@ -12,13 +12,11 @@ import type { ProjectDefaults } from '@/lib/api/endpoints/projects';
 import { nextPageParam, type PageParams } from '@/lib/api/core/paging';
 import { DEFAULT_PAGE_SIZE } from '@/hooks/usePaging';
 import {
-  type AgentSettings,
   type InstanceAuthSettingsPatch,
   type InstanceEmailSettingsPatch,
   type InstanceGoogleSettingsPatch,
   type InstanceOidcSettingsPatch,
   type InstanceTelegramSettingsPatch,
-  type InstanceUserKind,
   getInstanceAuthSettings,
   updateInstanceAuthSettings,
   getInstanceEmailSettings,
@@ -32,8 +30,6 @@ import {
   updateInstanceTelegramSettings,
   getInstanceProjectDefaults,
   updateInstanceProjectDefaults,
-  getInstanceAgentSettings,
-  updateInstanceAgentSettings,
   getInstanceStorageSettings,
   updateInstanceStorageSettings,
   listInstanceUsers,
@@ -173,22 +169,6 @@ export function useUpdateInstanceProjectDefaults() {
   });
 }
 
-// What applies to every team's agents: how long their run traces are kept.
-export function useInstanceAgentSettingsQuery() {
-  return useQuery({
-    queryKey: qk.instanceAgentSettings,
-    queryFn: () => getInstanceAgentSettings(),
-  });
-}
-
-export function useUpdateInstanceAgentSettings() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Partial<AgentSettings>) => updateInstanceAgentSettings(body),
-    onSuccess: (data) => qc.setQueryData(qk.instanceAgentSettings, data),
-  });
-}
-
 // The upload limits: file sizes, accepted attachment types, and the per-project
 // storage quota.
 export function useInstanceStorageSettingsQuery() {
@@ -212,7 +192,6 @@ export function useUpdateInstanceStorageSettings() {
 
 export interface InstanceUserFilters extends PageParams {
   search: string;
-  kind: InstanceUserKind;
 }
 
 // One page of the user directory. The filters are part of the key, and the previous

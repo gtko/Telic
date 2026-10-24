@@ -28,7 +28,6 @@ const ICON: Record<string, typeof CircleDot> = {
   priority: SignalHigh,
   owner: UserRound,
   assignee: UserRound,
-  delegate: UserRound,
   start_date: Calendar,
   target_date: Calendar,
   due_date: Calendar,
@@ -81,8 +80,6 @@ export default function InitiativeFeedRow({
         return to ? t('ownerSet', { name: to }) : t('ownerRemoved', { name: from ?? '' });
       case 'assignee':
         return to ? t('assigneeSet', { name: to }) : t('assigneeRemoved', { name: from ?? '' });
-      case 'delegate':
-        return to ? t('delegateSet', { name: to }) : t('delegateRemoved', { name: from ?? '' });
       case 'target_date':
         return to ? t('targetDateSet', { date: fmtDate(to) }) : t('targetDateRemoved');
       case 'start_date':

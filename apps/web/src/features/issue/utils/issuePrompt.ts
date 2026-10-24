@@ -47,9 +47,6 @@ export function buildIssuePrompt(
   const assignee = issue.assigneeUserId
     ? project.assignees.find((a) => a.userId === issue.assigneeUserId)?.name
     : undefined;
-  const delegate = issue.delegateUserId
-    ? project.assignees.find((a) => a.userId === issue.delegateUserId)?.name
-    : undefined;
   const labels = issue.labelIds
     .map((id) => project.labels.find((l) => l.id === id)?.name)
     .filter((name): name is string => Boolean(name));
@@ -66,7 +63,6 @@ export function buildIssuePrompt(
   if (issue.priority) tags.push(`<priority>${issue.priority}</priority>`);
   if (type) tags.push(`<type>${type}</type>`);
   if (assignee) tags.push(`<assignee>${assignee}</assignee>`);
-  if (delegate) tags.push(`<delegate>${delegate}</delegate>`);
   if (issue.startDate) tags.push(`<startDate>${issue.startDate}</startDate>`);
   if (issue.dueDate) tags.push(`<dueDate>${issue.dueDate}</dueDate>`);
   for (const label of labels) tags.push(`<label>${label}</label>`);

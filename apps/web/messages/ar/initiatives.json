@@ -127,8 +127,6 @@
     "ownerRemoved": "أزال المالك {name}",
     "assigneeSet": "أسند إلى {name}",
     "assigneeRemoved": "أزال المسؤول {name}",
-    "delegateSet": "فوّض إلى {name}",
-    "delegateRemoved": "أزال المفوَّض {name}",
     "targetDateSet": "عيّن التاريخ المستهدف إلى {date}",
     "targetDateRemoved": "أزال التاريخ المستهدف",
     "startDateSet": "عيّن تاريخ البدء إلى {date}",

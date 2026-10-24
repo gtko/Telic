@@ -1,49 +1,30 @@
 'use client';
 
-import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   Bell,
-  BookText,
-  Bot,
-  ChevronRight,
-  Coins,
   FolderKanban,
   GitBranch,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
-  Plug,
   Radio,
   ShieldCheck,
   Users,
-  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Team } from '@/lib/api/endpoints/teams';
-import { cn } from '@/lib/utils';
 import { teamSectionPath, type TeamSection } from '@/utils/paths';
-import { useTeamQuery } from '@/services/teams.service';
 import { titlePath, useDocumentTitle } from '@/hooks/useDocumentTitle';
-import {
-  SectionNav,
-  sectionNavIdleClass,
-  sectionNavItemClass,
-  type SectionNavItem,
-} from '@/components/common/page/SectionNav';
+import { SectionNav, type SectionNavItem } from '@/components/common/page/SectionNav';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 // The sections of the open team, as the page's last rail: the team itself, its
-// projects, the roles they assign from and its members, then the AI group — the
-// integration credentials the agents run on, the agents themselves, the skills they
-// load, the tools they can call and what they spent — with what MCP clients reach and
-// the notification providers last. The counts come with the team list, so each is shown
-// before its section is opened. A section the caller may not read is left out, and the
-// AI group with it once none of them is readable. Collapsed, the rail shows the icons of
-// every section, the AI group's included, without the group.
+// projects, the roles they assign from and its members, then what MCP clients reach and
+// the notification providers. The counts come with the team list, so each is shown
+// before its section is opened. A section the caller may not read is left out.
 export default function TeamSectionNav({
   team,
   collapsed,
@@ -54,10 +35,8 @@ export default function TeamSectionNav({
   onToggleCollapsed: () => void;
 }) {
   const t = useTranslations('teams.sections');
-  const tNav = useTranslations('nav');
   const tScreens = useTranslations('meta.screens');
   const pathname = usePathname();
-  const permissions = useTeamQuery(team.id).data?.permissions;
 
   function section(
     id: TeamSection,
@@ -82,25 +61,6 @@ export default function TeamSectionNav({
     ...(runsTeam ? [section('roles', t('roles.title'), ShieldCheck, team.roleCount)] : []),
     section('members', t('members.title'), Users, team.memberCount),
   ];
-  const ai = [
-    ...(permissions?.integrations.read
-      ? [section('integrations', t('integrations.title'), Plug, team.integrationCount)]
-      : []),
-    ...(permissions?.ai_agents.read
-      ? [section('ai-agents', t('agents.title'), Bot, team.agentCount)]
-      : []),
-    ...(permissions?.agent_skills.read
-      ? [section('agent-skills', t('agentSkills.title'), BookText, team.skillCount)]
-      : []),
-    ...(permissions?.agent_tools.read
-      ? [section('agent-tools', t('agentTools.title'), Wrench, team.toolCount)]
-      : []),
-    // Whoever runs the team reads every project there, anyone else the projects where
-    // their role grants agent_usage.
-    ...(runsTeam || permissions?.agent_usage.read
-      ? [section('analytics', t('analytics.title'), Coins)]
-      : []),
-  ];
   // The notification providers are the owner's: nobody else reads or writes them.
   const bottom = [
     ...(runsTeam ? [section('git', 'Git', GitBranch)] : []),
@@ -108,14 +68,9 @@ export default function TeamSectionNav({
     ...(team.role === 'owner' ? [section('notifications', t('notifications.title'), Bell)] : []),
   ];
 
-  const active = [...top, ...ai, ...bottom].find((entry) => entry.href === pathname);
+  const active = [...top, ...bottom].find((entry) => entry.href === pathname);
   const activeId = active?.id ?? null;
   useDocumentTitle(titlePath(team.name, tScreens('teamSettings'), active?.label));
-  const aiActive = ai.some((entry) => entry.id === activeId);
-  // Null until the user opens or closes the group themselves; until then it follows
-  // whichever section is open.
-  const [toggled, setToggled] = useState<boolean | null>(null);
-  const aiOpen = toggled ?? aiActive;
 
   const toggleLabel = collapsed ? t('expand') : t('collapse');
   const toggle = (
@@ -145,7 +100,7 @@ export default function TeamSectionNav({
       <div className="space-y-2">
         <div className="flex w-8 justify-center">{toggle}</div>
         <SectionNav
-          sections={[...top, ...ai, ...bottom]}
+          sections={[...top, ...bottom]}
           activeId={activeId}
           label={team.name}
           collapsed
@@ -164,23 +119,6 @@ export default function TeamSectionNav({
       </div>
       <div className="space-y-0.5">
         <SectionNav sections={top} activeId={activeId} label={team.name} />
-        {ai.length > 0 && (
-          <Collapsible open={aiOpen} onOpenChange={setToggled}>
-            <CollapsibleTrigger className={cn(sectionNavItemClass, sectionNavIdleClass)}>
-              <Bot className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{tNav('aiTeam')}</span>
-              <ChevronRight
-                className={cn(
-                  'size-4 shrink-0 text-muted-foreground transition-transform duration-150',
-                  aiOpen && 'rotate-90',
-                )}
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="ps-4">
-              <SectionNav sections={ai} activeId={activeId} label={tNav('aiTeam')} />
-            </CollapsibleContent>
-          </Collapsible>
-        )}
         <SectionNav sections={bottom} activeId={activeId} label={team.name} />
       </div>
     </div>

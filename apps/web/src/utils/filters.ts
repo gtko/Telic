@@ -14,7 +14,6 @@ export type BuiltinFilterField =
   | 'status' // the issue's column id
   | 'statusType' // the column's state type (backlog/unstarted/…)
   | 'assignee' // assignee id, or null for "no assignee"
-  | 'delegate' // delegate agent id, or null for "no delegate"
   | 'priority' // priority string, or null for "no priority"
   | 'type' // issue type id, or null for "no type"
   | 'initiative' // initiative id or `status:<status>`, or null for "no initiative"
@@ -108,8 +107,6 @@ function builtinSetValues(
       return [columnStateType.get(issue.columnId) ?? null];
     case 'assignee':
       return [issue.assigneeUserId];
-    case 'delegate':
-      return [issue.delegateUserId];
     case 'priority':
       return [issue.priority];
     case 'type':

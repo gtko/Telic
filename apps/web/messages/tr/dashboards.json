@@ -25,8 +25,7 @@
   "lastDays": "Son {days} gün",
   "showRows": "{count} göster",
   "widgetGroups": {
-    "issues": "İşler",
-    "agents": "Yapay zekâ ajanları ve webhook'lar"
+    "issues": "İşler"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "Dağılım",
       "description": "Durum, öncelik, tür veya sorumluya göre iş sayıları"
     },
-    "agent_runs": {
-      "label": "Ajan çalıştırmaları",
-      "description": "Son yapay zekâ ajanı çalıştırmaları ve sonuçları"
-    },
-    "agent_health": {
-      "label": "Ajan sağlığı",
-      "description": "Belirli bir dönemdeki ajan başarı oranı ve hatalar"
-    },
     "webhook_health": {
       "label": "Webhook sağlığı",
       "description": "Webhook teslimat sonuçları ve devre dışı bırakılmış uç noktalar"
-    },
-    "agent_workload": {
-      "label": "Ajan iş yükü",
-      "description": "Ajan başına devredilen işler ve çalıştırma sonuçları"
     }
   },
   "breakdown": {
@@ -80,15 +67,13 @@
       "status": "Durum",
       "priority": "Öncelik",
       "type": "Tür",
-      "assignee": "Sorumlu",
-      "delegate": "Temsilci"
+      "assignee": "Sorumlu"
     },
     "caption": {
       "status": "Duruma göre",
       "priority": "Önceliğe göre",
       "type": "Türe göre",
-      "assignee": "Sorumluya göre",
-      "delegate": "Temsilciye göre"
+      "assignee": "Sorumluya göre"
     }
   },
   "recentIssues": {
@@ -179,54 +164,12 @@
     "wholeProject": "Tüm proje",
     "forecastWeeks": "{weeks, plural, one {# haftalık} other {# haftalık}} hız oranı"
   },
-  "agentRuns": {
-    "empty": "Henüz ajan çalıştırması yok.",
-    "filters": {
-      "all": "Tüm çalıştırmalar",
-      "failed": "Başarısız",
-      "pending": "Sırada",
-      "success": "Başarılı"
-    },
-    "status": {
-      "pending": "sırada",
-      "success": "başarılı",
-      "failed": "başarısız",
-      "canceled": "iptal edildi"
-    },
-    "trigger": {
-      "mention": "bahsedilme üzerine çalıştı:",
-      "delegation": "iş devredilmesi üzerine çalıştı:",
-      "field": "alan değişikliği üzerine çalıştı:",
-      "manual": "manuel çalıştırıldı",
-      "schedule": "zamanlamaya göre çalıştı",
-      "status": "durum değişikliği üzerine çalıştı:",
-      "event": "olay üzerine çalıştı:"
-    }
-  },
-  "agentHealth": {
-    "empty": "Ajan çalıştırması yok.",
-    "successRate": "başarı oranı",
-    "runs": "{count, plural, one {# çalıştırma} other {# çalıştırma}}",
-    "failed": "{count} başarısız",
-    "queued": "{count} sırada"
-  },
   "webhookHealth": {
     "deliveries": "teslimat",
     "failed": "{count} başarısız",
     "pending": "{count} beklemede",
     "allDelivered": "tümü teslim edildi",
     "disabled": "{count, plural, one {# devre dışı uç nokta} other {# devre dışı uç nokta}}"
-  },
-  "agentWorkload": {
-    "empty": "Bu projede ajan bulunmuyor.",
-    "agent": "Ajan",
-    "delegated": "Devredilen",
-    "runs": "Çalıştırmalar",
-    "failed": "{count} başarısız",
-    "kind": {
-      "external": "Harici",
-      "internal": "Dahili"
-    }
   },
   "defaultWidgets": {
     "open": "Açık",

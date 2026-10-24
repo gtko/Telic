@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import type { InstanceUserKind } from '@/lib/api/endpoints/god';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePaging } from '@/hooks/usePaging';
 import ListPager from '@/components/common/ListPager';
@@ -18,12 +17,11 @@ import { useInstanceUsersQuery } from './services/god.service';
 // table is wide, so the page spans the whole shell instead of the centered settings
 // column the other sections use.
 //
-// Search, the kind filter and paging all run on the server: the query carries them
+// Search and paging all run on the server: the query carries them
 // and gets back one page plus the total, so the list never holds every account.
 export default function GodUsersPage() {
   const t = useTranslations('god.users');
   const [search, setSearch] = useState('');
-  const [kind, setKind] = useState<InstanceUserKind>('human');
   const paging = usePaging(25);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -32,7 +30,6 @@ export default function GodUsersPage() {
 
   const usersQuery = useInstanceUsersQuery({
     search: debouncedSearch,
-    kind,
     ...paging.params,
   });
   const users = usersQuery.data?.items ?? [];
@@ -45,11 +42,6 @@ export default function GodUsersPage() {
           search={search}
           onSearchChange={(value) => {
             setSearch(value);
-            paging.reset();
-          }}
-          kind={kind}
-          onKindChange={(value) => {
-            setKind(value);
             paging.reset();
           }}
         />

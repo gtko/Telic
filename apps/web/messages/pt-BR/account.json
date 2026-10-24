@@ -109,7 +109,6 @@
       "issueSettingsDescription": "Como as estatísticas e o registro de atividade de uma issue começam. Alterá-las enquanto uma issue está aberta não as altera.",
       "notifications": "Notificações",
       "notificationsDescription": "Acompanhar uma issue traz seus comentários e mudanças de status.",
-      "aiChat": "Chat de IA",
       "shortcuts": "Atalhos de teclado",
       "shortcutsDescription": "Pressione Alterar, depois as techas que você quer. Redefinir leva um atalho de volta ao definido para esta instância."
     },
@@ -167,8 +166,6 @@
       "grouped": "Agrupada por estado"
     },
     "autoWatch": "Acompanhar issues automaticamente",
-    "autoWatchDescription": "As que você cria, é atribuído, comenta ou é mencionado.",
-    "showChatByDefault": "Mostrar o chat por padrão",
-    "showChatByDefaultDescription": "O painel de chat abre com uma página de projeto. Feche-o a qualquer momento pelo cabeçalho ou pelo ícone de chat."
+    "autoWatchDescription": "As que você cria, é atribuído, comenta ou é mencionado."
   }
 }

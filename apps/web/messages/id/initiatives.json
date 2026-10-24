@@ -127,8 +127,6 @@
     "ownerRemoved": "menghapus pemilik {name}",
     "assigneeSet": "menetapkan ke {name}",
     "assigneeRemoved": "menghapus penerima tugas {name}",
-    "delegateSet": "mendelegasikan ke {name}",
-    "delegateRemoved": "menghapus delegasi {name}",
     "targetDateSet": "mengatur tanggal target ke {date}",
     "targetDateRemoved": "menghapus tanggal target",
     "startDateSet": "mengatur tanggal mulai ke {date}",

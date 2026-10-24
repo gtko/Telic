@@ -127,8 +127,6 @@
     "ownerRemoved": "прибрав(-ла) власника {name}",
     "assigneeSet": "призначив(-ла) виконавцем {name}",
     "assigneeRemoved": "прибрав(-ла) виконавця {name}",
-    "delegateSet": "делегував(-ла) {name}",
-    "delegateRemoved": "прибрав(-ла) делегата {name}",
     "targetDateSet": "встановив(-ла) цільову дату {date}",
     "targetDateRemoved": "прибрав(-ла) цільову дату",
     "startDateSet": "встановив(-ла) дату початку {date}",

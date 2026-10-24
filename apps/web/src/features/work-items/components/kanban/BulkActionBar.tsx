@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Archive, Bot, CircleDashed, RefreshCw, Tag, Target, Trash2, User, X } from 'lucide-react';
+import { Archive, CircleDashed, RefreshCw, Tag, Target, Trash2, User, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -48,8 +48,7 @@ export function BulkActionBar({ project }: { project: ProjectDetail }) {
   const subtasks = subtaskCount(project.issues, ids);
   const canEdit = can('work_items', 'edit');
   const canDelete = can('work_items', 'delete');
-  const members = project.assignees.filter((a) => a.kind === 'member');
-  const agents = project.assignees.filter((a) => a.kind === 'agent');
+  const members = project.assignees;
   const disabled = bulk.pending;
 
   return (
@@ -113,28 +112,6 @@ export function BulkActionBar({ project }: { project: ProjectDetail }) {
                       onSelect={() => void bulk.patch(ids, { assigneeUserId: a.userId })}
                     >
                       <User />
-                      <span className="flex-1 truncate">{a.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </BarMenu>
-              )}
-
-              {agents.length > 0 && (
-                <BarMenu
-                  icon={<Bot className="size-4" />}
-                  label={t('delegate')}
-                  disabled={disabled}
-                >
-                  <DropdownMenuItem onSelect={() => void bulk.patch(ids, { delegateUserId: null })}>
-                    <CircleDashed />
-                    <span className="flex-1">{t('noDelegate')}</span>
-                  </DropdownMenuItem>
-                  {agents.map((a) => (
-                    <DropdownMenuItem
-                      key={a.userId}
-                      onSelect={() => void bulk.patch(ids, { delegateUserId: a.userId })}
-                    >
-                      <Bot />
                       <span className="flex-1 truncate">{a.name}</span>
                     </DropdownMenuItem>
                   ))}

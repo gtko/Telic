@@ -7,8 +7,6 @@
   "cycles": "Cycles",
   "notes": "Notes",
   "documents": "Docs",
-  "aiTeam": "AI Team",
-  "aiAgents": "AI Agents",
   "configuration": "Configuration",
   "members": "Members",
   "notifications": "Notifications",
@@ -31,7 +29,6 @@
   "search": "Search or run a command…",
   "searchHint": "Search or run a command ({key})",
   "newIssueHint": "New issue ({key})",
-  "aiChatHint": "Chat with your AI agents ({key})",
   "sections": "Sections",
   "doubleClickToRename": "Double-click to rename",
   "groups": {

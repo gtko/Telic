@@ -40,7 +40,7 @@ export type SlashCommandOptions = {
   // menu. An editor that passes `blocks` already has the item there.
   taskListLabel?: string;
   // Editors that expose a richer block schema opt into these commands. Keeping
-  // this optional preserves the compact Issue and agent-instruction menus.
+  // this optional preserves the compact Issue menu.
   blocks?: {
     paragraph: string;
     headings: [string, string, string, string, string, string];

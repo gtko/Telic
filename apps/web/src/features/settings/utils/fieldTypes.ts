@@ -46,7 +46,7 @@ export const FIELD_TYPE_ICONS: Record<CustomFieldType, LucideIcon> = {
 };
 
 // Who a member field may hold, in the order the picker shows them.
-export const MEMBER_SCOPES: MemberScope[] = ['all', 'humans', 'agents'];
+export const MEMBER_SCOPES: MemberScope[] = ['all', 'humans'];
 
 // Display labels for the field types. The stored value stays the enum key; a few
 // read as jargon when shown raw, so they map to plain words in the messages.

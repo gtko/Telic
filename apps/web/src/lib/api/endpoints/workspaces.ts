@@ -16,7 +16,7 @@ export interface WorkspaceSummary {
 export type TeamCreation = 'owner' | 'managers' | 'members';
 
 // `deletion` says whether the owner may delete it: `work` while a team of it holds a
-// project or an AI agent.
+// project.
 export interface Workspace {
   id: number;
   name: string;

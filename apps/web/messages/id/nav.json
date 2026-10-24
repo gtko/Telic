@@ -7,8 +7,6 @@
   "cycles": "Cycle",
   "notes": "Catatan",
   "documents": "Dokumen",
-  "aiTeam": "Tim AI",
-  "aiAgents": "Agen AI",
   "configuration": "Konfigurasi",
   "members": "Anggota",
   "notifications": "Notifikasi",
@@ -31,7 +29,6 @@
   "search": "Cari atau jalankan perintah…",
   "searchHint": "Cari atau jalankan perintah ({key})",
   "newIssueHint": "Issue baru ({key})",
-  "aiChatHint": "Mengobrol dengan agen AI Anda ({key})",
   "sections": "Bagian",
   "doubleClickToRename": "Klik dua kali untuk mengganti nama",
   "groups": {

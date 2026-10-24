@@ -16,8 +16,7 @@ import { useSetMemberRole } from '@/services/members.service';
 
 // A member's role as one action among the others on their row: an icon opening the
 // roles the team assigns from, plus Owner where the reader may hand that rank out, with
-// the one they hold checked. An agent is offered the roles without Owner: an owner
-// bypasses the matrix, and the API refuses it for an agent. The role itself is stated by the badge beside it, so this only has to
+// the one they hold checked. The role itself is stated by the badge beside it, so this only has to
 // change it. The select in the members list (MemberRoleControl) is the same write in a
 // table cell.
 export default function MemberRoleMenu({
@@ -27,7 +26,7 @@ export default function MemberRoleMenu({
   canGrantOwner,
 }: {
   projectKey: string;
-  member: Pick<MemberRow, 'userId' | 'role' | 'roleId' | 'isAgent'>;
+  member: Pick<MemberRow, 'userId' | 'role' | 'roleId'>;
   roles: Role[];
   // An owner bypasses the matrix, so only a project owner or someone who runs the team
   // promotes to it — the member permission alone does not.
@@ -79,7 +78,7 @@ export default function MemberRoleMenu({
             {r.name}
           </DropdownMenuCheckboxItem>
         ))}
-        {!member.isAgent && canGrantOwner && (
+        {canGrantOwner && (
           <DropdownMenuCheckboxItem checked={isOwnerRow} onSelect={promoteToOwner}>
             {tCommon('owner')}
           </DropdownMenuCheckboxItem>

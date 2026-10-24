@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import type { Assignee } from '@/lib/api/endpoints/projects';
 import Avatar from '@/components/common/Avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { useSession } from '@/lib/auth-client';
 import { offersMention } from '@/hooks/useMentionCandidates';
 import { useCreateComment, useUpdateComment } from '../../services/comments.service';
 import { useTranslations } from 'next-intl';
 
 // The comment box, for a new comment or for editing one: a plain markdown textarea
-// with an @-mention menu. Typing "@" opens a menu of the project's members and
-// agents; picking one writes their handle as @username into the body. That handle is
-// what the backend resolves to notify a member or trigger an agent, and what the
+// with an @-mention menu. Typing "@" opens a menu of the project's members;
+// picking one writes their handle as @username into the body. That handle is
+// what the backend resolves to notify a member, and what the
 // feed renders as a chip. Posts or saves as the current session user on the button
 // or Cmd/Ctrl+Enter.
 
@@ -65,28 +64,24 @@ export default function CommentComposer({
   const [pendingCaret, setPendingCaret] = useState<number | null>(null);
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const { data: session } = useSession();
-  const currentUserId = session?.user.id ?? null;
 
   const isReply = replyToId != null;
   const isEdit = commentId != null;
   const posting = (isEdit ? updateComment : createComment).isPending;
   const cmdKey = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl';
 
-  // The same people and agents the markdown editors offer: an agent a mention would
-  // leave silent is not listed. An internal agent runs in the built-in runtime; an
-  // external agent is reached over its operator's webhook, which receives the comment.
+  // The same people the markdown editors offer.
   const matches = useMemo(() => {
     if (!menu) return [];
     const q = menu.query.toLowerCase();
     return assignees
       .filter(
         (a) =>
-          offersMention(a, currentUserId) &&
+          offersMention(a) &&
           (a.name.toLowerCase().includes(q) || a.username!.toLowerCase().includes(q)),
       )
       .slice(0, 8);
-  }, [assignees, menu, currentUserId]);
+  }, [assignees, menu]);
 
   // A reply box or an edit box is opened by a deliberate click, so it takes the
   // caret — at the end of the text being edited.
@@ -269,18 +264,11 @@ export default function CommentComposer({
                       i === active ? 'bg-accent text-accent-foreground' : ''
                     }`}
                   >
-                    {a.kind === 'agent' ? (
-                      <Bot className="size-4 shrink-0" />
-                    ) : (
-                      <User className="size-4 shrink-0" />
-                    )}
+                    <User className="size-4 shrink-0" />
                     <span className="truncate">{a.name}</span>
                     <span className="flex-1 truncate text-xs text-muted-foreground">
                       @{a.username}
                     </span>
-                    {a.kind === 'agent' && (
-                      <span className="text-[10px] text-muted-foreground uppercase">agent</span>
-                    )}
                   </button>
                 </li>
               ))}

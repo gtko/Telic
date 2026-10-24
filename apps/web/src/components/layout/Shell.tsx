@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useInitiativeOptionsQuery } from '@/services/initiatives.service';
 import { useIssueBySeqQuery } from '@/services/issues.service';
@@ -27,8 +27,6 @@ import CommandLayer from '@/components/layout/CommandLayer';
 import ShellBody from '@/components/layout/ShellBody';
 import ShellHeaderTitle from '@/components/layout/ShellHeaderTitle';
 import ShellOverlays from '@/components/layout/ShellOverlays';
-import { ChatPanel } from '@/features/ai-chat/components/panel/ChatPanel';
-import { useChatPanel } from '@/features/ai-chat/hooks/useChatPanel';
 import { useTranslations } from 'next-intl';
 import { ShellNotice } from '@/cloud';
 
@@ -78,15 +76,11 @@ export default function Shell({
   );
 
   const initiativeOptions = useInitiativeOptionsQuery(projectKey).data ?? [];
-  const { issueOpenMode, showChatByDefault } = useAccountPreferences();
+  const { issueOpenMode } = useAccountPreferences();
   const overlays = useOverlays();
-  const chatPanel = useChatPanel(projectKey, showChatByDefault);
-  // The agent a page asked to chat with, held until the panel has opened its tab.
-  const [chatAgentId, setChatAgentId] = useState<number | null>(null);
   // The Shell renders the context provider, so its own permission check reads the
   // project it loaded rather than the context.
   const { can } = usePermissions(project);
-  const chatAvailable = !!projectKey && can('ai_agents', 'read');
   const canCreateInitiative = !!project?.project.initiativesEnabled && can('initiatives', 'create');
   const issueQuery = useIssueBySeqQuery(projectKey, routeIssueSeq);
   // A project is created in a team by its owner or manager: the current project's team
@@ -126,7 +120,6 @@ export default function Shell({
 
   useKeyboardShortcuts({
     hasProject: !!project,
-    hasChat: chatAvailable,
     overlayOpen: overlays.anyOpen,
     onToggleCommand: () => overlays.setShowCommand((v) => !v),
     onChangeView: editor.changeView,
@@ -134,7 +127,6 @@ export default function Shell({
     onNewInitiative: () => canCreateInitiative && overlays.setShowNewInitiative(true),
     onNewProject: () => openNewProject?.(),
     onSettings: () => firstSettingsHref && router.push(firstSettingsHref),
-    onToggleChat: chatPanel.toggle,
   });
 
   // Every view opens an issue through this one callback, so the user's choice
@@ -165,10 +157,6 @@ export default function Shell({
     customFields,
     onOpenIssue: openIssue,
     onAddIssue: addIssue,
-    onChatWithAgent: (agentId: number) => {
-      setChatAgentId(agentId);
-      chatPanel.openPanel();
-    },
   };
 
   return (
@@ -192,8 +180,6 @@ export default function Shell({
             hasProject={!!project}
             onOpenCommand={() => overlays.setShowCommand(true)}
             onNewIssue={openNewIssue}
-            chatActive={chatPanel.open}
-            onToggleChat={chatPanel.toggle}
           />
           <ShellNotice />
 
@@ -215,20 +201,6 @@ export default function Shell({
                 <IssueRefsProvider refs={issueRefs}>{children}</IssueRefsProvider>
               </ShellBody>
             </div>
-
-            {chatAvailable && projectKey && (
-              <ChatPanel
-                projectKey={projectKey}
-                open={chatPanel.open}
-                mode={chatPanel.mode}
-                fullscreen={chatPanel.fullscreen}
-                onToggleMode={chatPanel.toggleMode}
-                onToggleFullscreen={chatPanel.toggleFullscreen}
-                onClose={chatPanel.toggle}
-                newChatAgentId={chatAgentId}
-                onNewChatHandled={() => setChatAgentId(null)}
-              />
-            )}
           </div>
         </SidebarInset>
 
@@ -250,7 +222,6 @@ export default function Shell({
           onSelectProject={(key) => router.push(projectPath(key))}
           onOpenIssue={(seq) => projectKey && router.push(issuePath(projectKey, seq))}
           onIssueDeleted={onIssueDeleted}
-          onToggleChat={chatPanel.toggle}
         />
 
         <IssueRefsProvider refs={issueRefs}>

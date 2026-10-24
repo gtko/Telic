@@ -25,8 +25,7 @@
   "lastDays": "최근 {days}일",
   "showRows": "{count}개 표시",
   "widgetGroups": {
-    "issues": "이슈",
-    "agents": "AI 에이전트 및 웹훅"
+    "issues": "이슈"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "분류",
       "description": "상태, 우선순위, 유형 또는 담당자별 이슈 수"
     },
-    "agent_runs": {
-      "label": "AI 에이전트 실행",
-      "description": "최근 AI 에이전트 실행 및 결과"
-    },
-    "agent_health": {
-      "label": "AI 에이전트 상태",
-      "description": "일정 기간 동안의 AI 에이전트 실행 성공률 및 실패 현황"
-    },
     "webhook_health": {
       "label": "웹훅 상태",
       "description": "웹훅 전송 결과 및 비활성화된 엔드포인트"
-    },
-    "agent_workload": {
-      "label": "AI 에이전트 작업량",
-      "description": "AI 에이전트별 위임된 이슈 및 실행 결과"
     }
   },
   "breakdown": {
@@ -80,15 +67,13 @@
       "status": "상태",
       "priority": "우선순위",
       "type": "유형",
-      "assignee": "담당자",
-      "delegate": "위임 대상"
+      "assignee": "담당자"
     },
     "caption": {
       "status": "상태별",
       "priority": "우선순위별",
       "type": "유형별",
-      "assignee": "담당자별",
-      "delegate": "위임 대상별"
+      "assignee": "담당자별"
     }
   },
   "recentIssues": {
@@ -179,54 +164,12 @@
     "wholeProject": "전체 프로젝트",
     "forecastWeeks": "최근 {weeks, plural, one {#주} other {#주}} 기준"
   },
-  "agentRuns": {
-    "empty": "아직 AI 에이전트 실행 기록이 없습니다.",
-    "filters": {
-      "all": "모든 실행",
-      "failed": "실패",
-      "pending": "대기 중",
-      "success": "성공"
-    },
-    "status": {
-      "pending": "대기 중",
-      "success": "성공",
-      "failed": "실패",
-      "canceled": "취소됨"
-    },
-    "trigger": {
-      "mention": "멘션으로 실행됨:",
-      "delegation": "위임으로 실행됨:",
-      "field": "필드에서 실행됨:",
-      "manual": "수동으로 실행됨",
-      "schedule": "예약 일정으로 실행됨",
-      "status": "상태 변경으로 실행됨:",
-      "event": "이벤트로 실행됨:"
-    }
-  },
-  "agentHealth": {
-    "empty": "AI 에이전트 실행 기록이 없습니다.",
-    "successRate": "성공률",
-    "runs": "{count, plural, one {#회 실행} other {#회 실행}}",
-    "failed": "{count}회 실패",
-    "queued": "{count}회 대기 중"
-  },
   "webhookHealth": {
     "deliveries": "전송",
     "failed": "{count}회 실패",
     "pending": "{count}회 대기 중",
     "allDelivered": "모두 전송됨",
     "disabled": "{count, plural, one {비활성화된 엔드포인트 #개} other {비활성화된 엔드포인트 #개}}"
-  },
-  "agentWorkload": {
-    "empty": "이 프로젝트에는 AI 에이전트가 없습니다.",
-    "agent": "AI 에이전트",
-    "delegated": "위임된 이슈",
-    "runs": "실행",
-    "failed": "{count}회 실패",
-    "kind": {
-      "external": "외부",
-      "internal": "내부"
-    }
   },
   "defaultWidgets": {
     "open": "열림",

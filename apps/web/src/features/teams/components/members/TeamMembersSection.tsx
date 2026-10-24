@@ -16,10 +16,8 @@ import {
   useTeamInvitesQuery,
   useTeamMembersQuery,
 } from '@/services/teams.service';
-import { useRouter } from 'next/navigation';
 import { useSearchTerm } from '@/hooks/useSearchTerm';
 import { useSession } from '@/lib/auth-client';
-import { teamSectionPath } from '@/utils/paths';
 import ConfirmDialog from '@/components/common/overlay/ConfirmDialog';
 import ListPager from '@/components/common/ListPager';
 import { usePaging } from '@/hooks/usePaging';
@@ -36,9 +34,7 @@ import { mayRenewInvite } from '@/utils/invites';
 import TeamMemberRow from './TeamMemberRow';
 
 // The team's members, a page at a time, with the invites that have not been answered
-// yet listed apart above them. People and agents work on one board, so both are listed
-// and the tabs tell them apart; selecting an agent opens the section that configures it.
-// Owners and managers run the list, so only they invite and see the pending invites; only
+// yet listed apart above them. // Owners and managers run the list, so only they invite and see the pending invites; only
 // an owner removes a person from it.
 export default function TeamMembersSection({ teamId }: { teamId: number }) {
   const t = useTranslations('teams');
@@ -59,7 +55,6 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
   const [inviting, setInviting] = useState(false);
   const [target, setTarget] = useState<InviteRow | null>(null);
   const [removing, setRemoving] = useState<TeamMember | null>(null);
-  const router = useRouter();
   const { data: session } = useSession();
 
   const members = membersQuery.data?.items ?? [];
@@ -85,7 +80,6 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
   const searchPlaceholder = {
     all: tMembers('search.all'),
     human: tMembers('search.people'),
-    agent: tMembers('search.agents'),
   }[kind];
 
   return (
@@ -122,7 +116,6 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
             <TabsList variant="line" className="w-auto border-b-0">
               <TabsTrigger value="all">{tMembers('tabs.all')}</TabsTrigger>
               <TabsTrigger value="human">{tMembers('tabs.people')}</TabsTrigger>
-              <TabsTrigger value="agent">{tMembers('tabs.agents')}</TabsTrigger>
             </TabsList>
             <SearchInput
               value={search}
@@ -170,13 +163,7 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
                     teamId={teamId}
                     viewerRole={team?.role ?? 'member'}
                     self={member.userId === session?.user.id}
-                    onRemove={member.agentId == null ? setRemoving : undefined}
-                    onOpen={
-                      member.agentId != null
-                        ? () =>
-                            router.push(teamSectionPath(team?.ref ?? String(teamId), 'ai-agents'))
-                        : undefined
-                    }
+                    onRemove={setRemoving}
                   />
                 ))}
               </TableBody>

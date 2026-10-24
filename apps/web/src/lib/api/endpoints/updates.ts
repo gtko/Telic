@@ -23,7 +23,7 @@ export interface UpdateStatus {
 }
 
 // The screen shown once after an upgrade. `backup` and `migration` are filled for
-// the instance owner and a team owner only — they name projects, roles and agents
+// the instance owner and a team owner only — they name projects and roles
 // across the instance — and are null for everyone else.
 export interface BackupInfo {
   path: string;
@@ -37,9 +37,9 @@ export interface BackupInfo {
 export interface TeamsMigrationReport {
   version: number;
   teams: { name: string; projects: { key: string; name: string }[] }[];
-  // Keyed by what was renamed: roles, skills, agents, credentials.
+  // Keyed by what was renamed: roles, credentials.
   renamed: Record<string, { from: string; to: string }[]>;
-  merged: { roles: number; agentTools: number };
+  merged: { roles: number };
   movedInvites: number;
   droppedNotificationSettings: string[];
 }

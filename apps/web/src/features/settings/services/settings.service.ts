@@ -322,8 +322,7 @@ export function useCreateImportJob(projectKey: string) {
   });
 }
 
-// Polled while a job is still pending or running, the same shape as
-// useAgentScheduleRuns.
+// Polled while a job is still pending or running.
 export function useImportJobsQuery(projectKey: string) {
   return useQuery({
     queryKey: qk.importJobs(projectKey),

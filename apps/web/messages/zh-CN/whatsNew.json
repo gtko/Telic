@@ -12,12 +12,9 @@
     "subtitle": "项目现在属于团队，团队共享一份角色、技能、智能体和集成凭据的列表。",
     "teamsHeading": "团队及其项目",
     "renamedRoles": "已重命名的角色",
-    "renamedSkills": "已重命名的技能",
-    "renamedAgents": "已重命名的智能体标识",
     "renamedCredentials": "已重命名的集成凭据",
     "mergedHeading": "已合并与迁移",
     "mergedRoles": "{count, plural, other {# 个重复的默认角色合并为一个}}",
-    "mergedTools": "{count, plural, other {# 个重复的已配置工具合并为一个}}",
     "movedInvites": "{count, plural, other {# 个待处理邀请已迁移到团队}}",
     "notificationsHeading": "通知服务商",
     "notificationsBody": "团队只保留一份通知服务商配置，因此保留了最后保存的一份。请为以下项目重新填写设置：{projects}。"

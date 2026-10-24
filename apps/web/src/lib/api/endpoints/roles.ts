@@ -17,11 +17,6 @@ export type PermissionResource =
   | 'states'
   | 'issue_types'
   | 'labels'
-  | 'ai_agents'
-  | 'integrations'
-  | 'agent_skills'
-  | 'agent_tools'
-  | 'agent_usage'
   | 'custom_fields'
   | 'issue_templates'
   | 'workflow_config'
@@ -55,7 +50,6 @@ export interface RoleListParams extends PageParams {
 // before the role can be deleted.
 export interface RoleUsage {
   members: number;
-  agents: number;
   invites: number;
   // The provisioned group mappings that grant this role.
   groups: number;

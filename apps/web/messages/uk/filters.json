@@ -31,7 +31,6 @@
     "status": "Статус",
     "statusType": "Тип статусу",
     "assignee": "Виконавець",
-    "delegate": "Делегат",
     "priority": "Пріоритет",
     "type": "Тип",
     "initiative": "Ініціатива",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "Без виконавця",
-    "delegate": "Без делегата",
     "type": "Без типу",
     "initiative": "Без ініціативи",
     "cycle": "Без циклу",

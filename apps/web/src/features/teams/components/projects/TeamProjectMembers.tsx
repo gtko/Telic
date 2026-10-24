@@ -95,7 +95,6 @@ export default function TeamProjectMembers({
           <SelectContent>
             <SelectItem value="all">{tMembers('tabs.all')}</SelectItem>
             <SelectItem value="human">{tMembers('tabs.people')}</SelectItem>
-            <SelectItem value="agent">{tMembers('tabs.agents')}</SelectItem>
           </SelectContent>
         </Select>
       </div>

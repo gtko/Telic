@@ -127,8 +127,6 @@
     "ownerRemoved": "مسئول {name} را حذف کرد",
     "assigneeSet": "به {name} واگذار کرد",
     "assigneeRemoved": "مسئول {name} را حذف کرد",
-    "delegateSet": "به {name} تفویض کرد",
-    "delegateRemoved": "نماینده {name} را حذف کرد",
     "targetDateSet": "تاریخ هدف را به {date} تغییر داد",
     "targetDateRemoved": "تاریخ هدف را حذف کرد",
     "startDateSet": "تاریخ شروع را به {date} تغییر داد",

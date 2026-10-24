@@ -19,9 +19,8 @@ import ListPager from '@/components/common/ListPager';
 import { usePaging } from '@/hooks/usePaging';
 import MemberRow from './MemberRow';
 
-// The project's members, newest membership first, a page at a time. People and AI
-// agents share one list and are told apart by the tabs, so neither is pushed off the
-// first page by the other; the search runs on the server, within the open tab. The
+// The project's members, newest membership first, a page at a time. The search
+// runs on the server, within the open tab. The
 // last owner is protected — the API rejects removing them and the row's action is
 // disabled too.
 export default function MembersList({
@@ -67,7 +66,6 @@ export default function MembersList({
   const searchPlaceholder = {
     all: t('search.all'),
     human: t('search.people'),
-    agent: t('search.agents'),
   }[kind];
 
   if (membersQuery.isPending) return <ListSkeleton className="mb-8" rowClassName="h-14" />;
@@ -94,7 +92,6 @@ export default function MembersList({
           <TabsList variant="line" className="w-auto border-b-0">
             <TabsTrigger value="all">{t('tabs.all')}</TabsTrigger>
             <TabsTrigger value="human">{t('tabs.people')}</TabsTrigger>
-            <TabsTrigger value="agent">{t('tabs.agents')}</TabsTrigger>
           </TabsList>
           <SearchInput
             value={search}

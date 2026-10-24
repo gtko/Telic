@@ -1,6 +1,4 @@
 import account from '../../messages/en/account.json';
-import agentAnalytics from '../../messages/en/agentAnalytics.json';
-import aiChat from '../../messages/en/aiChat.json';
 import apiKeys from '../../messages/en/apiKeys.json';
 import auth from '../../messages/en/auth.json';
 import common from '../../messages/en/common.json';
@@ -57,7 +55,6 @@ const coreMessages = {
   invite,
   mcp,
   projects,
-  aiChat,
   inbox,
   permissions,
   members,
@@ -70,7 +67,6 @@ const coreMessages = {
   god,
   newProject,
   teams,
-  agentAnalytics,
   updates,
   whatsNew,
 };

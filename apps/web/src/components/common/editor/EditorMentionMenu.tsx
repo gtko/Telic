@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useState, type Ref } from 'react';
-import { Bot, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type MentionCandidate } from '@/lib/tiptap-mention';
 
@@ -60,11 +60,7 @@ export default function EditorMentionMenu({
             index === activeIndex && 'bg-accent text-accent-foreground',
           )}
         >
-          {item.kind === 'agent' ? (
-            <Bot className="size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <User className="size-4 shrink-0 text-muted-foreground" />
-          )}
+          <User className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">{item.name}</span>
           <span className="truncate text-xs text-muted-foreground">@{item.username}</span>
         </button>

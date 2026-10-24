@@ -1,6 +1,6 @@
 // Paging. A list route either pages or answers with the whole list, never both, so a
 // paged read always names its window and a whole-list read is a call of its own
-// (listSkillOptions, listConfiguredToolOptions, listNoteBoards, ...).
+// (listNoteBoards, ...).
 
 export interface PageParams {
   page: number;

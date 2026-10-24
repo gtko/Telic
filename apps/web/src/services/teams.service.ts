@@ -28,8 +28,6 @@ import {
   getTeamProject,
   listTeamProjectMembers,
   updateTeamMcp,
-  getTeamProjectDefaults,
-  updateTeamProjectDefaults,
   createTeam,
   updateTeam,
   setTeamMemberRole,
@@ -85,8 +83,8 @@ export function useTeamProjectsQuery(teamId: number, params: TeamProjectListPara
   });
 }
 
-// Every project the reader has in the team: the projects an agent is attached to,
-// and the MCP switches, both of which act on all of them rather than on a page.
+// Every project the reader has in the team: the MCP switches act on all of them
+// rather than on a page.
 export function useTeamProjectOptionsQuery(teamId: number) {
   return useQuery({
     queryKey: qk.teamProjectOptions(teamId),
@@ -138,22 +136,6 @@ export function useUpdateTeamMcp(teamId: number) {
       // cached per project key.
       void qc.invalidateQueries({ queryKey: qk.anyProject });
     },
-  });
-}
-
-export function useTeamProjectDefaultsQuery(teamId: number | null) {
-  return useQuery({
-    queryKey: qk.teamProjectDefaults(teamId ?? 0),
-    queryFn: () => getTeamProjectDefaults(teamId!),
-    enabled: teamId != null,
-  });
-}
-
-export function useUpdateTeamProjectDefaults(teamId: number) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (defaultAgentIds: number[]) => updateTeamProjectDefaults(teamId, defaultAgentIds),
-    onSuccess: (defaults) => qc.setQueryData(qk.teamProjectDefaults(teamId), defaults),
   });
 }
 

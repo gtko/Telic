@@ -33,11 +33,9 @@
   },
   "profileHeading": "프로필",
   "you": "(나)",
-  "aiAgent": "AI 에이전트",
   "tabs": {
     "all": "전체",
     "people": "사용자",
-    "agents": "AI 에이전트",
     "label": "표시"
   },
   "leaveProject": "프로젝트 나가기",
@@ -90,8 +88,7 @@
   "provisioned": "SCIM으로 관리됨",
   "search": {
     "all": "멤버 검색",
-    "people": "사용자 검색",
-    "agents": "AI 에이전트 검색"
+    "people": "사용자 검색"
   },
   "empty": {
     "all": {
@@ -102,15 +99,10 @@
       "title": "아직 사용자가 없습니다",
       "description": "사용자가 참여하면 여기에 표시됩니다."
     },
-    "agent": {
-      "title": "아직 AI 에이전트가 없습니다",
-      "description": "AI 에이전트가 추가되면 여기에 표시됩니다."
-    },
     "search": {
       "title": "검색 결과가 없습니다",
       "all": "검색 조건과 일치하는 멤버가 없습니다.",
-      "human": "검색 조건과 일치하는 사용자가 없습니다.",
-      "agent": "검색 조건과 일치하는 AI 에이전트가 없습니다."
+      "human": "검색 조건과 일치하는 사용자가 없습니다."
     }
   }
 }

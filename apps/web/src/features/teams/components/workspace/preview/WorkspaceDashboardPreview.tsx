@@ -11,7 +11,7 @@ const DAYS = [
   40, 25, 55, 70, 45, 60,
 ];
 
-const SUMMARY = ['teams', 'projects', 'people', 'agents'] as const;
+const SUMMARY = ['teams', 'projects', 'people'] as const;
 const TOTALS = ['openIssues', 'storage'] as const;
 
 export default function WorkspaceDashboardPreview() {
@@ -22,7 +22,7 @@ export default function WorkspaceDashboardPreview() {
       <SectionPreview>
         <div className="flex flex-col gap-10">
           <div className="flex flex-wrap gap-y-4 rounded-xl bg-muted/50 py-4">
-            <div className="grid min-w-0 flex-[4_1_440px] grid-cols-4 gap-4 px-6">
+            <div className="grid min-w-0 flex-[4_1_440px] grid-cols-3 gap-4 px-6">
               {SUMMARY.map((key) => (
                 <div key={key} className="min-w-0 space-y-1.5">
                   <Skeleton className="h-8 w-12" />
@@ -40,17 +40,6 @@ export default function WorkspaceDashboardPreview() {
             </div>
           </div>
           <div className="grid gap-x-12 gap-y-10 lg:grid-cols-12">
-            <WorkspacePreviewBlock
-              title={t('blocks.agents')}
-              className="lg:col-span-7"
-              bars={DAYS}
-              rows={3}
-            />
-            <WorkspacePreviewBlock
-              title={t('blocks.schedules')}
-              className="lg:col-span-5"
-              rows={5}
-            />
             <WorkspacePreviewBlock
               title={t('blocks.time')}
               className="lg:col-span-7"

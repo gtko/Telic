@@ -20,7 +20,7 @@ export default function McpAccessNotice({
 }: {
   teamId: number;
   teamName: string;
-  teamRole: TeamRole | 'agent' | null;
+  teamRole: TeamRole | null;
   teamMcpEnabled: boolean;
 }) {
   const t = useTranslations('mcp');

@@ -95,10 +95,6 @@
       "label": "Actions",
       "description": "Des boutons sur un ticket qui renseignent des champs en un clic."
     },
-    "schedules": {
-      "label": "Planifications",
-      "description": "Exécutez des tâches d'agent selon une planification récurrente."
-    },
     "webhooks": {
       "label": "Webhooks",
       "description": "Envoyez les événements du projet vers des URL externes, signés avec un secret propre à chaque webhook."
@@ -110,14 +106,6 @@
     "import-export": {
       "label": "Import/Export",
       "description": "Importez les tickets, commentaires et étiquettes depuis une instance Plane auto-hébergée, ou exportez les données du projet au format JSON."
-    },
-    "ai-agents": {
-      "label": "Agents",
-      "description": "Des comptes bots auxquels vous pouvez déléguer des tickets."
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
@@ -129,33 +117,14 @@
         "teams": "Équipes",
         "projects": "Projets",
         "people": "Personnes",
-        "agents": "Agents IA",
         "openIssues": "Tickets ouverts",
         "storage": "Stockage"
       },
       "blocks": {
-        "agents": "Agents IA",
-        "schedules": "Exécutions planifiées",
         "time": "Temps enregistré",
         "flow": "Flux de tickets",
         "projects": "Projets actifs",
         "teams": "Équipes actives"
-      }
-    },
-    "agentBudgets": {
-      "title": "Budgets IA",
-      "description": "Des limites à ce que les agents dépensent en modèles.",
-      "workspace": "Tout l’espace",
-      "figures": {
-        "spent": "Dépensé",
-        "limit": "Limite",
-        "left": "Reste",
-        "forecast": "Prévision pour la période"
-      },
-      "list": "Budgets",
-      "columns": {
-        "budget": "Budget",
-        "spent": "Dépensé"
       }
     },
     "auditLog": {

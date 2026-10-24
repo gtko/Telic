@@ -109,7 +109,6 @@
       "issueSettingsDescription": "Kondisi awal statistik dan log aktivitas issue saat dibuka. Mengubahnya saat issue sedang terbuka tidak memengaruhi pengaturan ini.",
       "notifications": "Notifikasi",
       "notificationsDescription": "Mengikuti issue akan memberi tahu Anda tentang komentar dan perubahan statusnya.",
-      "aiChat": "Obrolan AI",
       "shortcuts": "Pintasan keyboard",
       "shortcutsDescription": "Tekan Ubah, lalu tekan tombol yang diinginkan. Atur Ulang mengembalikan pintasan ke setelan bawaan instance ini."
     },
@@ -167,8 +166,6 @@
       "grouped": "Dikelompokkan menurut status"
     },
     "autoWatch": "Ikuti issue secara otomatis",
-    "autoWatchDescription": "Issue yang Anda buat, ditugaskan kepada Anda, Anda komentari, atau yang menyebut Anda.",
-    "showChatByDefault": "Tampilkan obrolan secara bawaan",
-    "showChatByDefaultDescription": "Panel obrolan terbuka bersama halaman proyek. Tutup kapan saja dari bilah judul atau ikon obrolan."
+    "autoWatchDescription": "Issue yang Anda buat, ditugaskan kepada Anda, Anda komentari, atau yang menyebut Anda."
   }
 }

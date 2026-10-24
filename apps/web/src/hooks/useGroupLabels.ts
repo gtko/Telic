@@ -11,7 +11,6 @@ export function useGroupLabels(): GroupLabels {
   const priority = usePriorityLabel();
   return {
     noAssignee: t('noAssignee'),
-    noDelegate: t('noDelegate'),
     noPriority: t('noPriority'),
     noType: t('noType'),
     noInitiative: t('noInitiative'),

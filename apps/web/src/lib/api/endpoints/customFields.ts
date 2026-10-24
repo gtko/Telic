@@ -13,9 +13,9 @@ export type CustomFieldType =
   | 'multi_select'
   | 'member';
 
-// Who a member field may hold: every candidate, the people only, or the agents only.
+// Who a member field may hold: every candidate or the people only.
 // Null for every other field type.
-export type MemberScope = 'all' | 'humans' | 'agents';
+export type MemberScope = 'all' | 'humans';
 
 export interface CustomFieldOption {
   id: number;

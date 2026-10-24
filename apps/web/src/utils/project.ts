@@ -29,12 +29,7 @@ import {
   type GroupField,
   type ViewSettings,
 } from '@/utils/viewSettings';
-import {
-  groupMemberField,
-  memberCandidates,
-  memberFieldValue,
-  memberGroupKey,
-} from '@/utils/memberFields';
+import { groupMemberField, memberFieldValue, memberGroupKey } from '@/utils/memberFields';
 import type { Sort } from '@/utils/viewTypes';
 
 export type { Sort, SortField } from '@/utils/viewTypes';
@@ -49,7 +44,6 @@ export type NewIssueDefaults = Partial<
     | 'initiativeId'
     | 'cycleId'
     | 'assigneeUserId'
-    | 'delegateUserId'
     | 'priority'
     | 'title'
     | 'description'
@@ -113,7 +107,6 @@ export function defaultsFromFilters(
     initiativeId: pinnedEntity('initiative', planned.initiatives),
     cycleId: pinnedEntity('cycle', planned.cycles),
     assigneeUserId: pinnedText('assignee'),
-    delegateUserId: pinnedText('delegate'),
     priority: pinnedText('priority'),
     labelIds: labelId != null ? [labelId] : undefined,
   };
@@ -299,7 +292,6 @@ export interface IssueGroup {
 // they read in the reader's language.
 export interface GroupLabels {
   noAssignee: string;
-  noDelegate: string;
   noPriority: string;
   noType: string;
   noInitiative: string;
@@ -337,35 +329,16 @@ function allGroups(project: ProjectDetail, group: GroupField, labels: GroupLabel
       }));
     case 'assignee':
       return [
-        ...project.assignees
-          .filter((a) => a.kind === 'member')
-          .map((a) => ({
-            key: `a${a.userId}`,
-            name: a.name,
-            assign: patchOnly({ assigneeUserId: a.userId }),
-            values: [a.userId],
-          })),
+        ...project.assignees.map((a) => ({
+          key: `a${a.userId}`,
+          name: a.name,
+          assign: patchOnly({ assigneeUserId: a.userId }),
+          values: [a.userId],
+        })),
         {
           key: 'a-none',
           name: labels.noAssignee,
           assign: patchOnly({ assigneeUserId: null }),
-          values: [null],
-        },
-      ];
-    case 'delegate':
-      return [
-        ...project.assignees
-          .filter((a) => a.kind === 'agent')
-          .map((a) => ({
-            key: `d${a.userId}`,
-            name: a.name,
-            assign: patchOnly({ delegateUserId: a.userId }),
-            values: [a.userId],
-          })),
-        {
-          key: 'd-none',
-          name: labels.noDelegate,
-          assign: patchOnly({ delegateUserId: null }),
           values: [null],
         },
       ];
@@ -464,7 +437,7 @@ function allGroups(project: ProjectDetail, group: GroupField, labels: GroupLabel
   }
 }
 
-// The groups of a member custom field: the people and agents its scope offers, then
+// The groups of a member custom field: the people it offers, then
 // the issues that hold none. A grouping naming a field the project no longer has
 // keeps only that last group, which then holds every issue.
 function memberGroups(
@@ -474,7 +447,7 @@ function memberGroups(
 ): IssueGroup[] {
   const field = groupMemberField(group, project.customFields);
   const fieldId = customFieldId(group);
-  const candidates = field ? memberCandidates(project.assignees, field.memberScope ?? 'all') : [];
+  const candidates = field ? project.assignees : [];
   return [
     ...candidates.map((a) => ({
       key: memberGroupKey(fieldId, a.userId),
@@ -528,8 +501,6 @@ export function groupKeyOf(issue: Issue, group: GroupField): string {
       return `c${issue.columnId}`;
     case 'assignee':
       return issue.assigneeUserId != null ? `a${issue.assigneeUserId}` : 'a-none';
-    case 'delegate':
-      return issue.delegateUserId != null ? `d${issue.delegateUserId}` : 'd-none';
     case 'priority':
       return issue.priority ? `p${issue.priority}` : 'p-none';
     case 'type':

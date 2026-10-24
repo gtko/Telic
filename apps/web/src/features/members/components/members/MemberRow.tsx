@@ -11,7 +11,6 @@ import { TableCell, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSession } from '@/lib/auth-client';
-import MemberAgentBadge from './MemberAgentBadge';
 import MemberProvisionedBadge from '@/components/common/MemberProvisionedBadge';
 import MemberRoleControl from './MemberRoleControl';
 import MemberDescription from './MemberDescription';
@@ -44,11 +43,8 @@ export default function MemberRow({
   // Removing or re-roling a provisioned membership would be undone at the next sync.
   const provisioned = member.source === 'scim';
   const canEdit = can('members_manage', 'edit') || isAdmin;
-  // An agent joins and leaves with its AI Agent config, so it cannot be revoked here;
-  // its role is set here like a person's.
-  const canRemove =
-    !member.isAgent && !provisioned && (self || can('members_manage', 'delete') || isAdmin);
-  const canEditDescription = !member.isAgent && (self || canEdit);
+  const canRemove = !provisioned && (self || can('members_manage', 'delete') || isAdmin);
+  const canEditDescription = self || canEdit;
   const removeLabel = self ? t('leaveProject') : t('revokeAccess');
   const displayName = member.name || member.email;
 
@@ -71,19 +67,13 @@ export default function MemberRow({
                 {provisioned && <MemberProvisionedBadge />}
               </span>
               <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                {member.isAgent ? (
-                  <MemberAgentBadge />
-                ) : (
+                {member.username && (
                   <>
-                    {member.username && (
-                      <>
-                        <span className="truncate">@{member.username}</span>
-                        <span>·</span>
-                      </>
-                    )}
-                    <span className="truncate">{member.email}</span>
+                    <span className="truncate">@{member.username}</span>
+                    <span>·</span>
                   </>
                 )}
+                <span className="truncate">{member.email}</span>
               </span>
             </div>
           </div>
@@ -101,8 +91,7 @@ export default function MemberRow({
         />
       </TableCell>
       <TableCell className="px-3 py-3 align-top text-sm whitespace-normal text-muted-foreground">
-        {/* An agent reads no timestamps, so its bot user's zone means nothing. */}
-        {member.isAgent ? null : member.timezone}
+        {member.timezone}
       </TableCell>
       <TableCell className="px-3 py-3 align-top text-sm whitespace-normal text-muted-foreground">
         {formatDateTime(member.createdAt)}

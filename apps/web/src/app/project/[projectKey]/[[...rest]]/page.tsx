@@ -11,10 +11,6 @@ function movedSegments(rest: string[]): string[] {
   switch (first) {
     case 'dashboard':
       return ['dashboards', ...after];
-    case 'ai-agents':
-      return ['agents'];
-    case 'ai-team':
-      return ['agents', ...after];
     case 'cycles':
     case 'initiatives':
       return after[0] === 'details' ? [first, ...after.slice(1)] : rest;

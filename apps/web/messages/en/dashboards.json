@@ -25,8 +25,7 @@
   "lastDays": "Last {days} days",
   "showRows": "Show {count}",
   "widgetGroups": {
-    "issues": "Issues",
-    "agents": "AI agents & webhooks"
+    "issues": "Issues"
   },
   "widgets": {
     "stat": {
@@ -57,21 +56,9 @@
       "label": "Breakdown",
       "description": "Issue counts by status, priority, type, or assignee"
     },
-    "agent_runs": {
-      "label": "Agent runs",
-      "description": "Recent AI agent runs with their outcome"
-    },
-    "agent_health": {
-      "label": "Agent health",
-      "description": "Agent run success rate and failures over a window"
-    },
     "webhook_health": {
       "label": "Webhook health",
       "description": "Webhook delivery outcomes and disabled endpoints"
-    },
-    "agent_workload": {
-      "label": "Agent workload",
-      "description": "Delegated issues and run outcomes per agent"
     }
   },
   "breakdown": {
@@ -80,15 +67,13 @@
       "status": "State",
       "priority": "Priority",
       "type": "Type",
-      "assignee": "Assignee",
-      "delegate": "Delegate"
+      "assignee": "Assignee"
     },
     "caption": {
       "status": "By state",
       "priority": "By priority",
       "type": "By type",
-      "assignee": "By assignee",
-      "delegate": "By delegate"
+      "assignee": "By assignee"
     }
   },
   "recentIssues": {
@@ -179,54 +164,12 @@
     "wholeProject": "Whole project",
     "forecastWeeks": "Rate over {weeks, plural, one {# week} other {# weeks}}"
   },
-  "agentRuns": {
-    "empty": "No agent runs yet.",
-    "filters": {
-      "all": "All runs",
-      "failed": "Failed",
-      "pending": "Queued",
-      "success": "Succeeded"
-    },
-    "status": {
-      "pending": "queued",
-      "success": "success",
-      "failed": "failed",
-      "canceled": "canceled"
-    },
-    "trigger": {
-      "mention": "ran on mention in",
-      "delegation": "ran on delegation of",
-      "field": "ran on a field of",
-      "manual": "ran manually",
-      "schedule": "ran on schedule",
-      "status": "ran on state change of",
-      "event": "ran on an event of"
-    }
-  },
-  "agentHealth": {
-    "empty": "No agent runs.",
-    "successRate": "success rate",
-    "runs": "{count, plural, one {# run} other {# runs}}",
-    "failed": "{count} failed",
-    "queued": "{count} queued"
-  },
   "webhookHealth": {
     "deliveries": "deliveries",
     "failed": "{count} failed",
     "pending": "{count} pending",
     "allDelivered": "all delivered",
     "disabled": "{count, plural, one {# disabled endpoint} other {# disabled endpoints}}"
-  },
-  "agentWorkload": {
-    "empty": "No agents in this project.",
-    "agent": "Agent",
-    "delegated": "Delegated",
-    "runs": "Runs",
-    "failed": "{count} failed",
-    "kind": {
-      "external": "External",
-      "internal": "Internal"
-    }
   },
   "defaultWidgets": {
     "open": "Open",

@@ -53,9 +53,6 @@ export default function GodTeamsTable({
             {t('columns.issues')}
           </TableHead>
           <TableHead className="text-xs font-medium text-muted-foreground">
-            {t('columns.agents')}
-          </TableHead>
-          <TableHead className="text-xs font-medium text-muted-foreground">
             {t('columns.mcp')}
           </TableHead>
           <TableHead className="text-right text-xs font-medium text-muted-foreground">
@@ -85,10 +82,6 @@ export default function GodTeamsTable({
 
             <TableCell className="px-3 py-3 text-sm tabular-nums" title={String(team.issueCount)}>
               {compactCount(team.issueCount)}
-            </TableCell>
-
-            <TableCell className="px-3 py-3 text-sm tabular-nums" title={String(team.agentCount)}>
-              {compactCount(team.agentCount)}
             </TableCell>
 
             <TableCell className="px-3 py-3">
