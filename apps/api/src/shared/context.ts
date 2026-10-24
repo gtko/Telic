@@ -21,6 +21,7 @@ function authFor(env: Env, db: Db) {
 // What every route reads from the Worker instead of a module-level global:
 //   ctx.env   the bindings, variables and secrets (see ../env.ts)
 //   ctx.db    the Drizzle client over the D1 binding
+//   ctx.bucket the R2 bucket for file bytes
 //   ctx.auth  the better-auth instance over the same database
 // A service takes `db` as its first argument, and a route hands it `ctx.db`. The derive is
 // global so a plugin that `.use(requestContext)` (directly, or through authContext) sees the
@@ -30,7 +31,7 @@ export const requestContext = new Elysia({ name: 'request-context' }).derive(
   () => {
     const env = workerEnv as unknown as Env;
     const db = createDb(env.DB);
-    return { env, db, auth: authFor(env, db) };
+    return { env, db, bucket: env.BUCKET, auth: authFor(env, db) };
   },
 );
 

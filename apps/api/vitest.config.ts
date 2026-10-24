@@ -15,6 +15,7 @@ const testEnv = {
   APP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
   APP_URL: 'http://localhost:3001',
   API_URL: 'http://localhost:3000',
+  NODE_ENV: 'test',
 };
 
 export default defineConfig(async () => {
