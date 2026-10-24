@@ -5,6 +5,7 @@ import {
   scimGroupMember,
   team,
   teamRole,
+  batchAll,
   type Db,
 } from '@repo/db';
 import { and, asc, eq, inArray, notInArray, or, sql } from 'drizzle-orm';
@@ -130,20 +131,22 @@ export async function setGroupMappings(
     }
   }
 
-  await db.transaction(async (tx) => {
-    await tx.delete(scimGroupMapping).where(eq(scimGroupMapping.groupId, groupId));
-    if (mappings.length > 0) {
-      await tx.insert(scimGroupMapping).values(
-        mappings.map((m) => ({
-          groupId,
-          projectId: m.projectId,
-          role: m.role,
-          // Owners bypass the permission matrix, so they carry no custom role.
-          roleId: m.role === 'owner' ? null : m.roleId,
-        })),
-      );
-    }
-  });
+  await batchAll(db, [
+    db.delete(scimGroupMapping).where(eq(scimGroupMapping.groupId, groupId)),
+    ...(mappings.length > 0
+      ? [
+          db.insert(scimGroupMapping).values(
+            mappings.map((m) => ({
+              groupId,
+              projectId: m.projectId,
+              role: m.role,
+              // Owners bypass the permission matrix, so they carry no custom role.
+              roleId: m.role === 'owner' ? null : m.roleId,
+            })),
+          ),
+        ]
+      : []),
+  ]);
   await reconcileProjects(db, [...before, ...projectIds]);
 
   const groups = await listProvisionedGroups(db, workspaceId);

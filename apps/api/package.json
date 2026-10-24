@@ -11,6 +11,7 @@
   },
   "scripts": {
     "test:d1": "vitest run",
+    "gen:changelog": "node scripts/gen-changelog.mjs",
     "dev": "bun --env-file=../../.env run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "lint": "eslint .",

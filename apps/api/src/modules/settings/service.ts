@@ -3,6 +3,7 @@ import {
   setSetting,
   STORAGE_SETTING_KEY,
   getStorageSettings,
+  type Db,
   type StorageSettings,
 } from '@repo/db';
 import { intEnv } from '#shared/lib';
@@ -16,15 +17,16 @@ import { intEnv } from '#shared/lib';
 // keeps only the write side: the limits are set in the database and edited in god mode,
 // there is no env var for them.
 export async function setStorageSettings(
+  db: Db,
   patch: Partial<StorageSettings>,
 ): Promise<StorageSettings> {
-  const next = { ...(await getStorageSettings()), ...patch };
+  const next = { ...(await getStorageSettings(db)), ...patch };
   // Types are matched case-insensitively; store them normalized so the settings UI
   // shows what is actually applied.
   next.attachmentMimeTypes = [
     ...new Set(next.attachmentMimeTypes.map((m) => m.trim().toLowerCase()).filter(Boolean)),
   ];
-  await setSetting(STORAGE_SETTING_KEY, next);
+  await setSetting(db, STORAGE_SETTING_KEY, next);
   return next;
 }
 
@@ -47,17 +49,18 @@ function defaultProjectDefaults(): ProjectDefaults {
   return { mcpEnabled: true };
 }
 
-export async function getProjectDefaults(): Promise<ProjectDefaults> {
-  const stored = await getSetting<Partial<ProjectDefaults>>(PROJECT_DEFAULTS_SETTING_KEY);
+export async function getProjectDefaults(db: Db): Promise<ProjectDefaults> {
+  const stored = await getSetting<Partial<ProjectDefaults>>(db, PROJECT_DEFAULTS_SETTING_KEY);
   // Merge over the default so a value written before a field was added stays valid.
   return { ...defaultProjectDefaults(), ...(stored ?? {}) };
 }
 
 export async function setProjectDefaults(
+  db: Db,
   patch: Partial<ProjectDefaults>,
 ): Promise<ProjectDefaults> {
-  const next = { ...(await getProjectDefaults()), ...patch };
-  await setSetting(PROJECT_DEFAULTS_SETTING_KEY, next);
+  const next = { ...(await getProjectDefaults(db)), ...patch };
+  await setSetting(db, PROJECT_DEFAULTS_SETTING_KEY, next);
   return next;
 }
 
@@ -87,14 +90,17 @@ function defaultAgentSettings(): AgentSettings {
   };
 }
 
-export async function getAgentSettings(): Promise<AgentSettings> {
-  const stored = await getSetting<Partial<AgentSettings>>(AGENT_SETTINGS_KEY);
+export async function getAgentSettings(db: Db): Promise<AgentSettings> {
+  const stored = await getSetting<Partial<AgentSettings>>(db, AGENT_SETTINGS_KEY);
   return { ...defaultAgentSettings(), ...(stored ?? {}) };
 }
 
-export async function setAgentSettings(patch: Partial<AgentSettings>): Promise<AgentSettings> {
-  const next = { ...(await getAgentSettings()), ...patch };
-  await setSetting(AGENT_SETTINGS_KEY, next);
+export async function setAgentSettings(
+  db: Db,
+  patch: Partial<AgentSettings>,
+): Promise<AgentSettings> {
+  const next = { ...(await getAgentSettings(db)), ...patch };
+  await setSetting(db, AGENT_SETTINGS_KEY, next);
   return next;
 }
 
@@ -107,13 +113,13 @@ const HOTKEYS_SETTING_KEY = 'hotkeys';
 
 export type HotkeyCombos = Record<string, string>;
 
-export async function getHotkeySettings(): Promise<HotkeyCombos> {
-  return (await getSetting<HotkeyCombos>(HOTKEYS_SETTING_KEY)) ?? {};
+export async function getHotkeySettings(db: Db): Promise<HotkeyCombos> {
+  return (await getSetting<HotkeyCombos>(db, HOTKEYS_SETTING_KEY)) ?? {};
 }
 
 // Replaces the stored map. The god screen sends the full set of overrides, so an
 // unbound command is one left out rather than one written as empty.
-export async function setHotkeySettings(combos: HotkeyCombos): Promise<HotkeyCombos> {
-  await setSetting(HOTKEYS_SETTING_KEY, combos);
+export async function setHotkeySettings(db: Db, combos: HotkeyCombos): Promise<HotkeyCombos> {
+  await setSetting(db, HOTKEYS_SETTING_KEY, combos);
   return combos;
 }

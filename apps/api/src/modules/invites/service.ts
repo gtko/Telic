@@ -6,11 +6,14 @@ import {
   team,
   project,
   user,
+  batchAll,
+  isUniqueViolation,
+  type BatchStatement,
   type Db,
 } from '@repo/db';
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import { getAuthSettings, inviteValidSince } from '@repo/auth';
-import { HttpError, iso, pgErrorCode } from '#shared/lib';
+import { HttpError, iso } from '#shared/lib';
 import { getProjectAccess, getTeamAccess } from '#shared/access';
 import { teamRef } from '#modules/teams/ref';
 import { getMembership, type MemberRole } from '#modules/members/service';
@@ -255,39 +258,43 @@ export async function createInvite(db: Db, input: NewInvite): Promise<InviteRow>
   // An expired invite still holds the one pending slot per address; it gives way to the
   // new one, so inviting again (or renewing) works without revoking it first.
   const since = await inviteValidSince();
-  let row;
+  // One atomic batch: the expired invite leaves only if the new one lands. Two invites
+  // racing for the same address both pass the checks above; the partial unique indexes
+  // (team_invite_*_pending_uq) let exactly one insert through and the other is refused.
+  const insert = db
+    .insert(teamInvite)
+    .values({
+      teamId: input.teamId,
+      projectId: input.projectId,
+      email,
+      teamRole: input.teamRole,
+      projectRole: input.projectRole,
+      roleId,
+      invitedByUserId: input.invitedByUserId,
+    })
+    .returning({ id: teamInvite.id });
+  let row: { id: number } | undefined;
   try {
-    [row] = await db.transaction(async (tx) => {
-      if (since) {
-        await tx
-          .delete(teamInvite)
-          .where(
-            and(
-              eq(teamInvite.teamId, input.teamId),
-              input.projectId == null
-                ? isNull(teamInvite.projectId)
-                : eq(teamInvite.projectId, input.projectId),
-              eq(teamInvite.email, email),
-              eq(teamInvite.status, 'pending'),
-              lt(teamInvite.createdAt, since),
-            ),
-          );
-      }
-      return tx
-        .insert(teamInvite)
-        .values({
-          teamId: input.teamId,
-          projectId: input.projectId,
-          email,
-          teamRole: input.teamRole,
-          projectRole: input.projectRole,
-          roleId,
-          invitedByUserId: input.invitedByUserId,
-        })
-        .returning({ id: teamInvite.id });
-    });
+    if (since) {
+      const expired = db
+        .delete(teamInvite)
+        .where(
+          and(
+            eq(teamInvite.teamId, input.teamId),
+            input.projectId == null
+              ? isNull(teamInvite.projectId)
+              : eq(teamInvite.projectId, input.projectId),
+            eq(teamInvite.email, email),
+            eq(teamInvite.status, 'pending'),
+            lt(teamInvite.createdAt, since),
+          ),
+        );
+      [, [row]] = await db.batch([expired, insert]);
+    } else {
+      [row] = await insert;
+    }
   } catch (err) {
-    if (pgErrorCode(err) === '23505') {
+    if (isUniqueViolation(err)) {
       throw new HttpError(
         409,
         'A pending invite for this email already exists',
@@ -296,7 +303,7 @@ export async function createInvite(db: Db, input: NewInvite): Promise<InviteRow>
     }
     throw err;
   }
-  return (await getInviteById(db, row.id))!;
+  return (await getInviteById(db, row!.id))!;
 }
 
 export async function getInviteById(db: Db, id: number): Promise<InviteRow | null> {
@@ -498,72 +505,70 @@ export async function acceptInvite(
 
   await assertSeatFree(db, invite.teamId, userId);
 
-  return db.transaction(async (tx) => {
-    // An invite is refused for an address already in the team, so a conflict here is
-    // someone who joined between the invite and this accept. setWhere rewrites only a
-    // standing the invite outranks: an invite never lowers a rank.
-    const outranked = OUTRANKED[invite.teamRole as TeamRole] ?? [];
-    await tx
+  // Read the names first: the writes below are one atomic batch with nothing to read back.
+  const [joinedTeam] = await db
+    .select({ id: team.id, name: team.name, slug: team.slug })
+    .from(team)
+    .where(eq(team.id, invite.teamId));
+  const [joinedProject] = invite.projectId
+    ? await db
+        .select({ key: project.key, name: project.name })
+        .from(project)
+        .where(eq(project.id, invite.projectId))
+    : [];
+
+  // An invite is refused for an address already in the team, so a conflict here is
+  // someone who joined between the invite and this accept. setWhere rewrites only a
+  // standing the invite outranks: an invite never lowers a rank.
+  const outranked = OUTRANKED[invite.teamRole as TeamRole] ?? [];
+  const statements: BatchStatement[] = [
+    db
       .insert(teamMember)
       .values({ teamId: invite.teamId, userId, role: invite.teamRole })
       .onConflictDoUpdate({
         target: [teamMember.teamId, teamMember.userId],
         set: { role: invite.teamRole },
         setWhere: outranked.length > 0 ? inArray(teamMember.role, outranked) : sql`false`,
-      });
-
-    if (invite.projectId != null) {
-      // A member joins on the invite's chosen role, falling back to the team's
-      // default role when none was set; a project owner bypasses roles.
-      let roleId: number | null = null;
-      if (invite.projectRole === 'member') {
-        if (invite.roleId != null) {
-          roleId = invite.roleId;
-        } else {
-          const [def] = await tx
-            .select({ id: teamRole.id })
-            .from(teamRole)
-            .where(and(eq(teamRole.teamId, invite.teamId), eq(teamRole.isDefault, true)));
-          roleId = def?.id ?? null;
-        }
-      }
-      await tx
+      }),
+  ];
+  if (invite.projectId != null) {
+    // A member joins on the invite's chosen role, falling back to the team's default
+    // role when none was set; a project owner bypasses roles.
+    let roleId: number | SQL | null = null;
+    if (invite.projectRole === 'member') {
+      roleId =
+        invite.roleId ??
+        sql`(select ${teamRole.id} from ${teamRole} where ${teamRole.teamId} = ${invite.teamId} and ${teamRole.isDefault} = 1 limit 1)`;
+    }
+    statements.push(
+      db
         .insert(projectMember)
         .values({
           projectId: invite.projectId,
           userId,
           role: invite.projectRole as MemberRole,
-          roleId,
+          roleId: roleId as number | null,
         })
         .onConflictDoUpdate({
           target: [projectMember.projectId, projectMember.userId],
-          set: { role: invite.projectRole as MemberRole, roleId },
-        });
-    }
-
-    await tx
+          set: { role: invite.projectRole as MemberRole, roleId: roleId as number | null },
+        }),
+    );
+  }
+  statements.push(
+    db
       .update(teamInvite)
       .set({ status: 'accepted', acceptedByUserId: userId, respondedAt: new Date() })
-      .where(eq(teamInvite.id, invite.id));
-
-    const [joinedTeam] = await tx
-      .select({ id: team.id, name: team.name, slug: team.slug })
-      .from(team)
-      .where(eq(team.id, invite.teamId));
-    const [joinedProject] = invite.projectId
-      ? await tx
-          .select({ key: project.key, name: project.name })
-          .from(project)
-          .where(eq(project.id, invite.projectId))
-      : [];
-    return {
-      teamName: joinedTeam.name,
-      teamRef: teamRef(joinedTeam),
-      projectKey: joinedProject?.key ?? null,
-      projectName: joinedProject?.name ?? null,
-      role: invite.projectRole as MemberRole | null,
-    };
-  });
+      .where(eq(teamInvite.id, invite.id)),
+  );
+  await batchAll(db, statements);
+  return {
+    teamName: joinedTeam.name,
+    teamRef: teamRef(joinedTeam),
+    projectKey: joinedProject?.key ?? null,
+    projectName: joinedProject?.name ?? null,
+    role: invite.projectRole as MemberRole | null,
+  };
 }
 
 export async function rejectInvite(db: Db, inviteId: number): Promise<void> {

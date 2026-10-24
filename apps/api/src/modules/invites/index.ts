@@ -70,13 +70,16 @@ async function loadActionableInvite(db: Db, token: string, user: AuthUser | unde
 // The ranks are checked again here, against the sender's standing now: a link that
 // grants project or team ownership must not outlive the standing that issued it, and
 // the sender can be demoted or gone between the two.
-async function assertStillGrantable(invite: {
-  teamId: number;
-  projectId: number | null;
-  teamRole: string;
-  projectRole: string | null;
-  invitedByUserId: string | null;
-}): Promise<void> {
+async function assertStillGrantable(
+  db: Db,
+  invite: {
+    teamId: number;
+    projectId: number | null;
+    teamRole: string;
+    projectRole: string | null;
+    invitedByUserId: string | null;
+  },
+): Promise<void> {
   if (!(await mayGrantInviteRanks(db, invite, invite.invitedByUserId))) {
     throw new HttpError(
       409,
@@ -88,8 +91,8 @@ async function assertStillGrantable(invite: {
 // What a created or renewed invite reports about its email. Without a provider nothing
 // was sent and the link is to be shared by hand; a provider whose send fails is told
 // apart, so nobody goes looking for a missing configuration.
-async function mailOutcome(send: () => Promise<boolean>) {
-  if (!(await hasConfiguredEmailProvider())) return { emailQueued: false, emailFailed: false };
+async function mailOutcome(db: Db, send: () => Promise<boolean>) {
+  if (!(await hasConfiguredEmailProvider(db))) return { emailQueued: false, emailFailed: false };
   try {
     const sent = await send();
     return { emailQueued: sent, emailFailed: !sent };
@@ -199,7 +202,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       });
       // Creating the invite link is the primary operation: a failed email must not
       // discard a valid link that can still be copied.
-      const email = await mailOutcome(() => enqueueInviteEmail(db, project, invite));
+      const email = await mailOutcome(db, () => enqueueInviteEmail(db, project, invite));
       set.status = 201;
       return { ...invite, ...email };
     },
@@ -267,7 +270,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
         if (role) await assertGrantablePermissions(db, project, user, role.permissions);
       }
       const invite = await renewInvite(db, grant, renewedBy);
-      const email = await mailOutcome(() => enqueueInviteEmail(db, project, invite));
+      const email = await mailOutcome(db, () => enqueueInviteEmail(db, project, invite));
       set.status = 201;
       return { ...invite, ...email };
     },
@@ -350,7 +353,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
         invitedByUserId: membership.userId,
       });
       // As for a project invite: the link is the primary result and stays valid.
-      const email = await mailOutcome(() => sendTeamInviteEmail(db, membership.teamId, invite));
+      const email = await mailOutcome(db, () => sendTeamInviteEmail(db, membership.teamId, invite));
       set.status = 201;
       return { ...invite, ...email };
     },
@@ -407,7 +410,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       }
       // Without a provider there is nothing to send, and the caller is told to share the
       // link; a provider that fails is an error, not that.
-      if (!(await hasConfiguredEmailProvider())) return { emailQueued: false };
+      if (!(await hasConfiguredEmailProvider(db))) return { emailQueued: false };
       if (grant.projectId == null) {
         if (!(await sendTeamInviteEmail(db, membership.teamId, invite))) {
           throw new HttpError(502, 'The invite email could not be sent');
@@ -453,7 +456,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       const invite = await renewInvite(db, grant, membership.userId);
       const { projectId } = grant;
       const projectName = invite.projectName;
-      const email = await mailOutcome(async () => {
+      const email = await mailOutcome(db, async () => {
         if (projectId == null) return sendTeamInviteEmail(db, membership.teamId, invite);
         if (projectName == null) return false;
         return enqueueInviteEmail(db, { id: projectId, name: projectName }, invite);
@@ -517,7 +520,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
     '/invites/:token/accept',
     async ({ db, params, user }) => {
       const { invite, current } = await loadActionableInvite(db, params.token, user);
-      await assertStillGrantable(invite);
+      await assertStillGrantable(db, invite);
       return acceptInvite(db, invite, current.id);
     },
     {

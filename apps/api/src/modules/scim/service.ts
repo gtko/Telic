@@ -10,6 +10,10 @@ import {
   teamMember,
   user,
   workspaceManager,
+  batchAll,
+  isForeignKeyViolation,
+  isUniqueViolation,
+  type BatchStatement,
   type Db,
 } from '@repo/db';
 import {
@@ -62,12 +66,14 @@ export const GROUP_FILTER_ATTRIBUTES = ['displayName', 'externalId'];
 
 // True for every account that is not an AI agent's bot user. The same test the god
 // user directory uses for its `human` filter.
-const notAnAgent = notExists(
-  db
-    .select({ n: sql`1` })
-    .from(aiAgent)
-    .where(eq(aiAgent.userId, user.id)),
-);
+function notAnAgent(db: Db) {
+  return notExists(
+    db
+      .select({ n: sql`1` })
+      .from(aiAgent)
+      .where(eq(aiAgent.userId, user.id)),
+  );
+}
 
 // A row of this provider, on a `workspace_id` column.
 export function ofProvider(column: Column, workspaceId: number | null) {
@@ -97,9 +103,9 @@ function linkOf(workspaceId: number | null) {
 // The accounts a workspace's provider sees: the ones it wrote, and the people in the
 // workspace's teams. The instance's provider, every account.
 function inWorkspace(db: Db, workspaceId: number | null) {
-  if (workspaceId === null) return notAnAgent;
+  if (workspaceId === null) return notAnAgent(db);
   return and(
-    notAnAgent,
+    notAnAgent(db),
     or(
       isNotNull(scimUser.userId),
       exists(
@@ -250,7 +256,7 @@ export async function createScimUser(
     .select({ id: user.id, role: user.role, externalId: scimUser.externalId })
     .from(user)
     .leftJoin(scimUser, linkOf(workspaceId))
-    .where(and(emailEq(email), notAnAgent));
+    .where(and(emailEq(email), notAnAgent(db)));
   if (existing) {
     assertNotGod(existing.role, 'provisioned');
     // A second create for an address this provider already linked is a retry, not a
@@ -271,37 +277,48 @@ export async function createScimUser(
   // For the instance's provider, `active` is the account's own: it decides whether the
   // account signs in at all.
   const instanceWide = workspaceId === null;
-  const userId = await db.transaction(async (tx) => {
-    let id = existing?.id;
-    if (id && instanceWide) {
-      await tx.update(user).set({ active: input.active }).where(eq(user.id, id));
-    }
-    if (!id) {
-      const [created] = await tx
-        .insert(user)
-        .values({
-          id: crypto.randomUUID(),
-          email,
-          name: input.name,
-          emailVerified: true,
-          role: 'user',
-          // The @mention handle, derived from the address the same way a sign-up
-          // derives it. The identity provider does not supply one.
-          username: await generateUsername(email),
-          active: instanceWide ? input.active : true,
-        })
-        .returning({ id: user.id });
-      id = created!.id;
-    }
-    await tx
+  const userId = existing?.id ?? crypto.randomUUID();
+  const statements: BatchStatement[] = [];
+  if (existing && instanceWide) {
+    statements.push(db.update(user).set({ active: input.active }).where(eq(user.id, userId)));
+  }
+  if (!existing) {
+    statements.push(
+      db.insert(user).values({
+        id: userId,
+        email,
+        name: input.name,
+        emailVerified: true,
+        role: 'user',
+        // The @mention handle, derived from the address the same way a sign-up
+        // derives it. The identity provider does not supply one.
+        username: await generateUsername(email),
+        active: instanceWide ? input.active : true,
+      }),
+    );
+  }
+  statements.push(
+    db
       .insert(scimUser)
-      .values({ workspaceId, userId: id, externalId: input.externalId, active: input.active })
+      .values({ workspaceId, userId, externalId: input.externalId, active: input.active })
       .onConflictDoUpdate({
         ...scimUserConflict(workspaceId),
         set: { externalId: input.externalId, active: input.active },
-      });
-    return id;
-  });
+      }),
+  );
+  try {
+    await batchAll(db, statements);
+  } catch (err) {
+    // Two creates for one address racing: the unique index on the address lets one in.
+    if (!existing && isUniqueViolation(err)) {
+      throw new ScimError(
+        409,
+        `A user with userName '${input.email}' already exists`,
+        'uniqueness',
+      );
+    }
+    throw err;
+  }
   if (input.active) await reconcileProjects(db, await groupProjectIds(db, workspaceId, userId));
   else if (!instanceWide) await dropWorkspaceMemberships(db, workspaceId, userId);
   return (await getScimUser(db, workspaceId, userId))!;
@@ -356,7 +373,7 @@ async function updateAccount(
     const [clash] = await db
       .select({ id: user.id })
       .from(user)
-      .where(and(emailEq(email), notAnAgent));
+      .where(and(emailEq(email), notAnAgent(db)));
     if (clash && clash.id !== id) {
       throw new ScimError(
         409,
@@ -434,7 +451,9 @@ export async function syncEmbeddedGroups(
     .insert(scimGroupMember)
     .values(groupIds.map((groupId) => ({ groupId, userId })))
     .onConflictDoNothing();
-  const projectIds = (await Promise.all(groupIds.map(mappedProjectIds))).flat();
+  const projectIds = (
+    await Promise.all(groupIds.map((groupId) => mappedProjectIds(db, groupId)))
+  ).flat();
   await reconcileProjects(db, projectIds);
 }
 
@@ -470,25 +489,23 @@ export async function deleteScimUser(
   await assertNotWorkspaceOwner(db, workspaceId, id);
 
   await dropWorkspaceMemberships(db, workspaceId, id);
-  await db.transaction(async (tx) => {
-    await tx
+  await batchAll(db, [
+    db
       .delete(scimGroupMember)
       .where(
         and(
           eq(scimGroupMember.userId, id),
           inArray(
             scimGroupMember.groupId,
-            tx
+            db
               .select({ id: scimGroup.id })
               .from(scimGroup)
               .where(eq(scimGroup.workspaceId, workspaceId)),
           ),
         ),
-      );
-    await tx
-      .delete(scimUser)
-      .where(and(eq(scimUser.workspaceId, workspaceId), eq(scimUser.userId, id)));
-  });
+      ),
+    db.delete(scimUser).where(and(eq(scimUser.workspaceId, workspaceId), eq(scimUser.userId, id))),
+  ]);
 }
 
 // Whether this user owns a project alone outside the workspaces they own. Deleting the
@@ -640,26 +657,31 @@ export async function createScimGroup(
 ): Promise<ScimGroupRecord> {
   const members = [...new Set(input.members)];
   await assertKnownMembers(db, workspaceId, members);
-  const created = await db.transaction(async (tx) => {
-    const existing = await tx
-      .select({ id: scimGroup.id })
-      .from(scimGroup)
-      .where(groupWhere(workspaceId, { attribute: 'displayname', value: input.displayName }));
-    if (existing.length > 0) {
+  // The unique indexes on (provider, displayName) decide between two creates racing for
+  // one name: the id is chosen here so the members can ride in the same atomic batch.
+  const created = { id: crypto.randomUUID() };
+  try {
+    await batchAll(db, [
+      db.insert(scimGroup).values({
+        id: created.id,
+        workspaceId,
+        displayName: input.displayName,
+        externalId: input.externalId,
+      }),
+      ...(members.length > 0
+        ? [
+            db
+              .insert(scimGroupMember)
+              .values(members.map((userId) => ({ groupId: created.id, userId }))),
+          ]
+        : []),
+    ]);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
       throw new ScimError(409, `A group named '${input.displayName}' already exists`, 'uniqueness');
     }
-    const rows = await tx
-      .insert(scimGroup)
-      .values({ workspaceId, displayName: input.displayName, externalId: input.externalId })
-      .returning();
-    const group = rows[0]!;
-    if (members.length > 0) {
-      await tx
-        .insert(scimGroupMember)
-        .values(members.map((userId) => ({ groupId: group.id, userId })));
-    }
-    return group;
-  });
+    throw err;
+  }
   await reconcileProjects(db, await mappedProjectIds(db, created.id));
   return (await getScimGroup(db, workspaceId, created.id))!;
 }
@@ -685,42 +707,43 @@ export async function updateScimGroup(
       members.filter((userId) => !heldIds.has(userId)),
     );
   }
-  const updated = await db.transaction(async (tx) => {
-    const found = await tx
-      .select({ id: scimGroup.id })
-      .from(scimGroup)
-      .where(and(eq(scimGroup.id, id), ofProvider(scimGroup.workspaceId, workspaceId)));
-    if (!found[0]) return false;
-    if (patch.displayName) {
-      const clash = await tx
-        .select({ id: scimGroup.id })
-        .from(scimGroup)
-        .where(groupWhere(workspaceId, { attribute: 'displayname', value: patch.displayName }));
-      if (clash[0] && clash[0].id !== id) {
-        throw new ScimError(
-          409,
-          `A group named '${patch.displayName}' already exists`,
-          'uniqueness',
-        );
-      }
+  const [found] = await db
+    .select({ id: scimGroup.id })
+    .from(scimGroup)
+    .where(and(eq(scimGroup.id, id), ofProvider(scimGroup.workspaceId, workspaceId)));
+  if (!found) return null;
+  // The unique index on (provider, displayName) refuses a rename onto another group's
+  // name at write time, which a read-then-write check could not do under concurrency.
+  try {
+    await batchAll(db, [
+      db
+        .update(scimGroup)
+        .set({
+          ...(patch.displayName ? { displayName: patch.displayName } : {}),
+          ...(patch.externalId !== undefined ? { externalId: patch.externalId } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(scimGroup.id, id)),
+      ...(members
+        ? [
+            db.delete(scimGroupMember).where(eq(scimGroupMember.groupId, id)),
+            ...(members.length > 0
+              ? [
+                  db
+                    .insert(scimGroupMember)
+                    .values(members.map((userId) => ({ groupId: id, userId }))),
+                ]
+              : []),
+          ]
+        : []),
+    ]);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ScimError(409, `A group named '${patch.displayName}' already exists`, 'uniqueness');
     }
-    await tx
-      .update(scimGroup)
-      .set({
-        ...(patch.displayName ? { displayName: patch.displayName } : {}),
-        ...(patch.externalId !== undefined ? { externalId: patch.externalId } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(scimGroup.id, id));
-    if (members) {
-      await tx.delete(scimGroupMember).where(eq(scimGroupMember.groupId, id));
-      if (members.length > 0) {
-        await tx.insert(scimGroupMember).values(members.map((userId) => ({ groupId: id, userId })));
-      }
-    }
-    return true;
-  });
-  if (!updated) return null;
+    if (isForeignKeyViolation(err)) return null; // the group was deleted in between
+    throw err;
+  }
   await reconcileProjects(db, await mappedProjectIds(db, id));
   return getScimGroup(db, workspaceId, id);
 }
