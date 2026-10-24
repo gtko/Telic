@@ -34,7 +34,7 @@ afterAll(async () => {
 function post(base: string, path: string, body: unknown, ip: string): Request {
   return new Request(`${base}/api/auth${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: base, 'x-forwarded-for': ip },
+    headers: { 'content-type': 'application/json', origin: base, 'cf-connecting-ip': ip },
     body: JSON.stringify(body),
   });
 }
@@ -100,6 +100,23 @@ describe('rate limit', () => {
 
     const rows = await db.select().from(schema.rateLimit);
     expect(rows.some((row) => row.key.includes('10.9.1.1') && row.count >= 3)).toBe(true);
+  });
+
+  it('counts each client IP separately and ignores a spoofed X-Forwarded-For', async () => {
+    const auth = createAuth(env, db);
+    const attempt = (ip: string, forwarded?: string) => {
+      const req = post(
+        'https://api.example.com',
+        '/sign-in/email',
+        { email: 'z@example.com', password: 'wrong-password-1' },
+        ip,
+      );
+      if (forwarded) req.headers.set('x-forwarded-for', forwarded);
+      return auth.handler(req);
+    };
+    for (let i = 0; i < 4; i++) await attempt('10.9.3.1', `10.9.3.${i + 10}`);
+    expect((await attempt('10.9.3.1')).status).toBe(429);
+    expect((await attempt('10.9.3.2')).status).not.toBe(429);
   });
 
   it('is shared by two instances, as two isolates would be', async () => {
