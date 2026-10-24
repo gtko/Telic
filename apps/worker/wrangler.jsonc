@@ -1,0 +1,39 @@
+{
+  // The worker: Cron Triggers (webhook deliveries, notifications, agent schedules, import
+  // wake-ups, telemetry) and the Queue consumer that drains the heavy jobs (source imports,
+  // notification bursts). Placeholders only: no real database id, bucket or queue name is
+  // committed. `wrangler dev --test-scheduled --local` never contacts Cloudflare.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telic-worker",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-01",
+  // nodejs_compat: @repo/crypto (node:crypto) and process.env, populated from vars and secrets.
+  "compatibility_flags": ["nodejs_compat"],
+  "define": { "__APP_VERSION__": "\"0.0.0\"" },
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "telic",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/db/drizzle-d1",
+    },
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "telic-attachments" }],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "telic-jobs" }],
+    "consumers": [
+      {
+        "queue": "telic-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+      },
+    ],
+  },
+  // Secrets (wrangler secret put): APP_ENCRYPTION_KEY, and the SMTP/Resend/Telegram credentials
+  // live in the database, encrypted with it. Nothing secret belongs in this file.
+  "vars": {
+    "TELEMETRY_DISABLED": "",
+  },
+}

@@ -1,5 +1,6 @@
-import { db, notificationDelivery, type DeliveryPayload } from '@repo/db';
-import { eq, sql } from 'drizzle-orm';
+import { notificationDelivery, type Db, type DeliveryPayload } from '@repo/db';
+import { eq } from 'drizzle-orm';
+import { allRows, parseJson } from './d1';
 import { equalJitterBackoffMs } from './backoff';
 import { intEnv } from './env';
 import { deliverNotification, type SendResult } from './notification-send';
@@ -9,7 +10,7 @@ import { deliverNotification, type SendResult } from './notification-send';
 // deleted (no delivery history is kept); a permanently failed row is left as
 // 'failed' with its last error for debugging.
 
-interface ClaimedNotification {
+export interface ClaimedNotification {
   id: number;
   projectId: number;
   channel: string;
@@ -18,44 +19,60 @@ interface ClaimedNotification {
   attempts: number;
 }
 
-export async function processNotificationDeliveries(): Promise<void> {
-  const claimed = await claimDueDeliveries();
-  await Promise.all(claimed.map(processDelivery));
+// Claims and sends one batch. Returns how many rows it took, so a caller draining the
+// outbox knows whether another batch may be waiting.
+export async function processNotificationDeliveries(
+  db: Db,
+  nowMs: number = Date.now(),
+): Promise<number> {
+  const claimed = await claimDueNotifications(db, nowMs);
+  await Promise.all(claimed.map((d) => processDelivery(db, d, nowMs)));
+  return claimed.length;
 }
 
-// Atomically claims up to the batch size of due rows. FOR UPDATE SKIP LOCKED lets
-// multiple worker replicas run without grabbing the same row; the claim leases the
-// row by pushing next_attempt_at forward, so a row whose worker crashes mid-send
-// becomes claimable again after the lease.
-async function claimDueDeliveries(): Promise<ClaimedNotification[]> {
+// Whether a row is due, for the cron to decide to wake the queue consumer.
+export async function hasDueNotifications(db: Db, nowMs: number = Date.now()): Promise<boolean> {
+  const rows = await allRows<{ one: number }>(
+    db,
+    `SELECT 1 AS one FROM notification_delivery WHERE status = 'pending' AND next_attempt_at <= ? LIMIT 1`,
+    [nowMs],
+  );
+  return rows.length > 0;
+}
+
+// Atomically claims up to the batch size of due rows. D1 serializes writes, so the one
+// UPDATE ... WHERE id IN (SELECT ...) is the lock: two consumers never get the same row. The
+// claim leases the row by pushing next_attempt_at forward, so a row whose worker crashes
+// mid-send becomes claimable again after the lease.
+export async function claimDueNotifications(
+  db: Db,
+  nowMs: number = Date.now(),
+): Promise<ClaimedNotification[]> {
   const batchSize = intEnv('NOTIFICATION_BATCH_SIZE', 20);
   const leaseSeconds = intEnv('NOTIFICATION_LEASE_SECONDS', 120);
-  const rows = await db.execute(sql`
-    UPDATE notification_delivery d
-    SET attempts = d.attempts + 1,
-        next_attempt_at = now() + make_interval(secs => ${leaseSeconds})
-    WHERE d.id IN (
-      SELECT id FROM notification_delivery
-      WHERE status = 'pending' AND next_attempt_at <= now()
-      ORDER BY next_attempt_at, id
-      FOR UPDATE SKIP LOCKED
-      LIMIT ${batchSize}
-    )
-    RETURNING
-      d.id,
-      d.project_id AS "projectId",
-      d.channel,
-      d.recipient,
-      d.payload,
-      d.attempts
-  `);
-  return rows as unknown as ClaimedNotification[];
+  const rows = await allRows<Omit<ClaimedNotification, 'payload'> & { payload: string }>(
+    db,
+    `UPDATE notification_delivery
+     SET attempts = attempts + 1, next_attempt_at = ?
+     WHERE status = 'pending' AND next_attempt_at <= ? AND id IN (
+       SELECT id FROM notification_delivery
+       WHERE status = 'pending' AND next_attempt_at <= ?
+       ORDER BY next_attempt_at, id
+       LIMIT ?
+     )
+     RETURNING id, project_id AS projectId, channel, recipient, payload, attempts`,
+    [nowMs + leaseSeconds * 1000, nowMs, nowMs, batchSize],
+  );
+  return rows.map((r) => ({
+    ...r,
+    payload: parseJson<DeliveryPayload>(r.payload, {} as DeliveryPayload),
+  }));
 }
 
-async function processDelivery(d: ClaimedNotification): Promise<void> {
+async function processDelivery(db: Db, d: ClaimedNotification, nowMs: number): Promise<void> {
   let result: SendResult;
   try {
-    result = await deliverNotification(d);
+    result = await deliverNotification(db, d);
   } catch (err) {
     result = {
       ok: false,
@@ -75,7 +92,7 @@ async function processDelivery(d: ClaimedNotification): Promise<void> {
     const delaySeconds = Math.ceil(equalJitterBackoffMs(d.attempts, 30_000, 30 * 60_000) / 1000);
     await db
       .update(notificationDelivery)
-      .set({ nextAttemptAt: sql`now() + make_interval(secs => ${delaySeconds})`, lastError: error })
+      .set({ nextAttemptAt: new Date(nowMs + delaySeconds * 1000), lastError: error })
       .where(eq(notificationDelivery.id, d.id));
     return;
   }

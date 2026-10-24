@@ -1,6 +1,5 @@
-import { existsSync } from 'node:fs';
-import { db, getOrCreateSetting, getSetting, setSetting } from '@repo/db';
-import { sql } from 'drizzle-orm';
+import { getOrCreateSetting, getSetting, setSetting, type Db } from '@repo/db';
+import { allRows, parseJson } from './d1';
 import { equalJitterBackoffMs } from './backoff';
 import { buildPulse, type AuthPolicy, type InstanceCounts } from './telemetry-payload';
 import {
@@ -10,10 +9,13 @@ import {
   utcDay,
   MINUTES_PER_DAY,
 } from './telemetry-schedule';
-import pkg from '../../../package.json';
 
 // Sends one anonymous snapshot of this instance a day. TELEMETRY.md documents what
 // goes out and how to turn it off (TELEMETRY_DISABLED=1 / DO_NOT_TRACK=1).
+
+// The release this build was cut from, injected by wrangler's `define` (wrangler.jsonc).
+declare const __APP_VERSION__: string | undefined;
+const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
 
 const ENDPOINT = 'https://telemetry.itsaplan.dev/v1/telemetry';
 const TIMEOUT_MS = 10_000;
@@ -21,9 +23,6 @@ const TIMEOUT_MS = 10_000;
 // Retried with a growing delay for this many attempts, then once an hour.
 const MAX_ATTEMPTS = 5;
 const RETRY_AFTER_MAX_MS = 60 * 60_000;
-
-// ~1min at the worker's 2s poll interval, matching the minute the slot is expressed in.
-export const TELEMETRY_CHECK_EVERY_TICKS = 30;
 
 const INSTANCE_ID_KEY = 'telemetry.instance_id';
 const LAST_SENT_KEY = 'telemetry.last_sent_day';
@@ -35,12 +34,8 @@ interface State {
   lastSentDay: string | null;
 }
 
-// Read once per process, then kept in memory. Replicas each hold their own copy and
-// each send; the collector keys rows on (instance_id, day), so that costs N requests
-// a day, not N rows.
-let state: State | null = null;
-
-// In memory only: a restart costs one extra attempt.
+// In memory only (per isolate): a fresh isolate costs one extra attempt. Isolates each send;
+// the collector keys rows on (instance_id, day), so that costs N requests a day, not N rows.
 let failures = 0;
 let retryAfterMs = 0;
 
@@ -53,11 +48,11 @@ function telemetryEnabled(): boolean {
   return !optedOut(process.env.TELEMETRY_DISABLED) && !optedOut(process.env.DO_NOT_TRACK);
 }
 
-async function instanceId(): Promise<string> {
-  const stored = await getSetting<string>(INSTANCE_ID_KEY);
+async function instanceId(db: Db): Promise<string> {
+  const stored = await getSetting<string>(db, INSTANCE_ID_KEY);
   if (typeof stored === 'string' && stored.length > 0) return stored;
   // Insert-if-absent: replicas racing on the first start settle on one id.
-  const id = await getOrCreateSetting(INSTANCE_ID_KEY, crypto.randomUUID());
+  const id = await getOrCreateSetting(db, INSTANCE_ID_KEY, crypto.randomUUID());
   // Printed once ever, so an operator who never reads the docs still finds out.
   console.log(
     '[telemetry] this instance now sends one anonymous snapshot a day. ' +
@@ -67,17 +62,17 @@ async function instanceId(): Promise<string> {
   return id;
 }
 
-async function sendMinute(): Promise<number> {
-  const stored = await getSetting<number>(SEND_MINUTE_KEY);
+async function sendMinute(db: Db): Promise<number> {
+  const stored = await getSetting<number>(db, SEND_MINUTE_KEY);
   if (typeof stored === 'number' && stored >= 0 && stored < MINUTES_PER_DAY) return stored;
-  return await getOrCreateSetting(SEND_MINUTE_KEY, randomSendMinute());
+  return await getOrCreateSetting(db, SEND_MINUTE_KEY, randomSendMinute());
 }
 
-async function loadState(): Promise<State> {
+async function loadState(db: Db): Promise<State> {
   return {
-    instanceId: await instanceId(),
-    sendMinute: await sendMinute(),
-    lastSentDay: (await getSetting<string>(LAST_SENT_KEY)) ?? null,
+    instanceId: await instanceId(db),
+    sendMinute: await sendMinute(db),
+    lastSentDay: (await getSetting<string>(db, LAST_SENT_KEY)) ?? null,
   };
 }
 
@@ -128,7 +123,17 @@ const DISABLED_FEATURES: ReadonlyArray<readonly [key: string, column: string]> =
   ['issueStats', 'issue_stats_enabled'],
 ];
 
-const RECENT = "now() - interval '30 days'";
+const RECENT_DAYS = 30;
+
+// D1 hands a boolean back as 0/1.
+function isTrue(value: unknown): boolean {
+  return value === 1 || value === true;
+}
+
+// The columns of the snapshot row that are flags rather than counts.
+function isFlag(column: string): boolean {
+  return column.startsWith('has') || column.startsWith('runBy');
+}
 
 // Prefixes that split the one flag row into the three maps the pulse carries.
 const EVER = 'ever_';
@@ -140,11 +145,11 @@ function exists(from: string, conditions: string[]): string {
   return `EXISTS(SELECT 1 FROM ${from}${where})`;
 }
 
-function flagSelects(): string {
+function flagSelects(recent30d: number): string {
   const parts: string[] = [];
   for (const f of FEATURES) {
     const scope = f.where ? [f.where] : [];
-    const recent = `${f.since ?? 'created_at'} > ${RECENT}`;
+    const recent = `${f.since ?? 'created_at'} > ${recent30d}`;
     parts.push(`${exists(f.from, scope)} AS "${EVER}${f.key}"`);
     parts.push(`${exists(f.from, [...scope, recent])} AS "${USED}${f.key}"`);
   }
@@ -161,83 +166,87 @@ interface Snapshot {
   featuresDisabled: Record<string, boolean>;
 }
 
-// ::int because postgres-js returns bigint as a string, which would bucket as NaN.
-async function readSnapshot(): Promise<Snapshot> {
-  const rows = await db.execute(sql`
+// The 30-day cutoff is computed from the caller's clock and inlined as an integer literal:
+// SQLite has no now() - interval, and the number cannot carry user input.
+async function readSnapshot(db: Db, nowMs: number): Promise<Snapshot> {
+  const since = Math.trunc(nowMs - RECENT_DAYS * 86_400_000);
+  const rows = await allRows<Record<string, unknown>>(
+    db,
+    `
     SELECT
-      (SELECT count(*)::int FROM "user") AS "users",
-      (SELECT count(DISTINCT user_id)::int FROM "session"
-        WHERE created_at > now() - interval '30 days') AS "activeUsers30d",
-      (SELECT count(*)::int FROM project) AS "projects",
-      (SELECT count(*)::int FROM issue) AS "issues",
-      (SELECT count(*)::int FROM issue
-        WHERE created_at > now() - interval '30 days') AS "issuesCreated30d",
-      (SELECT (coalesce(sum(size_bytes), 0) / 1048576)::int FROM issue_attachment)
+      (SELECT count(*) FROM "user") AS "users",
+      (SELECT count(DISTINCT user_id) FROM "session"
+        WHERE created_at > ${since}) AS "activeUsers30d",
+      (SELECT count(*) FROM project) AS "projects",
+      (SELECT count(*) FROM issue) AS "issues",
+      (SELECT count(*) FROM issue
+        WHERE created_at > ${since}) AS "issuesCreated30d",
+      (SELECT CAST(coalesce(sum(size_bytes), 0) / 1048576 AS INTEGER) FROM issue_attachment)
         AS "attachmentMb",
-      (SELECT count(*)::int FROM ai_agent) AS "agents",
-      (SELECT count(*)::int FROM ai_agent WHERE kind = 'internal') AS "internalAgents",
-      (SELECT count(*)::int FROM ai_agent WHERE kind = 'external') AS "externalAgents",
-      (SELECT count(*)::int FROM agent_run
-        WHERE created_at > now() - interval '30 days') AS "agentRuns30d",
-      (SELECT count(*)::int FROM agent_run
-        WHERE created_at > now() - interval '30 days'
+      (SELECT count(*) FROM ai_agent) AS "agents",
+      (SELECT count(*) FROM ai_agent WHERE kind = 'internal') AS "internalAgents",
+      (SELECT count(*) FROM ai_agent WHERE kind = 'external') AS "externalAgents",
+      (SELECT count(*) FROM agent_run
+        WHERE created_at > ${since}) AS "agentRuns30d",
+      (SELECT count(*) FROM agent_run
+        WHERE created_at > ${since}
           AND status = 'failed') AS "agentRunsFailed30d",
-      (SELECT count(*)::int FROM agent_skill) AS "agentSkills",
-      (SELECT count(*)::int FROM agent_chat_thread
-        WHERE updated_at > now() - interval '30 days') AS "agentChats30d",
-      (SELECT count(*)::int FROM webhook_delivery
-        WHERE created_at > now() - interval '30 days') AS "webhookDeliveries30d",
-      (SELECT count(*)::int FROM webhook_delivery
-        WHERE created_at > now() - interval '30 days'
+      (SELECT count(*) FROM agent_skill) AS "agentSkills",
+      (SELECT count(*) FROM agent_chat_thread
+        WHERE updated_at > ${since}) AS "agentChats30d",
+      (SELECT count(*) FROM webhook_delivery
+        WHERE created_at > ${since}) AS "webhookDeliveries30d",
+      (SELECT count(*) FROM webhook_delivery
+        WHERE created_at > ${since}
           AND status = 'failed') AS "webhookDeliveriesFailed30d",
       EXISTS(SELECT 1 FROM agent_schedule) AS "hasAgentSchedules",
       -- An external agent is driven by a runner on the operator's own machine, which
       -- stamps last_seen_at when it polls.
       EXISTS(SELECT 1 FROM ai_agent
-        WHERE kind = 'external' AND last_seen_at > now() - interval '30 days')
+        WHERE kind = 'external' AND last_seen_at > ${since})
         AS "hasActiveRunners",
       EXISTS(SELECT 1 FROM agent_run WHERE trigger = 'mention'
-        AND created_at > now() - interval '30 days') AS "runByMention30d",
+        AND created_at > ${since}) AS "runByMention30d",
       EXISTS(SELECT 1 FROM agent_run WHERE trigger = 'delegation'
-        AND created_at > now() - interval '30 days') AS "runByDelegation30d",
+        AND created_at > ${since}) AS "runByDelegation30d",
       EXISTS(SELECT 1 FROM agent_run WHERE trigger = 'schedule'
-        AND created_at > now() - interval '30 days') AS "runBySchedule30d",
+        AND created_at > ${since}) AS "runBySchedule30d",
       EXISTS(SELECT 1 FROM agent_run WHERE trigger = 'manual'
-        AND created_at > now() - interval '30 days') AS "runByManual30d",
+        AND created_at > ${since}) AS "runByManual30d",
       EXISTS(SELECT 1 FROM webhook) AS "hasWebhooks",
       EXISTS(SELECT 1 FROM apikey) AS "hasApiKeys",
       EXISTS(SELECT 1 FROM project WHERE mcp_enabled) AS "hasMcpProject",
       -- The row is created on the first read of the settings page, so a project counts
       -- only once the integration is switched on.
       EXISTS(SELECT 1 FROM project_setting
-        WHERE key = 'git' AND (value->>'enabled')::boolean) AS "hasGit",
+        WHERE key = 'git' AND json_extract(value, '$.enabled') = 1) AS "hasGit",
       -- The app_secret row appears on any save, so read the plaintext mirror of the
       -- config: same conditions as hasEmailProvider, isGoogleUsable, isInstanceBotUsable.
       EXISTS(SELECT 1 FROM app_secret WHERE key = 'auth.email'
-        AND (((redacted->'smtp'->>'enabled')::boolean AND redacted->'smtp'->>'host' <> '')
-          OR ((redacted->'resend'->>'enabled')::boolean
-            AND (redacted->'resend'->>'hasApiKey')::boolean))) AS "hasEmail",
+        AND ((json_extract(redacted, '$.smtp.enabled') = 1 AND json_extract(redacted, '$.smtp.host') <> '')
+          OR (json_extract(redacted, '$.resend.enabled') = 1
+            AND json_extract(redacted, '$.resend.hasApiKey') = 1))) AS "hasEmail",
       EXISTS(SELECT 1 FROM app_secret WHERE key = 'auth.google'
-        AND (redacted->>'enabled')::boolean
-        AND redacted->>'clientId' <> ''
-        AND (redacted->>'hasClientSecret')::boolean) AS "hasGoogleOauth",
+        AND json_extract(redacted, '$.enabled') = 1
+        AND json_extract(redacted, '$.clientId') <> ''
+        AND json_extract(redacted, '$.hasClientSecret') = 1) AS "hasGoogleOauth",
       EXISTS(SELECT 1 FROM app_secret WHERE key = 'telegram.bot'
-        AND (redacted->>'enabled')::boolean
-        AND (redacted->>'hasBotToken')::boolean) AS "hasTelegramBot",
+        AND json_extract(redacted, '$.enabled') = 1
+        AND json_extract(redacted, '$.hasBotToken') = 1) AS "hasTelegramBot",
       EXISTS(SELECT 1 FROM integration_credential) AS "hasProjectIntegrations",
-      ${sql.raw(flagSelects())}
-  `);
-  const row = (rows as unknown as Record<string, unknown>[])[0] ?? {};
+      ${flagSelects(since)}`,
+  );
+  const row = rows[0] ?? {};
 
   const features: Record<string, boolean> = {};
   const featuresUsed30d: Record<string, boolean> = {};
   const featuresDisabled: Record<string, boolean> = {};
   const counts: Record<string, unknown> = {};
   for (const [column, value] of Object.entries(row)) {
-    if (column.startsWith(EVER)) features[column.slice(EVER.length)] = value === true;
-    else if (column.startsWith(USED)) featuresUsed30d[column.slice(USED.length)] = value === true;
-    else if (column.startsWith(OFF)) featuresDisabled[column.slice(OFF.length)] = value === true;
-    else counts[column] = value;
+    if (column.startsWith(EVER)) features[column.slice(EVER.length)] = isTrue(value);
+    else if (column.startsWith(USED)) featuresUsed30d[column.slice(USED.length)] = isTrue(value);
+    else if (column.startsWith(OFF)) featuresDisabled[column.slice(OFF.length)] = isTrue(value);
+    else counts[column] = isFlag(column) ? isTrue(value) : value;
   }
   return {
     counts: counts as unknown as InstanceCounts,
@@ -269,31 +278,36 @@ interface Lists {
 // Which integrations hold a credential, which repository hosts have delivered, and
 // which interface languages are in use. Identifiers only: no credential, no
 // repository name, no user.
-async function readLists(): Promise<Lists> {
-  const rows = await db.execute(sql`
-    SELECT
-      (SELECT coalesce(json_agg(DISTINCT lower(integration_key)), '[]'::json)
-        FROM integration_credential) AS "integrationKeys",
-      (SELECT coalesce(json_agg(DISTINCT lower(repo->>'provider')), '[]'::json)
+async function readLists(db: Db): Promise<Lists> {
+  const rows = await allRows<Record<string, unknown>>(
+    db,
+    `SELECT
+      (SELECT json_group_array(k) FROM (
+        SELECT DISTINCT lower(integration_key) AS k FROM integration_credential)) AS "integrationKeys",
+      (SELECT json_group_array(p) FROM (
+        SELECT DISTINCT lower(json_extract(repo.value, '$.provider')) AS p
         FROM project_setting ps,
-          jsonb_array_elements(coalesce(ps.value->'repositories', '[]'::jsonb)) AS repo
-        WHERE ps.key = 'git') AS "gitProviders",
-      (SELECT coalesce(json_agg(DISTINCT lower(locale)), '[]'::json)
-        FROM user_preference) AS "locales"
-  `);
-  const row = (rows as unknown as Record<string, unknown>[])[0] ?? {};
+          json_each(coalesce(json_extract(ps.value, '$.repositories'), '[]')) AS repo
+        WHERE ps.key = 'git')) AS "gitProviders",
+      (SELECT json_group_array(l) FROM (
+        SELECT DISTINCT lower(locale) AS l FROM user_preference)) AS "locales"`,
+  );
+  const row = rows[0] ?? {};
   return {
-    integrationKeys: identifiers(row.integrationKeys),
-    gitProviders: identifiers(row.gitProviders),
-    locales: identifiers(row.locales),
+    integrationKeys: identifiers(parseJson<unknown>(row.integrationKeys, [])),
+    gitProviders: identifiers(parseJson<unknown>(row.gitProviders, [])),
+    locales: identifiers(parseJson<unknown>(row.locales, [])),
   };
 }
 
 // The instance-wide sign-up policy, from the same app_setting row better-auth reads.
 // Defaults match packages/auth: an instance that never saved the settings is open.
-async function readAuthPolicy(): Promise<AuthPolicy> {
-  const rows = await db.execute(sql`SELECT value FROM app_setting WHERE key = 'auth'`);
-  const value = (rows as unknown as { value: Record<string, unknown> }[])[0]?.value ?? {};
+async function readAuthPolicy(db: Db): Promise<AuthPolicy> {
+  const rows = await allRows<{ value: string }>(
+    db,
+    `SELECT value FROM app_setting WHERE key = 'auth'`,
+  );
+  const value = parseJson<Record<string, unknown>>(rows[0]?.value, {});
   const registration = value.registration;
   return {
     registration: registration === 'invite' || registration === 'closed' ? registration : 'open',
@@ -302,39 +316,35 @@ async function readAuthPolicy(): Promise<AuthPolicy> {
   };
 }
 
-async function postgresMajor(): Promise<number | null> {
-  const rows = await db.execute(
-    sql`SELECT (current_setting('server_version_num')::int / 10000) AS "major"`,
-  );
-  const major = (rows as unknown as { major: number }[])[0]?.major;
-  return typeof major === 'number' ? major : null;
-}
-
 // The first migration timestamp is the install date: nothing has to be recorded for
 // it, and unlike the first pulse it holds for an instance that ran with telemetry off.
-async function installedDay(): Promise<string | null> {
-  try {
-    const rows = await db.execute(sql`
-      SELECT to_char(to_timestamp(min(created_at) / 1000) AT TIME ZONE 'UTC', 'YYYY-MM-DD')
-        AS "day"
-      FROM drizzle.__drizzle_migrations
-    `);
-    return (rows as unknown as { day: string | null }[])[0]?.day ?? null;
-  } catch (error) {
-    console.error('[telemetry] install date unreadable:', error);
-    return null;
+async function installedDay(db: Db): Promise<string | null> {
+  // wrangler's own bookkeeping table first (applied_at is a UTC text timestamp), then
+  // drizzle's migrator table (created_at is epoch milliseconds), which local tests use.
+  const probes = [
+    `SELECT strftime('%Y-%m-%d', min(applied_at)) AS day FROM d1_migrations`,
+    `SELECT strftime('%Y-%m-%d', min(created_at) / 1000, 'unixepoch') AS day FROM __drizzle_migrations`,
+  ];
+  for (const probe of probes) {
+    try {
+      const day = (await allRows<{ day: string | null }>(db, probe))[0]?.day;
+      if (day) return day;
+    } catch {
+      // The table of the other migration tool: try the next one.
+    }
   }
+  return null;
 }
 
 // The stored day is advanced only after the collector accepted the body, so a failed
 // send is retried rather than lost for the day.
-export async function processTelemetry(): Promise<void> {
+export async function processTelemetry(db: Db, nowMs: number = Date.now()): Promise<void> {
   if (!telemetryEnabled()) return;
 
-  const now = new Date();
+  const now = new Date(nowMs);
   if (now.getTime() < retryAfterMs) return;
 
-  state ??= await loadState();
+  const state = await loadState(db);
 
   const day = utcDay(now);
   const due = shouldSend({
@@ -345,17 +355,18 @@ export async function processTelemetry(): Promise<void> {
   });
   if (!due) return;
 
-  const snapshot = await readSnapshot();
-  const lists = await readLists();
+  const snapshot = await readSnapshot(db, nowMs);
+  const lists = await readLists(db);
   const pulse = buildPulse({
     instanceId: state.instanceId,
     day,
-    installedDay: await installedDay(),
-    version: pkg.version,
-    bunVersion: Bun.version,
-    docker: existsSync('/.dockerenv'),
-    platform: `${process.platform}/${process.arch}`,
-    postgresMajor: await postgresMajor(),
+    installedDay: await installedDay(db),
+    version: APP_VERSION,
+    // The collector's fields predate the move: there is no Bun, container or Postgres here.
+    bunVersion: 'none',
+    docker: false,
+    platform: 'cloudflare/workers',
+    postgresMajor: null,
     counts: snapshot.counts,
     features: snapshot.features,
     featuresUsed30d: snapshot.featuresUsed30d,
@@ -363,7 +374,7 @@ export async function processTelemetry(): Promise<void> {
     integrationKeys: lists.integrationKeys,
     gitProviders: lists.gitProviders,
     locales: lists.locales,
-    auth: await readAuthPolicy(),
+    auth: await readAuthPolicy(db),
   });
 
   const body = JSON.stringify(pulse);
@@ -391,6 +402,5 @@ export async function processTelemetry(): Promise<void> {
 
   failures = 0;
   retryAfterMs = 0;
-  state.lastSentDay = day;
-  await setSetting(LAST_SENT_KEY, day);
+  await setSetting(db, LAST_SENT_KEY, day);
 }
