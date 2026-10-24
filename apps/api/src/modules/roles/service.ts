@@ -178,19 +178,17 @@ export async function deleteRole(
   roleId: number,
   targetRoleId: number | null,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
-      .update(projectMember)
-      .set({ roleId: targetRoleId })
-      .where(eq(projectMember.roleId, roleId));
-    await tx
+  // One atomic batch: nothing is left with a dangling role.
+  await db.batch([
+    db.update(projectMember).set({ roleId: targetRoleId }).where(eq(projectMember.roleId, roleId)),
+    db
       .update(teamInvite)
       .set({ roleId: targetRoleId })
-      .where(and(eq(teamInvite.roleId, roleId), eq(teamInvite.status, 'pending')));
-    await tx
+      .where(and(eq(teamInvite.roleId, roleId), eq(teamInvite.status, 'pending'))),
+    db
       .update(scimGroupMapping)
       .set({ roleId: targetRoleId })
-      .where(eq(scimGroupMapping.roleId, roleId));
-    await tx.delete(teamRole).where(and(eq(teamRole.teamId, teamId), eq(teamRole.id, roleId)));
-  });
+      .where(eq(scimGroupMapping.roleId, roleId)),
+    db.delete(teamRole).where(and(eq(teamRole.teamId, teamId), eq(teamRole.id, roleId))),
+  ]);
 }

@@ -1,7 +1,9 @@
 import { forgetPersonalWorkspace, getAuthSettings } from '@repo/auth';
 import {
   aiAgent,
-  createWorkspace,
+  abortBatchWhen,
+  batchAll,
+  isGuardViolation,
   project,
   team,
   teamMember,
@@ -269,16 +271,44 @@ export async function workspaceCreation(
 }
 
 export async function createOwnWorkspace(db: Db, current: AuthUser, name: string): Promise<number> {
-  return db.transaction(async (tx) => {
-    // Two requests at once would otherwise both count the same owned workspaces.
-    await tx.select({ id: user.id }).from(user).where(eq(user.id, current.id)).for('update');
-    const { reason } = await workspaceCreation(db, current, tx);
+  const check = async () => {
+    const { reason } = await workspaceCreation(db, current);
     if (reason === 'restricted') {
       throw new HttpError(403, 'Only the instance owner can create workspaces');
     }
     if (reason === 'limit') throw new HttpError(409, 'You already own a workspace');
-    return createWorkspace(tx, name, current.id);
-  });
+  };
+  await check();
+  // Two requests at once would otherwise both count the same owned workspaces: the batch
+  // counts them again, first, and aborts when the ceiling is reached by then. The owner
+  // row takes the highest workspace id, the one inserted just before it.
+  const limit = getOwnedWorkspaceLimit();
+  const guards =
+    limit > 0
+      ? [
+          abortBatchWhen(
+            db,
+            sql`(select count(*) from ${workspaceManager} where ${workspaceManager.userId} = ${current.id}
+              and ${workspaceManager.role} = 'owner') >= ${limit}`,
+          ),
+        ]
+      : [];
+  try {
+    const results = (await batchAll(db, [
+      ...guards,
+      db.insert(workspace).values({ name }).returning({ id: workspace.id }),
+      db.insert(workspaceManager).values({
+        workspaceId: sql`(select max(${workspace.id}) from ${workspace})`,
+        userId: current.id,
+        role: 'owner',
+      }),
+    ])) as { id: number }[][];
+    return results[guards.length]![0]!.id;
+  } catch (err) {
+    if (!isGuardViolation(err)) throw err;
+    await check();
+    throw new HttpError(409, 'You already own a workspace');
+  }
 }
 
 // A manager renames and recolours it; who creates teams is the owner's to decide, so an
@@ -322,21 +352,37 @@ export async function transferWorkspace(
       throw new HttpError(409, 'This person already owns as many workspaces as one person may');
     }
   }
-  // One owner per workspace: the current one steps down before the admin steps up.
-  await db.transaction(async (tx) => {
-    await tx
-      .update(workspaceManager)
-      .set({ role: 'admin' })
-      .where(
-        and(eq(workspaceManager.workspaceId, workspaceId), eq(workspaceManager.userId, ownerId)),
-      );
-    await tx
-      .update(workspaceManager)
-      .set({ role: 'owner' })
-      .where(
-        and(eq(workspaceManager.workspaceId, workspaceId), eq(workspaceManager.userId, toUserId)),
-      );
-  });
+  // One owner per workspace: the current one steps down before the admin steps up. The
+  // guard fails the batch when either has changed since they were read.
+  try {
+    await batchAll(db, [
+      abortBatchWhen(
+        db,
+        sql`not exists (select 1 from ${workspaceManager} where ${workspaceManager.workspaceId} = ${workspaceId}
+            and ${workspaceManager.userId} = ${ownerId} and ${workspaceManager.role} = 'owner')
+          or not exists (select 1 from ${workspaceManager} where ${workspaceManager.workspaceId} = ${workspaceId}
+            and ${workspaceManager.userId} = ${toUserId} and ${workspaceManager.role} = 'admin')`,
+      ),
+      db
+        .update(workspaceManager)
+        .set({ role: 'admin' })
+        .where(
+          and(eq(workspaceManager.workspaceId, workspaceId), eq(workspaceManager.userId, ownerId)),
+        ),
+      db
+        .update(workspaceManager)
+        .set({ role: 'owner' })
+        .where(
+          and(eq(workspaceManager.workspaceId, workspaceId), eq(workspaceManager.userId, toUserId)),
+        ),
+    ]);
+  } catch (err) {
+    if (!isGuardViolation(err)) throw err;
+    if ((await getWorkspaceRole(db, workspaceId, toUserId)) !== 'admin') {
+      throw new HttpError(404, 'This person is not an admin of the workspace');
+    }
+    throw new HttpError(409, 'The workspace changed hands meanwhile');
+  }
   forgetPersonalWorkspace(ownerId);
 }
 

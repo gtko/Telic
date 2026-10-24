@@ -530,19 +530,20 @@ export async function setMembership(
 }
 
 export async function removeMember(db: Db, projectId: number, userId: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
+  // One atomic batch.
+  await db.batch([
+    db
       .delete(projectMember)
-      .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, userId)));
+      .where(and(eq(projectMember.projectId, projectId), eq(projectMember.userId, userId))),
     // A column cannot keep assigning issues to someone who is no longer a member:
     // the same assignment sent as a patch would be refused.
-    await tx
+    db
       .update(projectColumn)
       .set({ autoAssignUserId: null })
       .where(
         and(eq(projectColumn.projectId, projectId), eq(projectColumn.autoAssignUserId, userId)),
-      );
-  });
+      ),
+  ]);
 }
 
 export async function countOwners(db: Db, projectId: number): Promise<number> {
