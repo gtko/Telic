@@ -48,6 +48,7 @@ import {
   type Stmt,
   type TreeDoc,
   type TreeSnapshot,
+  d1Of,
 } from './tree';
 
 export interface DocumentSummaryRow {
@@ -1279,7 +1280,7 @@ export async function restoreDocument(
 }
 
 async function currentSequence(db: Db): Promise<number> {
-  const row = await db.$client
+  const row = await d1Of(db)
     .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'project_document'")
     .first<{ seq: number }>();
   return row?.seq ?? 0;

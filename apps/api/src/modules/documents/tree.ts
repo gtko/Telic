@@ -57,8 +57,13 @@ export function json(value: unknown): string | null {
   return value === null || value === undefined ? null : JSON.stringify(value);
 }
 
+/** `createDb` returns drizzle's `$client` (the D1 binding), which the `Db` type omits. */
+export function d1Of(db: Db): D1Database {
+  return (db as unknown as { $client: D1Database }).$client;
+}
+
 export async function runBatch(db: Db, statements: Stmt[]): Promise<D1Result[]> {
-  const client = db.$client;
+  const client = d1Of(db);
   return client.batch(statements.map((s) => client.prepare(s.sql).bind(...s.params)));
 }
 

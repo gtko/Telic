@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { guards } from '#shared/guards';
@@ -40,11 +41,12 @@ function assertBoardVisible(board: NoteBoardRow, userId: string): void {
 
 // Load a board that belongs to this project and that the user may access.
 async function loadAccessibleBoard(
+  db: Db,
   boardId: number,
   projectId: number,
   userId: string,
 ): Promise<NoteBoardRow> {
-  const board = await getNoteBoard(boardId);
+  const board = await getNoteBoard(db, boardId);
   if (!board || board.projectId !== projectId) throw new HttpError(404, 'Board not found');
   assertBoardVisible(board, userId);
   return board;
@@ -55,13 +57,14 @@ async function loadAccessibleBoard(
 // project, or their role cannot read note boards, which would make the grant do
 // nothing since every board route checks that permission too.
 async function grantedMembers(
+  db: Db,
   projectId: number,
   ownerUserId: string,
   userIds: string[],
 ): Promise<string[]> {
   const ids = [...new Set(userIds)].filter((id) => id !== ownerUserId);
   if (ids.length === 0) return [];
-  const candidates = await listNoteBoardAccessCandidates(projectId);
+  const candidates = await listNoteBoardAccessCandidates(db, projectId);
   const grantable = new Set(candidates.filter((c) => c.canAccess).map((c) => c.userId));
   if (ids.some((id) => !grantable.has(id))) {
     throw new HttpError(400, 'Access can only be granted to project members who may read notes');
@@ -77,7 +80,8 @@ export const noteBoardRoutes = new Elysia({
   .use(guards)
   .get(
     '/projects/:projectKey/note-boards',
-    ({ project, user, query }) => listNoteBoards(project.id, requireUser(user).id, { q: query.q }),
+    ({ db, project, user, query }) =>
+      listNoteBoards(db, project.id, requireUser(user).id, { q: query.q }),
     {
       permission: ['note_boards', 'read'],
       feature: 'notes',
@@ -94,7 +98,7 @@ export const noteBoardRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/note-boards/access-candidates',
-    async ({ project }) => listNoteBoardAccessCandidates(project.id),
+    async ({ db, project }) => listNoteBoardAccessCandidates(db, project.id),
     {
       permission: ['note_boards', 'edit'],
       feature: 'notes',
@@ -109,8 +113,8 @@ export const noteBoardRoutes = new Elysia({
 
   .get(
     '/projects/:projectKey/note-boards/:boardId',
-    async ({ project, user, params }) => {
-      return loadAccessibleBoard(params.boardId, project.id, requireUser(user).id);
+    async ({ db, project, user, params }) => {
+      return loadAccessibleBoard(db, params.boardId, project.id, requireUser(user).id);
     },
     {
       permission: ['note_boards', 'read'],
@@ -128,10 +132,10 @@ export const noteBoardRoutes = new Elysia({
 
   .post(
     '/projects/:projectKey/note-boards',
-    async ({ project, user, body, set }) => {
+    async ({ db, project, user, body, set }) => {
       const userId = requireUser(user).id;
       set.status = 201;
-      return createNoteBoard({
+      return createNoteBoard(db, {
         projectId: project.id,
         ownerUserId: body.visibility === 'private' ? userId : null,
         createdByUserId: userId,
@@ -155,9 +159,9 @@ export const noteBoardRoutes = new Elysia({
 
   .patch(
     '/projects/:projectKey/note-boards/:boardId',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
-      const current = await loadAccessibleBoard(params.boardId, project.id, userId);
+      const current = await loadAccessibleBoard(db, params.boardId, project.id, userId);
       const patch: {
         name?: string;
         canvas?: unknown;
@@ -180,11 +184,11 @@ export const noteBoardRoutes = new Elysia({
           // A public or private board grants no one: whoever was listed loses access.
           patch.memberIds = [];
         } else if (body.memberIds !== undefined) {
-          patch.memberIds = await grantedMembers(project.id, userId, body.memberIds);
+          patch.memberIds = await grantedMembers(db, project.id, userId, body.memberIds);
         }
       }
 
-      const board = await updateNoteBoard(params.boardId, patch);
+      const board = await updateNoteBoard(db, params.boardId, patch);
       if (!board) throw new HttpError(404, 'Board not found');
       return board;
     },
@@ -205,13 +209,13 @@ export const noteBoardRoutes = new Elysia({
 
   .delete(
     '/projects/:projectKey/note-boards/:boardId',
-    async ({ project, user, params }) => {
+    async ({ db, project, user, params }) => {
       const userId = requireUser(user).id;
-      const board = await getNoteBoard(params.boardId);
+      const board = await getNoteBoard(db, params.boardId);
       if (!board || board.projectId !== project.id) throw new HttpError(404, 'Board not found');
       // A project owner deletes any board, a private one included: the board of a
       // member who left the project would otherwise stay for good.
-      if ((await getProjectAccess(project.id, userId))?.role !== 'owner') {
+      if ((await getProjectAccess(db, project.id, userId))?.role !== 'owner') {
         assertBoardVisible(board, userId);
         // A private or restricted board belongs to the member who made it, and
         // being granted a view of one does not carry deleting it. A public board
@@ -223,7 +227,7 @@ export const noteBoardRoutes = new Elysia({
           );
         }
       }
-      await deleteNoteBoard(params.boardId);
+      await deleteNoteBoard(db, params.boardId);
       return noContent();
     },
     {

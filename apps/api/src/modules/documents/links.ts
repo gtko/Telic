@@ -1,13 +1,14 @@
 import {
-  db,
   initiative,
   issue,
   projectDocument,
   projectDocumentInitiative,
   projectDocumentIssue,
+  type Db,
 } from '@repo/db';
 import { and, asc, eq, or } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
+import { fencedBatch, stmt } from './tree';
 
 export interface DocumentIssueLinkRow {
   issueId: number;
@@ -50,13 +51,8 @@ function documentLinkRow(row: {
 const documentAccess = (userId: string) =>
   or(eq(projectDocument.isPrivate, false), eq(projectDocument.ownerUserId, userId));
 
-async function visibleDocument(
-  projectId: number,
-  documentId: number,
-  userId: string,
-  tx: Pick<typeof db, 'select'> = db,
-) {
-  const [document] = await tx
+async function visibleDocument(db: Db, projectId: number, documentId: number, userId: string) {
+  const [document] = await db
     .select({
       id: projectDocument.id,
       title: projectDocument.title,
@@ -77,12 +73,13 @@ async function visibleDocument(
 }
 
 export async function listDocumentIssueLinks(
+  db: Db,
   projectId: number,
   projectKey: string,
   documentId: number,
   userId: string,
 ): Promise<DocumentIssueLinkRow[] | null> {
-  if (!(await visibleDocument(projectId, documentId, userId))) return null;
+  if (!(await visibleDocument(db, projectId, documentId, userId))) return null;
   const rows = await db
     .select({
       issueId: issue.id,
@@ -106,6 +103,7 @@ export async function listDocumentIssueLinks(
 }
 
 export async function listIssueDocumentLinks(
+  db: Db,
   projectId: number,
   issueId: number,
   userId: string,
@@ -139,83 +137,94 @@ export async function listIssueDocumentLinks(
   return rows.map(documentLinkRow);
 }
 
-export async function addDocumentIssueLink(input: {
-  projectId: number;
-  projectKey: string;
-  documentId: number;
-  issueId: number;
-  userId: string;
-}): Promise<DocumentIssueLinkRow> {
-  return db.transaction(async (tx) => {
-    const document = await visibleDocument(input.projectId, input.documentId, input.userId, tx);
-    if (!document) throw new HttpError(404, 'Document not found');
-    if (document.archivedAt !== null)
-      throw new HttpError(409, 'Archived documents cannot be linked');
+// The link is created by one statement that carries the trigger of Postgres
+// (project_document_*_validate_project): both ends must be in the project, and the page must
+// be visible and not archived. The sync markers move in the same batch.
+export async function addDocumentIssueLink(
+  db: Db,
+  input: {
+    projectId: number;
+    projectKey: string;
+    documentId: number;
+    issueId: number;
+    userId: string;
+  },
+): Promise<DocumentIssueLinkRow> {
+  const document = await visibleDocument(db, input.projectId, input.documentId, input.userId);
+  if (!document) throw new HttpError(404, 'Document not found');
+  if (document.archivedAt !== null) throw new HttpError(409, 'Archived documents cannot be linked');
+  const [workItem] = await db
+    .select({
+      id: issue.id,
+      sequenceNumber: issue.sequenceNumber,
+      title: issue.title,
+      archivedAt: issue.archivedAt,
+    })
+    .from(issue)
+    .where(and(eq(issue.id, input.issueId), eq(issue.projectId, input.projectId)))
+    .limit(1);
+  if (!workItem) throw new HttpError(404, 'Issue not found');
 
-    const [workItem] = await tx
-      .select({
-        id: issue.id,
-        sequenceNumber: issue.sequenceNumber,
-        title: issue.title,
-        archivedAt: issue.archivedAt,
-      })
-      .from(issue)
-      .where(and(eq(issue.id, input.issueId), eq(issue.projectId, input.projectId)))
-      .limit(1);
-    if (!workItem) throw new HttpError(404, 'Issue not found');
-
-    const [created] = await tx
-      .insert(projectDocumentIssue)
-      .values({
-        documentId: input.documentId,
-        issueId: input.issueId,
-        createdByUserId: input.userId,
-      })
-      .onConflictDoNothing()
-      .returning({ createdAt: projectDocumentIssue.createdAt });
-    if (!created) throw new HttpError(409, 'The document is already linked to this issue');
-
-    return {
-      issueId: workItem.id,
-      sequenceNumber: workItem.sequenceNumber,
-      identifier: `${input.projectKey}-${workItem.sequenceNumber}`,
-      title: workItem.title,
-      archived: workItem.archivedAt !== null,
-      createdAt: created.createdAt.toISOString(),
-    };
+  const now = Date.now();
+  const { applied, results } = await fencedBatch(db, {
+    projectId: input.projectId,
+    rev: null,
+    guard: stmt`EXISTS (SELECT 1 FROM project_document WHERE id = ${input.documentId} AND project_id = ${input.projectId}
+        AND archived_at IS NULL AND (is_private = 0 OR owner_user_id = ${input.userId}))
+      AND EXISTS (SELECT 1 FROM issue WHERE id = ${input.issueId} AND project_id = ${input.projectId})`,
+    build: (ok) => [
+      stmt`INSERT OR IGNORE INTO project_document_issue (document_id, issue_id, created_by_user_id, created_at)
+        SELECT ${input.documentId}, ${input.issueId}, ${input.userId}, ${now} WHERE ${ok}`,
+      // Only when the row was really inserted (changes() is that of the statement above).
+      stmt`INSERT INTO revision (scope, project_id, rev)
+        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`issue:${input.issueId}`})
+        WHERE changes() = 1
+        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+    ],
   });
+  if (!applied) throw new HttpError(409, 'The document or the issue changed. Try again.');
+  if (results[0]?.meta.changes !== 1) {
+    throw new HttpError(409, 'The document is already linked to this issue');
+  }
+  return {
+    issueId: workItem.id,
+    sequenceNumber: workItem.sequenceNumber,
+    identifier: `${input.projectKey}-${workItem.sequenceNumber}`,
+    title: workItem.title,
+    archived: workItem.archivedAt !== null,
+    createdAt: new Date(now).toISOString(),
+  };
 }
 
-export async function removeDocumentIssueLink(input: {
-  projectId: number;
-  documentId: number;
-  issueId: number;
-  userId: string;
-}): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    if (!(await visibleDocument(input.projectId, input.documentId, input.userId, tx))) {
-      throw new HttpError(404, 'Document not found');
-    }
-    const [workItem] = await tx
-      .select({ id: issue.id })
-      .from(issue)
-      .where(and(eq(issue.id, input.issueId), eq(issue.projectId, input.projectId)))
-      .limit(1);
-    if (!workItem) throw new HttpError(404, 'Issue not found');
-    const removed = await tx
-      .delete(projectDocumentIssue)
-      .where(
-        and(
-          eq(projectDocumentIssue.documentId, input.documentId),
-          eq(projectDocumentIssue.issueId, input.issueId),
-        ),
-      )
-      .returning({ issueId: projectDocumentIssue.issueId });
-    return removed.length > 0;
+export async function removeDocumentIssueLink(
+  db: Db,
+  input: { projectId: number; documentId: number; issueId: number; userId: string },
+): Promise<boolean> {
+  if (!(await visibleDocument(db, input.projectId, input.documentId, input.userId))) {
+    throw new HttpError(404, 'Document not found');
+  }
+  const [workItem] = await db
+    .select({ id: issue.id })
+    .from(issue)
+    .where(and(eq(issue.id, input.issueId), eq(issue.projectId, input.projectId)))
+    .limit(1);
+  if (!workItem) throw new HttpError(404, 'Issue not found');
+  const { results } = await fencedBatch(db, {
+    projectId: input.projectId,
+    rev: null,
+    build: (ok) => [
+      stmt`DELETE FROM project_document_issue WHERE document_id = ${input.documentId} AND issue_id = ${input.issueId} AND ${ok}`,
+      stmt`INSERT INTO revision (scope, project_id, rev)
+        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`issue:${input.issueId}`})
+        WHERE changes() = 1
+        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+    ],
   });
+  return results[0]?.meta.changes === 1;
 }
 
 export async function listInitiativeDocumentLinks(
+  db: Db,
   projectId: number,
   initiativeId: number,
   userId: string,
@@ -249,59 +258,60 @@ export async function listInitiativeDocumentLinks(
   return rows.map(documentLinkRow);
 }
 
-export async function addDocumentInitiativeLink(input: {
-  projectId: number;
-  documentId: number;
-  initiativeId: number;
-  userId: string;
-}): Promise<IssueDocumentLinkRow> {
-  return db.transaction(async (tx) => {
-    const document = await visibleDocument(input.projectId, input.documentId, input.userId, tx);
-    if (!document) throw new HttpError(404, 'Document not found');
-    if (document.archivedAt !== null)
-      throw new HttpError(409, 'Archived documents cannot be linked');
+export async function addDocumentInitiativeLink(
+  db: Db,
+  input: { projectId: number; documentId: number; initiativeId: number; userId: string },
+): Promise<IssueDocumentLinkRow> {
+  const document = await visibleDocument(db, input.projectId, input.documentId, input.userId);
+  if (!document) throw new HttpError(404, 'Document not found');
+  if (document.archivedAt !== null) throw new HttpError(409, 'Archived documents cannot be linked');
+  const [target] = await db
+    .select({ id: initiative.id })
+    .from(initiative)
+    .where(and(eq(initiative.id, input.initiativeId), eq(initiative.projectId, input.projectId)))
+    .limit(1);
+  if (!target) throw new HttpError(404, 'Initiative not found');
 
-    const [target] = await tx
-      .select({ id: initiative.id })
-      .from(initiative)
-      .where(and(eq(initiative.id, input.initiativeId), eq(initiative.projectId, input.projectId)))
-      .limit(1);
-    if (!target) throw new HttpError(404, 'Initiative not found');
-
-    const [created] = await tx
-      .insert(projectDocumentInitiative)
-      .values({
-        documentId: input.documentId,
-        initiativeId: input.initiativeId,
-        createdByUserId: input.userId,
-      })
-      .onConflictDoNothing()
-      .returning({ createdAt: projectDocumentInitiative.createdAt });
-    if (!created) throw new HttpError(409, 'The document is already linked to this initiative');
-
-    return documentLinkRow({ ...document, documentId: document.id, createdAt: created.createdAt });
+  const now = Date.now();
+  const { applied, results } = await fencedBatch(db, {
+    projectId: input.projectId,
+    rev: null,
+    guard: stmt`EXISTS (SELECT 1 FROM project_document WHERE id = ${input.documentId} AND project_id = ${input.projectId}
+        AND archived_at IS NULL AND (is_private = 0 OR owner_user_id = ${input.userId}))
+      AND EXISTS (SELECT 1 FROM initiative WHERE id = ${input.initiativeId} AND project_id = ${input.projectId})`,
+    build: (ok) => [
+      stmt`INSERT OR IGNORE INTO project_document_initiative (document_id, initiative_id, created_by_user_id, created_at)
+        SELECT ${input.documentId}, ${input.initiativeId}, ${input.userId}, ${now} WHERE ${ok}`,
+      stmt`INSERT INTO revision (scope, project_id, rev)
+        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`initiative:${input.initiativeId}`})
+        WHERE changes() = 1
+        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+    ],
   });
+  if (!applied) throw new HttpError(409, 'The document or the initiative changed. Try again.');
+  if (results[0]?.meta.changes !== 1) {
+    throw new HttpError(409, 'The document is already linked to this initiative');
+  }
+  return documentLinkRow({ ...document, documentId: document.id, createdAt: new Date(now) });
 }
 
-export async function removeDocumentInitiativeLink(input: {
-  projectId: number;
-  documentId: number;
-  initiativeId: number;
-  userId: string;
-}): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    if (!(await visibleDocument(input.projectId, input.documentId, input.userId, tx))) {
-      throw new HttpError(404, 'Document not found');
-    }
-    const removed = await tx
-      .delete(projectDocumentInitiative)
-      .where(
-        and(
-          eq(projectDocumentInitiative.documentId, input.documentId),
-          eq(projectDocumentInitiative.initiativeId, input.initiativeId),
-        ),
-      )
-      .returning({ initiativeId: projectDocumentInitiative.initiativeId });
-    return removed.length > 0;
+export async function removeDocumentInitiativeLink(
+  db: Db,
+  input: { projectId: number; documentId: number; initiativeId: number; userId: string },
+): Promise<boolean> {
+  if (!(await visibleDocument(db, input.projectId, input.documentId, input.userId))) {
+    throw new HttpError(404, 'Document not found');
+  }
+  const { results } = await fencedBatch(db, {
+    projectId: input.projectId,
+    rev: null,
+    build: (ok) => [
+      stmt`DELETE FROM project_document_initiative WHERE document_id = ${input.documentId} AND initiative_id = ${input.initiativeId} AND ${ok}`,
+      stmt`INSERT INTO revision (scope, project_id, rev)
+        SELECT scope, ${input.projectId}, 1 FROM (SELECT ${`documents:${input.projectId}`} AS scope UNION ALL SELECT ${`initiative:${input.initiativeId}`})
+        WHERE changes() = 1
+        ON CONFLICT (scope) DO UPDATE SET rev = revision.rev + 1`,
+    ],
   });
+  return results[0]?.meta.changes === 1;
 }

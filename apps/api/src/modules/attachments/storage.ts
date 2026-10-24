@@ -13,7 +13,7 @@ import { HttpError } from '#shared/lib';
 import { getLimits } from '#shared/limits';
 
 // Attachment bytes live in R2 (binding `BUCKET`, handed to the routes through the request
-// context as `bucket`). Only the metadata and the object key are rows in the owning table.
+// context as `env.BUCKET`). Only the metadata and the object key are rows in the owning table.
 
 // Keeps a filename usable as a path segment and free of control characters, falling back
 // to a plain default when nothing usable is left.

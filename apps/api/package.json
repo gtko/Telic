@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "bun test --env-file=../../.env.test",
+    "test:d1": "vitest run",
     "test:coverage": "bun test --env-file=../../.env.test --coverage; bun scripts/coverage-report.ts"
   },
   "dependencies": {
@@ -46,10 +47,13 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
     "@elysiajs/eden": "^1.4.9",
     "@repo/eslint-config": "workspace:*",
     "@types/bun": "latest",
     "eslint": "^9.39.0",
-    "typescript": "^6.0.3"
+    "miniflare": "^4.20260730.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }

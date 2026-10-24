@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import { documentCollaborationRoutes } from './collaboration-routes';
 import { Elysia, t } from 'elysia';
 import { authContext } from '#shared/auth-context';
@@ -100,8 +101,8 @@ function documentAssetDto(
   };
 }
 
-async function isProjectOwner(projectId: number, userId: string): Promise<boolean> {
-  return (await getProjectAccess(projectId, userId))?.role === 'owner';
+async function isProjectOwner(db: Db, projectId: number, userId: string): Promise<boolean> {
+  return (await getProjectAccess(db, projectId, userId))?.role === 'owner';
 }
 
 export const documentRoutes = new Elysia({
@@ -113,8 +114,8 @@ export const documentRoutes = new Elysia({
   .use(documentCollaborationRoutes)
   .get(
     '/projects/:projectKey/documents',
-    async ({ project, query, user }) =>
-      listDocuments(project.id, requireUser(user).id, {
+    async ({ db, project, query, user }) =>
+      listDocuments(db, project.id, requireUser(user).id, {
         q: query.q,
         archived: query.archived === 'true',
       }),
@@ -132,8 +133,8 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId',
-    async ({ project, params, user }) => {
-      const document = await getDocument(project.id, params.documentId, requireUser(user).id);
+    async ({ db, project, params, user }) => {
+      const document = await getDocument(db, project.id, params.documentId, requireUser(user).id);
       if (!document) throw new HttpError(404, 'Document not found');
       return document;
     },
@@ -150,10 +151,11 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/issues',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'work_items', 'read');
+      await assertPermission(db, project.id, current, 'work_items', 'read');
       const links = await listDocumentIssueLinks(
+        db,
         project.id,
         project.key,
         params.documentId,
@@ -175,10 +177,10 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/issues',
-    async ({ project, params, body, user, set }) => {
+    async ({ db, project, params, body, user, set }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'work_items', 'edit');
-      const link = await addDocumentIssueLink({
+      await assertPermission(db, project.id, current, 'work_items', 'edit');
+      const link = await addDocumentIssueLink(db, {
         projectId: project.id,
         projectKey: project.key,
         documentId: params.documentId,
@@ -203,10 +205,10 @@ export const documentRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/documents/:documentId/issues/:issueId',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'work_items', 'edit');
-      const removed = await removeDocumentIssueLink({
+      await assertPermission(db, project.id, current, 'work_items', 'edit');
+      const removed = await removeDocumentIssueLink(db, {
         projectId: project.id,
         documentId: params.documentId,
         issueId: params.issueId,
@@ -228,10 +230,10 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/for-issue/:issueId',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'documents', 'read');
-      const links = await listIssueDocumentLinks(project.id, params.issueId, current.id);
+      await assertPermission(db, project.id, current, 'documents', 'read');
+      const links = await listIssueDocumentLinks(db, project.id, params.issueId, current.id);
       if (!links) throw new HttpError(404, 'Issue not found');
       return links;
     },
@@ -248,10 +250,15 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/for-initiative/:initiativeId',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'documents', 'read');
-      const links = await listInitiativeDocumentLinks(project.id, params.initiativeId, current.id);
+      await assertPermission(db, project.id, current, 'documents', 'read');
+      const links = await listInitiativeDocumentLinks(
+        db,
+        project.id,
+        params.initiativeId,
+        current.id,
+      );
       if (!links) throw new HttpError(404, 'Initiative not found');
       return links;
     },
@@ -269,10 +276,10 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/initiatives',
-    async ({ project, params, body, user, set }) => {
+    async ({ db, project, params, body, user, set }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'initiatives', 'edit');
-      const link = await addDocumentInitiativeLink({
+      await assertPermission(db, project.id, current, 'initiatives', 'edit');
+      const link = await addDocumentInitiativeLink(db, {
         projectId: project.id,
         documentId: params.documentId,
         initiativeId: body.initiativeId,
@@ -297,10 +304,10 @@ export const documentRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/documents/:documentId/initiatives/:initiativeId',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const current = requireUser(user);
-      await assertPermission(project.id, current, 'initiatives', 'edit');
-      const removed = await removeDocumentInitiativeLink({
+      await assertPermission(db, project.id, current, 'initiatives', 'edit');
+      const removed = await removeDocumentInitiativeLink(db, {
         projectId: project.id,
         documentId: params.documentId,
         initiativeId: params.initiativeId,
@@ -323,8 +330,13 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/assets',
-    async ({ project, params, user }) => {
-      const assets = await listDocumentAssets(project.id, params.documentId, requireUser(user).id);
+    async ({ db, project, params, user }) => {
+      const assets = await listDocumentAssets(
+        db,
+        project.id,
+        params.documentId,
+        requireUser(user).id,
+      );
       if (!assets) throw new HttpError(404, 'Document not found');
       return assets.map((asset) => documentAssetDto(project, params.documentId, asset));
     },
@@ -341,34 +353,34 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/assets',
-    async ({ project, params, user, body, set }) => {
+    async ({ db, env, project, params, user, body, set }) => {
       const userId = requireUser(user).id;
-      if (!(await assertDocumentAssetUploadTarget(project.id, params.documentId, userId))) {
+      if (!(await assertDocumentAssetUploadTarget(db, project.id, params.documentId, userId))) {
         throw new HttpError(404, 'Document not found');
       }
       const file = body.file;
       if (!(file instanceof File) || file.size === 0) throw new HttpError(400, 'File is empty');
       const filename = safeAttachmentFilename(file.name);
       const contentType = file.type || 'application/octet-stream';
-      await assertAttachmentUploadAllowed(project.id, file.size, contentType);
+      await assertAttachmentUploadAllowed(db, project.id, file.size, contentType);
       const key = attachmentObjectKey(project.id, 'documents', params.documentId, filename);
-      const bytes = Buffer.from(await file.arrayBuffer());
-      await storeAttachmentObject(key, bytes, contentType);
+      // The File goes to R2 as a stream: the upload is never buffered in the Worker.
+      await storeAttachmentObject(env.BUCKET, key, file, contentType);
       try {
-        const asset = await createDocumentAsset({
+        const asset = await createDocumentAsset(db, {
           projectId: project.id,
           documentId: params.documentId,
           userId,
           s3Key: key,
           filename,
           contentType,
-          sizeBytes: bytes.length,
+          sizeBytes: file.size,
         });
         if (!asset) throw new HttpError(404, 'Document not found');
         set.status = 201;
         return documentAssetDto(project, params.documentId, asset);
       } catch (error) {
-        await deleteAttachmentObject(key);
+        await deleteAttachmentObject(env.BUCKET, key);
         throw error;
       }
     },
@@ -386,8 +398,9 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/assets/:publicId/raw',
-    async ({ project, params, query, request, user }) => {
+    async ({ db, env, project, params, query, request, user }) => {
       const asset = await getDocumentAsset(
+        db,
         project.id,
         params.documentId,
         params.publicId,
@@ -395,6 +408,7 @@ export const documentRoutes = new Elysia({
       );
       if (!asset) throw new HttpError(404, 'Asset not found');
       return attachmentObjectResponse({
+        bucket: env.BUCKET,
         s3Key: asset.s3Key,
         contentType: asset.contentType,
         filename: asset.filename,
@@ -415,17 +429,18 @@ export const documentRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/documents/:documentId/assets/:publicId',
-    async ({ project, params, user }) => {
+    async ({ db, env, project, params, user }) => {
       const userId = requireUser(user).id;
       const asset = await deleteDocumentAsset(
+        db,
         project.id,
         params.documentId,
         params.publicId,
         userId,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!asset) throw new HttpError(404, 'Asset not found');
-      await deleteAttachmentObject(asset.s3Key);
+      await deleteAttachmentObject(env.BUCKET, asset.s3Key);
       return noContent();
     },
     {
@@ -440,8 +455,13 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/export',
-    async ({ project, params, user }) => {
-      const exported = await exportDocument(project.id, params.documentId, requireUser(user).id);
+    async ({ db, project, params, user }) => {
+      const exported = await exportDocument(
+        db,
+        project.id,
+        params.documentId,
+        requireUser(user).id,
+      );
       if (!exported) throw new HttpError(404, 'Document not found');
       return exported;
     },
@@ -458,8 +478,9 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/revisions',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const revisions = await listDocumentRevisions(
+        db,
         project.id,
         params.documentId,
         requireUser(user).id,
@@ -480,8 +501,9 @@ export const documentRoutes = new Elysia({
   )
   .get(
     '/projects/:projectKey/documents/:documentId/revisions/:revisionId',
-    async ({ project, params, user }) => {
+    async ({ db, project, params, user }) => {
       const revision = await getDocumentRevision(
+        db,
         project.id,
         params.documentId,
         params.revisionId,
@@ -503,9 +525,9 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents',
-    async ({ project, user, body, set }) => {
+    async ({ db, project, user, body, set }) => {
       set.status = 201;
-      return createDocument({
+      return createDocument(db, {
         projectId: project.id,
         userId: requireUser(user).id,
         title: body.title,
@@ -532,8 +554,9 @@ export const documentRoutes = new Elysia({
   )
   .patch(
     '/projects/:projectKey/documents/:documentId',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const document = await updateDocument(
+        db,
         project.id,
         params.documentId,
         requireUser(user).id,
@@ -557,9 +580,10 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/access',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
       const document = await setDocumentAccess(
+        db,
         project.id,
         params.documentId,
         userId,
@@ -584,15 +608,16 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/ownership',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
       const document = await transferDocumentOwnership(
+        db,
         project.id,
         params.documentId,
         userId,
         body.version,
         body.ownerUserId,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!document) throw new HttpError(404, 'Document not found');
       return document;
@@ -612,15 +637,16 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/lock',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
       const document = await setDocumentLocked(
+        db,
         project.id,
         params.documentId,
         userId,
         body.version,
         true,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!document) throw new HttpError(404, 'Document not found');
       return document;
@@ -635,15 +661,16 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/unlock',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
       const document = await setDocumentLocked(
+        db,
         project.id,
         params.documentId,
         userId,
         body.version,
         false,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!document) throw new HttpError(404, 'Document not found');
       return document;
@@ -658,14 +685,15 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/archive',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
       const document = await archiveDocument(
+        db,
         project.id,
         params.documentId,
         userId,
         body.version,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!document) throw new HttpError(404, 'Document not found');
       return document;
@@ -685,14 +713,15 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/restore',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const userId = requireUser(user).id;
       const document = await restoreDocument(
+        db,
         project.id,
         params.documentId,
         userId,
         body.version,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!document) throw new HttpError(404, 'Document not found');
       return document;
@@ -712,8 +741,8 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/duplicate',
-    async ({ project, user, params, body, set }) => {
-      const document = await duplicateDocument({
+    async ({ db, env, project, user, params, body, set }) => {
+      const document = await duplicateDocument(db, env.BUCKET, {
         projectId: project.id,
         documentId: params.documentId,
         userId: requireUser(user).id,
@@ -740,8 +769,9 @@ export const documentRoutes = new Elysia({
   )
   .patch(
     '/projects/:projectKey/documents/:documentId/preferences',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const preference = await setDocumentPreference(
+        db,
         project.id,
         params.documentId,
         requireUser(user).id,
@@ -764,8 +794,9 @@ export const documentRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/documents/:documentId/revisions/:revisionId/restore',
-    async ({ project, user, params, body }) => {
+    async ({ db, project, user, params, body }) => {
       const document = await restoreDocumentRevision(
+        db,
         project.id,
         params.documentId,
         params.revisionId,
@@ -790,19 +821,20 @@ export const documentRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/documents/:documentId',
-    async ({ project, params, query, user }) => {
+    async ({ db, env, project, params, query, user }) => {
       const userId = requireUser(user).id;
       const assetKeys = await deleteDocument(
+        db,
         project.id,
         params.documentId,
         userId,
         query.version,
-        await isProjectOwner(project.id, userId),
+        await isProjectOwner(db, project.id, userId),
       );
       if (!assetKeys) {
         throw new HttpError(404, 'Document not found');
       }
-      await Promise.all(assetKeys.map(deleteAttachmentObject));
+      await Promise.all(assetKeys.map((key) => deleteAttachmentObject(env.BUCKET, key)));
       return noContent();
     },
     {
