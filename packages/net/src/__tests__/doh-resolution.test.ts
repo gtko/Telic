@@ -3,7 +3,7 @@ import { assertPublicHttpUrl, UrlNotAllowedError } from '../index';
 
 // The hostname check resolves through DNS-over-HTTPS. These stub the resolver's JSON
 // answers, so each rule of the check is exercised without depending on public DNS.
-// NODE_ENV is test, so the strict rules apply.
+// SSRF_DEV_RELAXED is unset, so the strict rules apply.
 
 type Answer = { Status: number; Answer?: { type: number; data: string }[] } | 'http-500';
 
@@ -27,13 +27,12 @@ const A_RECORD = 1;
 const AAAA_RECORD = 28;
 
 describe('hostname check through DNS-over-HTTPS', () => {
-  const saved = process.env.NODE_ENV;
   beforeEach(() => {
-    process.env.NODE_ENV = 'test';
+    delete process.env.SSRF_DEV_RELAXED;
     delete process.env.SSRF_ALLOWED_HOSTS;
   });
   afterEach(() => {
-    process.env.NODE_ENV = saved;
+    delete process.env.SSRF_DEV_RELAXED;
     vi.unstubAllGlobals();
   });
 

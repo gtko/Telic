@@ -23,7 +23,7 @@ system prompt. The endpoint sends the result through the same routes as a runner
 The URL must use HTTPS and resolve to a public address. To use a private host, add it to
 `SSRF_ALLOWED_HOSTS` on the instance. That host must also use HTTPS.
 
-When `NODE_ENV` on the instance is not `production` or `test`, the instance also accepts
+When `SSRF_DEV_RELAXED=1` is set on the instance, it also accepts
 `http://` and private addresses, for example `http://localhost:4000`. Use this to test a
 local server before you deploy the function.
 
