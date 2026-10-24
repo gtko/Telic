@@ -1,4 +1,4 @@
-import { db, userPreference } from '@repo/db';
+import { userPreference, type Db } from '@repo/db';
 import { eq, sql } from 'drizzle-orm';
 import { DEFAULT_LOCALE, type Locale } from './locale';
 
@@ -111,6 +111,7 @@ function toDto(row: {
 
 // A user's preferences, or the defaults when they have no row yet.
 export async function getPreferences(
+  db: Db,
   userId: string,
   defaultLocale: Locale = DEFAULT_LOCALE,
 ): Promise<UserPreferenceDto> {
@@ -137,11 +138,12 @@ export async function getPreferences(
 // Applies a partial update and returns the full result. Fields left out keep their
 // stored value, or take the default when there is no row yet.
 export async function updatePreferences(
+  db: Db,
   userId: string,
   patch: UserPreferencePatch,
   defaultLocale: Locale = DEFAULT_LOCALE,
 ): Promise<UserPreferenceDto> {
-  const next = { ...(await getPreferences(userId, defaultLocale)), ...patch };
+  const next = { ...(await getPreferences(db, userId, defaultLocale)), ...patch };
   await db
     .insert(userPreference)
     .values({ userId, ...next })

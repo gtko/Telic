@@ -222,7 +222,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         },
       };
     },
-    workItem: entityGuard('work_items', 'Issue not found', (p, db) =>
+    workItem: entityGuard('work_items', 'Issue not found', (p, { db }) =>
       getIssueProjectId(db, Number(p.issueId)),
     ),
     // The checklist and stats routes carry the section they belong to, so turning it
@@ -230,22 +230,22 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     issueChecklist: entityGuard(
       'work_items',
       'Issue not found',
-      (p, db) => getIssueProjectId(db, Number(p.issueId)),
+      (p, { db }) => getIssueProjectId(db, Number(p.issueId)),
       'checklists',
     ),
     issueStats: entityGuard(
       'work_items',
       'Issue not found',
-      (p, db) => getIssueProjectId(db, Number(p.issueId)),
+      (p, { db }) => getIssueProjectId(db, Number(p.issueId)),
       'issueStats',
     ),
-    developmentRepositories: entityGuard('repositories', 'Issue not found', (p, db) =>
+    developmentRepositories: entityGuard('repositories', 'Issue not found', (p, { db }) =>
       getIssueProjectId(db, Number(p.issueId)),
     ),
     checklist: entityGuard(
       'work_items',
       'Checklist not found',
-      async (p, db) => {
+      async (p, { db }) => {
         const issueId = await getChecklistIssueId(db, Number(p.checklistId));
         return issueId == null ? null : getIssueProjectId(db, issueId);
       },
@@ -254,7 +254,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     checklistItem: entityGuard(
       'work_items',
       'Checklist item not found',
-      async (p, db) => {
+      async (p, { db }) => {
         const issueId = await getChecklistItemIssueId(db, Number(p.itemId));
         return issueId == null ? null : getIssueProjectId(db, issueId);
       },

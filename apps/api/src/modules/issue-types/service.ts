@@ -1,4 +1,4 @@
-import { db, issueType } from '@repo/db';
+import { issueType, type Db } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 
 // Data access for issue types. An issue type belongs to one project. Deleting a
@@ -28,7 +28,7 @@ function mapIssueType(row: typeof issueType.$inferSelect): IssueTypeRow {
   };
 }
 
-export async function listIssueTypes(projectId: number): Promise<IssueTypeRow[]> {
+export async function listIssueTypes(db: Db, projectId: number): Promise<IssueTypeRow[]> {
   const rows = await db
     .select()
     .from(issueType)
@@ -37,13 +37,16 @@ export async function listIssueTypes(projectId: number): Promise<IssueTypeRow[]>
   return rows.map(mapIssueType);
 }
 
-export async function createIssueType(input: {
-  projectId: number;
-  name: string;
-  icon?: string;
-  color?: string;
-  isDefault?: boolean;
-}): Promise<IssueTypeRow> {
+export async function createIssueType(
+  db: Db,
+  input: {
+    projectId: number;
+    name: string;
+    icon?: string;
+    color?: string;
+    isDefault?: boolean;
+  },
+): Promise<IssueTypeRow> {
   const [{ pos }] = await db
     .select({ pos: sql<number>`COALESCE(MAX(${issueType.position}), -1) + 1` })
     .from(issueType)
@@ -62,7 +65,7 @@ export async function createIssueType(input: {
   return mapIssueType(row);
 }
 
-export async function getIssueTypeById(id: number): Promise<IssueTypeRow | null> {
+export async function getIssueTypeById(db: Db, id: number): Promise<IssueTypeRow | null> {
   const rows = await db.select().from(issueType).where(eq(issueType.id, id));
   return rows[0] ? mapIssueType(rows[0]) : null;
 }
@@ -70,6 +73,7 @@ export async function getIssueTypeById(id: number): Promise<IssueTypeRow | null>
 // Scoped to projectId so an id from another project resolves to null (a 404 at
 // the route), never a cross-project edit.
 export async function updateIssueType(
+  db: Db,
   id: number,
   projectId: number,
   patch: { name?: string; color?: string; isDefault?: boolean },
@@ -88,6 +92,6 @@ export async function updateIssueType(
 }
 
 // Scoped to projectId: an id outside the project deletes nothing.
-export async function deleteIssueType(id: number, projectId: number): Promise<void> {
+export async function deleteIssueType(db: Db, id: number, projectId: number): Promise<void> {
   await db.delete(issueType).where(and(eq(issueType.id, id), eq(issueType.projectId, projectId)));
 }

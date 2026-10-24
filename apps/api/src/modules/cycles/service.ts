@@ -1,4 +1,4 @@
-import { db, cycle, issue, projectColumn } from '@repo/db';
+import { cycle, issue, projectColumn, type Db } from '@repo/db';
 import { and, asc, desc, eq, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
 
@@ -66,7 +66,7 @@ function toCycle(row: typeof cycle.$inferSelect, progress: CycleProgress): Cycle
 // through left joins, so a cycle with none stays in the result with zero counts.
 // total counts the joined issues, not the rows — `count(*)` would read that empty
 // join row as one issue.
-function selectCycles(where: SQL | undefined) {
+function selectCycles(db: Db, where: SQL | undefined) {
   return db
     .select({
       row: cycle,
@@ -107,8 +107,8 @@ const OCCUPIED_UNTIL = sql`coalesce((${cycle.completedAt} at time zone 'utc')::d
 const FINISHED = sql`(${cycle.completedAt} is not null or ${cycle.endDate} < ${TODAY})`;
 
 // Every cycle of a project, oldest first, so the list reads as a timeline.
-export async function listCycles(projectId: number): Promise<CycleRow[]> {
-  const rows = await selectCycles(eq(cycle.projectId, projectId)).orderBy(
+export async function listCycles(db: Db, projectId: number): Promise<CycleRow[]> {
+  const rows = await selectCycles(db, eq(cycle.projectId, projectId)).orderBy(
     asc(cycle.startDate),
     asc(cycle.id),
   );
@@ -118,8 +118,9 @@ export async function listCycles(projectId: number): Promise<CycleRow[]> {
 // The cycles that have not finished yet — active and upcoming — oldest first. This
 // is what the cycles page opens with: it stays the same size as a project ages,
 // while the finished ones only accumulate and are paged separately.
-export async function listPlannedCycles(projectId: number): Promise<CycleRow[]> {
+export async function listPlannedCycles(db: Db, projectId: number): Promise<CycleRow[]> {
   const rows = await selectCycles(
+    db,
     and(eq(cycle.projectId, projectId), sql`not ${FINISHED}`),
   ).orderBy(asc(cycle.startDate), asc(cycle.id));
   return rows.map(mapCycle);
@@ -133,11 +134,12 @@ export interface CyclePage {
 // One page of the finished cycles, newest first — the archive, read back from the
 // most recent. `total` counts all of them, not just the page.
 export async function listCompletedCycles(
+  db: Db,
   projectId: number,
   { limit, offset }: { limit: number; offset: number },
 ): Promise<CyclePage> {
   const where = and(eq(cycle.projectId, projectId), FINISHED);
-  const rows = await selectCycles(where)
+  const rows = await selectCycles(db, where)
     .orderBy(desc(cycle.startDate), desc(cycle.id))
     .limit(limit)
     .offset(offset);
@@ -150,14 +152,15 @@ export async function listCompletedCycles(
   return { items: rows.map(mapCycle), total: Number(counted?.total ?? 0) };
 }
 
-export async function getCycle(id: number): Promise<CycleRow | null> {
-  const [row] = await selectCycles(eq(cycle.id, id));
+export async function getCycle(db: Db, id: number): Promise<CycleRow | null> {
+  const [row] = await selectCycles(db, eq(cycle.id, id));
   return row ? mapCycle(row) : null;
 }
 
 // The project a cycle belongs to and the state its dates put it in, or null if it
 // does not exist. What the checks on a cycle referenced by its own id read.
 export async function getCycleRef(
+  db: Db,
   id: number,
 ): Promise<{ projectId: number; status: CycleStatus } | null> {
   const rows = await db
@@ -179,8 +182,8 @@ export async function getCycleRef(
 }
 
 // Used by the access check on routes that address a cycle by its own id.
-export async function getCycleProjectId(id: number): Promise<number | null> {
-  return (await getCycleRef(id))?.projectId ?? null;
+export async function getCycleProjectId(db: Db, id: number): Promise<number | null> {
+  return (await getCycleRef(db, id))?.projectId ?? null;
 }
 
 // Cycles of one project may not overlap: that is what keeps at most one of them
@@ -188,6 +191,7 @@ export async function getCycleProjectId(id: number): Promise<number | null> {
 // updated. Throws 400 on an overlap, and on a range that ends before it starts (the
 // DB check would otherwise surface as a 500).
 async function assertRange(
+  db: Db,
   projectId: number,
   startDate: string,
   endDate: string,
@@ -214,8 +218,12 @@ export interface NewCycleInput {
   endDate: string;
 }
 
-export async function createCycle(projectId: number, input: NewCycleInput): Promise<CycleRow> {
-  await assertRange(projectId, input.startDate, input.endDate);
+export async function createCycle(
+  db: Db,
+  projectId: number,
+  input: NewCycleInput,
+): Promise<CycleRow> {
+  await assertRange(db, projectId, input.startDate, input.endDate);
   const [row] = await db
     .insert(cycle)
     .values({
@@ -251,7 +259,7 @@ function assertDatesMovable(status: CycleStatus, movesStart: boolean, movesEnd: 
 // Addressed by its own id (the route's entity guard already resolved the owning
 // project and asserted permission). Returns null if the cycle does not exist, which
 // the route maps to a 404.
-export async function updateCycle(id: number, patch: CyclePatch): Promise<CycleRow | null> {
+export async function updateCycle(db: Db, id: number, patch: CyclePatch): Promise<CycleRow | null> {
   const [before] = await db.select().from(cycle).where(eq(cycle.id, id));
   if (!before) return null;
   const movesStart = patch.startDate !== undefined && patch.startDate !== before.startDate;
@@ -263,6 +271,7 @@ export async function updateCycle(id: number, patch: CyclePatch): Promise<CycleR
   );
   if (movesStart || movesEnd) {
     await assertRange(
+      db,
       before.projectId,
       patch.startDate ?? before.startDate,
       patch.endDate ?? before.endDate,
@@ -279,18 +288,18 @@ export async function updateCycle(id: number, patch: CyclePatch): Promise<CycleR
     set.updatedAt = NOW;
     await db.update(cycle).set(set).where(eq(cycle.id, id));
   }
-  return getCycle(id);
+  return getCycle(db, id);
 }
 
 // Linked issues keep existing (issue.cycle_id is set null by the FK).
-export async function deleteCycle(id: number): Promise<void> {
+export async function deleteCycle(db: Db, id: number): Promise<void> {
   await db.delete(cycle).where(eq(cycle.id, id));
 }
 
 // The cycle a finish acts on. Only a running one can be finished: an upcoming cycle
 // has nothing to close, and a finished one stays finished — there is no way to
 // reopen it.
-async function loadRunning(id: number): Promise<typeof cycle.$inferSelect | null> {
+async function loadRunning(db: Db, id: number): Promise<typeof cycle.$inferSelect | null> {
   const [row] = await db.select().from(cycle).where(eq(cycle.id, id));
   if (!row) return null;
   if (cycleStatus(row.startDate, row.endDate, row.completedAt) !== 'active')
@@ -299,7 +308,7 @@ async function loadRunning(id: number): Promise<typeof cycle.$inferSelect | null
 }
 
 // Marks a cycle as finished from now on, leaving its dates and its issues alone.
-async function markFinished(id: number): Promise<void> {
+async function markFinished(db: Db, id: number): Promise<void> {
   await db.update(cycle).set({ completedAt: NOW, updatedAt: NOW }).where(eq(cycle.id, id));
 }
 
@@ -307,19 +316,19 @@ async function markFinished(id: number): Promise<void> {
 // cycle_id, so the cycle keeps recording what it held; the transfer route moves the
 // unfinished ones out afterwards. Returns null if the cycle does not exist, which
 // the route maps to a 404.
-export async function finishCycle(id: number): Promise<CycleRow | null> {
-  const running = await loadRunning(id);
+export async function finishCycle(db: Db, id: number): Promise<CycleRow | null> {
+  const running = await loadRunning(db, id);
   if (!running) return null;
-  await markFinished(id);
-  return getCycle(id);
+  await markFinished(db, id);
+  return getCycle(db, id);
 }
 
 // Finishes the running cycle and moves the project's next upcoming cycle to start
 // today; the caller carries the unfinished issues over. The started cycle keeps its
 // planned end date, so starting it early makes it longer. Returns null if the cycle
 // does not exist.
-export async function startNextCycle(id: number): Promise<CycleRow | null> {
-  const running = await loadRunning(id);
+export async function startNextCycle(db: Db, id: number): Promise<CycleRow | null> {
+  const running = await loadRunning(db, id);
   if (!running) return null;
   const [next] = await db
     .select({ id: cycle.id })
@@ -335,10 +344,10 @@ export async function startNextCycle(id: number): Promise<CycleRow | null> {
     .limit(1);
   if (!next) throw new HttpError(400, 'The project has no upcoming cycle to start');
 
-  await markFinished(id);
+  await markFinished(db, id);
   await db
     .update(cycle)
     .set({ startDate: TODAY as unknown as string, updatedAt: NOW })
     .where(eq(cycle.id, next.id));
-  return getCycle(next.id);
+  return getCycle(db, next.id);
 }

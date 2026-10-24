@@ -27,10 +27,10 @@ export const labelRoutes = new Elysia({ name: 'labels', detail: { tags: ['Labels
   .use(guards)
   .post(
     '/projects/:projectKey/labels',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       try {
         set.status = 201;
-        return await createLabel({ projectId: project.id, ...body });
+        return await createLabel(db, { projectId: project.id, ...body });
       } catch (err) {
         rethrowDuplicate(err, 'label');
       }
@@ -49,10 +49,10 @@ export const labelRoutes = new Elysia({ name: 'labels', detail: { tags: ['Labels
 
   .patch(
     '/projects/:projectKey/labels/:labelId',
-    async ({ params, project, body }) => {
+    async ({ db, params, project, body }) => {
       let label;
       try {
-        label = await updateLabel(params.labelId, project.id, body);
+        label = await updateLabel(db, params.labelId, project.id, body);
       } catch (err) {
         rethrowDuplicate(err, 'label');
       }
@@ -75,8 +75,8 @@ export const labelRoutes = new Elysia({ name: 'labels', detail: { tags: ['Labels
 
   .delete(
     '/projects/:projectKey/labels/:labelId',
-    async ({ params, project }) => {
-      await deleteLabel(params.labelId, project.id);
+    async ({ db, params, project }) => {
+      await deleteLabel(db, params.labelId, project.id);
       return noContent();
     },
     {
@@ -93,10 +93,10 @@ export const labelRoutes = new Elysia({ name: 'labels', detail: { tags: ['Labels
 
   .post(
     '/projects/:projectKey/label-groups',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       try {
         set.status = 201;
-        return await createLabelGroup({ projectId: project.id, ...body });
+        return await createLabelGroup(db, { projectId: project.id, ...body });
       } catch (err) {
         rethrowDuplicate(err, 'label group');
       }
@@ -115,10 +115,10 @@ export const labelRoutes = new Elysia({ name: 'labels', detail: { tags: ['Labels
 
   .patch(
     '/projects/:projectKey/label-groups/:groupId',
-    async ({ params, project, body }) => {
+    async ({ db, params, project, body }) => {
       let group;
       try {
-        group = await updateLabelGroup(params.groupId, project.id, body);
+        group = await updateLabelGroup(db, params.groupId, project.id, body);
       } catch (err) {
         rethrowDuplicate(err, 'label group');
       }
@@ -140,8 +140,8 @@ export const labelRoutes = new Elysia({ name: 'labels', detail: { tags: ['Labels
 
   .delete(
     '/projects/:projectKey/label-groups/:groupId',
-    async ({ params, project }) => {
-      await deleteLabelGroup(params.groupId, project.id);
+    async ({ db, params, project }) => {
+      await deleteLabelGroup(db, params.groupId, project.id);
       return noContent();
     },
     {

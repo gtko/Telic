@@ -32,7 +32,7 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
     savedView: entityGuard(
       'views',
       'View not found',
-      async (p, db) => (await getView(db, Number(p.viewId)))?.projectId ?? null,
+      async (p, { db }) => (await getView(db, Number(p.viewId)))?.projectId ?? null,
     ),
   })
   .get(

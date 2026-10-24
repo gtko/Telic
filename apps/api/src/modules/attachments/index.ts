@@ -69,10 +69,10 @@ export const attachmentRoutes = new Elysia({
   // `issueAttachment` for /issues/:issueId/attachments, `attachment` for
   // /attachments/:publicId. Both assert a work_items action on the owning project.
   .macro({
-    issueAttachment: entityGuard('work_items', 'Issue not found', (p, db) =>
+    issueAttachment: entityGuard('work_items', 'Issue not found', (p, { db }) =>
       getIssueProjectId(db, Number(p.issueId)),
     ),
-    attachment: entityGuard('work_items', 'Attachment not found', async (p, db) => {
+    attachment: entityGuard('work_items', 'Attachment not found', async (p, { db }) => {
       const existing = await getAttachmentByPublicId(db, p.publicId);
       if (!existing) return null;
       return getIssueProjectId(db, existing.issueId);

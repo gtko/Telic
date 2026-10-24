@@ -19,10 +19,10 @@ export const issueTypeRoutes = new Elysia({
   .use(guards)
   .post(
     '/projects/:projectKey/issue-types',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       try {
         set.status = 201;
-        return await createIssueType({ projectId: project.id, ...body });
+        return await createIssueType(db, { projectId: project.id, ...body });
       } catch (err) {
         rethrowDuplicate(err, 'issue type');
       }
@@ -42,10 +42,10 @@ export const issueTypeRoutes = new Elysia({
 
   .patch(
     '/projects/:projectKey/issue-types/:typeId',
-    async ({ params, project, body }) => {
+    async ({ db, params, project, body }) => {
       let type;
       try {
-        type = await updateIssueType(params.typeId, project.id, body);
+        type = await updateIssueType(db, params.typeId, project.id, body);
       } catch (err) {
         rethrowDuplicate(err, 'issue type');
       }
@@ -67,8 +67,8 @@ export const issueTypeRoutes = new Elysia({
 
   .delete(
     '/projects/:projectKey/issue-types/:typeId',
-    async ({ params, project }) => {
-      await deleteIssueType(params.typeId, project.id);
+    async ({ db, params, project }) => {
+      await deleteIssueType(db, params.typeId, project.id);
       return noContent();
     },
     {

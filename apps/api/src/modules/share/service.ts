@@ -75,8 +75,8 @@ async function buildScaffold(project: ProjectRow, extended: boolean): Promise<Sh
   const [columns, issueTypes, labels, labelGroups, assignees, customFields] = await Promise.all([
     listColumns(project.id),
     listIssueTypes(project.id),
-    extended ? listLabels(project.id) : [],
-    extended ? listLabelGroups(project.id) : [],
+    extended ? listLabels(db, project.id) : [],
+    extended ? listLabelGroups(db, project.id) : [],
     extended ? listAssigneeCandidates(project.id) : [],
     extended ? listCustomFields(project.id, { allTypes: true }) : [],
   ]);

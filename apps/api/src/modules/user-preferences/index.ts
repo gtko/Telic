@@ -22,8 +22,9 @@ export const userPreferenceRoutes = new Elysia({
 
   .get(
     '/account/preferences',
-    ({ user, request }) =>
+    ({ db, user, request }) =>
       getPreferences(
+        db,
         requireUser(user).id,
         localeFromAcceptLanguage(request.headers.get('accept-language')),
       ),
@@ -39,7 +40,7 @@ export const userPreferenceRoutes = new Elysia({
 
   .patch(
     '/account/preferences',
-    async ({ user, body, request }) => {
+    async ({ db, user, body, request }) => {
       const current = requireUser(user);
       if (body.timezone !== undefined && !isValidTimezone(body.timezone)) {
         throw new HttpError(400, 'Unknown timezone');
@@ -48,6 +49,7 @@ export const userPreferenceRoutes = new Elysia({
         throw new HttpError(403, 'You do not have access to this project');
       }
       return updatePreferences(
+        db,
         current.id,
         body,
         localeFromAcceptLanguage(request.headers.get('accept-language')),

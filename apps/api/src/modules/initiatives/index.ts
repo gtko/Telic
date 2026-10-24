@@ -87,13 +87,13 @@ export const initiativeRoutes = new Elysia({
     initiative: entityGuard(
       'initiatives',
       'Initiative not found',
-      (p, db) => getInitiativeProjectId(db, Number(p.initiativeId)),
+      (p, { db }) => getInitiativeProjectId(db, Number(p.initiativeId)),
       'initiatives',
     ),
     initiativeAttachment: entityGuard(
       'initiatives',
       'Attachment not found',
-      (p, db) => getInitiativeAttachmentProjectId(db, p.publicId),
+      (p, { db }) => getInitiativeAttachmentProjectId(db, p.publicId),
       'initiatives',
     ),
   })
