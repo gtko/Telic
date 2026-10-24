@@ -71,17 +71,8 @@ vi.mock('#shared/access', async (importOriginal) => ({
   assertProjectFeature: async () => undefined,
 }));
 
-// The projects services lean on modules that still take no db. The team limits are read
-// from the suite's own database; seats, instance defaults, agent threads and SCIM
+// The projects services lean on modules that still take no db. Seats, instance defaults, agent threads and SCIM
 // reconciliation are out of scope.
-const testDb = () => (globalThis as { __vtestDb?: Db }).__vtestDb as Db;
-vi.mock('#shared/limits', async (importOriginal) => {
-  const original = await importOriginal<typeof import('#shared/limits')>();
-  return {
-    ...original,
-    getTeamLimits: (teamId: number) => original.getTeamLimits(teamId, testDb()),
-  };
-});
 vi.mock('#modules/settings/service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#modules/settings/service')>()),
   getProjectDefaults: async () => ({ mcpEnabled: false }),
