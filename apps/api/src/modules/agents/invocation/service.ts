@@ -46,12 +46,15 @@ interface Target {
   secret: string;
 }
 
-async function targetOf(agent: {
-  id: number;
-  invocationUrl: string | null;
-}): Promise<Target | null> {
+async function targetOf(
+  db: Db,
+  agent: {
+    id: number;
+    invocationUrl: string | null;
+  },
+): Promise<Target | null> {
   if (!agent.invocationUrl) return null;
-  const secret = await readInvocationSecret(agent.id);
+  const secret = await readInvocationSecret(db, agent.id);
   return secret ? { url: agent.invocationUrl, secret } : null;
 }
 
@@ -112,12 +115,15 @@ async function invoke(
 
 // Sends a ping, so whoever sets the URL up sees whether the endpoint answers and
 // accepts the signature before real work goes there. Null when the agent has no URL.
-export async function testInvocation(agent: {
-  id: number;
-  username: string;
-  invocationUrl: string | null;
-}): Promise<InvocationOutcome | null> {
-  const target = await targetOf(agent);
+export async function testInvocation(
+  db: Db,
+  agent: {
+    id: number;
+    username: string;
+    invocationUrl: string | null;
+  },
+): Promise<InvocationOutcome | null> {
+  const target = await targetOf(db, agent);
   if (!target) return null;
   return invoke(target, 'ping', agent, {});
 }
@@ -175,36 +181,41 @@ async function takeBatch<T>(take: () => Promise<T | null>): Promise<T[]> {
 
 // A run the endpoint refused is retried like a failed attempt of an internal agent's
 // run, and the last refusal fails it.
-async function sendRun(agent: RunnerAgent, target: Target, run: RunnerRun): Promise<void> {
+async function sendRun(db: Db, agent: RunnerAgent, target: Target, run: RunnerRun): Promise<void> {
   const outcome = await invoke(target, 'agent.run', agent, { run });
   if (outcome.ok || outcome.timedOut) return;
   const error = outcome.error ?? 'The endpoint refused the run';
   if (run.attempts < agentRunConfig.maxAttempts()) {
-    await scheduleRunRetry(run.id, runRetryDelayMs(run.attempts), error);
+    await scheduleRunRetry(db, run.id, runRetryDelayMs(run.attempts), error);
     return;
   }
-  await recordAgentRunFinished({ issueId: run.issueId, agentUserId: agent.userId }, 'failed');
-  await markRunFailed(run.id, error);
+  await recordAgentRunFinished(db, { issueId: run.issueId, agentUserId: agent.userId }, 'failed');
+  await markRunFailed(db, run.id, error);
 }
 
 // A person is waiting for the answer, so a refusal fails it at once instead of after
 // the retries a run gets.
-async function sendChat(agent: RunnerAgent, target: Target, message: ClaimedChat): Promise<void> {
+async function sendChat(
+  db: Db,
+  agent: RunnerAgent,
+  target: Target,
+  message: ClaimedChat,
+): Promise<void> {
   const outcome = await invoke(target, 'agent.chat', agent, { message });
   if (outcome.ok || outcome.timedOut) return;
-  await finishMessage(agent.id, message.id, { status: 'failed', error: outcome.error });
+  await finishMessage(db, agent.id, message.id, { status: 'failed', error: outcome.error });
 }
 
-async function dispatchAgent(userId: string): Promise<void> {
-  const agent = await getRunnerAgent(userId);
+async function dispatchAgent(db: Db, userId: string): Promise<void> {
+  const agent = await getRunnerAgent(db, userId);
   if (!agent) return;
-  const target = await targetOf(agent);
+  const target = await targetOf(db, agent);
   if (!target) return;
-  const runs = await takeBatch(() => takeNextRun(agent));
-  const messages = await takeBatch(() => takeNextMessage(agent));
+  const runs = await takeBatch(() => takeNextRun(db, agent));
+  const messages = await takeBatch(() => takeNextMessage(db, agent));
   await Promise.all([
-    ...runs.map((run) => sendRun(agent, target, run)),
-    ...messages.map((message) => sendChat(agent, target, message)),
+    ...runs.map((run) => sendRun(db, agent, target, run)),
+    ...messages.map((message) => sendChat(db, agent, target, message)),
   ]);
 }
 
@@ -218,7 +229,7 @@ export async function dispatchInvocations(db: Db): Promise<void> {
     userIds.map(async (userId) => {
       dispatching.add(userId);
       try {
-        await dispatchAgent(userId);
+        await dispatchAgent(db, userId);
       } finally {
         dispatching.delete(userId);
       }

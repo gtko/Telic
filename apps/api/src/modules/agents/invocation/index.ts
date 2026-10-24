@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import { Elysia } from 'elysia';
 import { guards } from '#shared/guards';
 import { authContext } from '#shared/auth-context';
@@ -16,10 +17,10 @@ import { readInvocationSecret, rotateInvocationSecret } from './secret';
 import { testInvocation } from './service';
 
 // The external agent the path addresses, scoped the way the agent routes scope it.
-async function requireExternalAgent(agentId: number, membership: TeamMembership) {
-  const agent = await getAgentById(agentId, membership.teamId, agentScopeOf(membership));
+async function requireExternalAgent(db: Db, agentId: number, membership: TeamMembership) {
+  const agent = await getAgentById(db, agentId, membership.teamId, agentScopeOf(membership));
   if (!agent) throw new HttpError(404, 'Agent not found');
-  await assertFullAgentAccess(membership, agentId);
+  await assertFullAgentAccess(db, membership, agentId);
   if (agent.kind !== 'external') {
     throw new HttpError(400, 'Only an external agent is sent its work');
   }
@@ -40,7 +41,7 @@ export const agentInvocationRoutes = new Elysia({
   .get(
     '/teams/:teamId/ai-agents/:agentId/invocation-secret',
     async ({ db, params, membership }) => {
-      await requireExternalAgent(params.agentId, membership);
+      await requireExternalAgent(db, params.agentId, membership);
       return { secret: await readInvocationSecret(db, params.agentId) };
     },
     {
@@ -60,7 +61,7 @@ export const agentInvocationRoutes = new Elysia({
   .post(
     '/teams/:teamId/ai-agents/:agentId/invocation-secret',
     async ({ db, params, membership }) => {
-      await requireExternalAgent(params.agentId, membership);
+      await requireExternalAgent(db, params.agentId, membership);
       return { secret: await rotateInvocationSecret(db, params.agentId) };
     },
     {
@@ -80,8 +81,11 @@ export const agentInvocationRoutes = new Elysia({
 
   .post(
     '/teams/:teamId/ai-agents/:agentId/invocation-test',
-    async ({ params, membership }) => {
-      const outcome = await testInvocation(await requireExternalAgent(params.agentId, membership));
+    async ({ db, params, membership }) => {
+      const outcome = await testInvocation(
+        db,
+        await requireExternalAgent(db, params.agentId, membership),
+      );
       if (!outcome) throw new HttpError(400, 'The agent has no invocation URL');
       return outcome;
     },

@@ -34,13 +34,14 @@ export interface RunQueueLike {
   ): Promise<void>;
 }
 
-// The bindings of the agent runtime. `RUN_QUEUE` and `TRACE_PAYLOADS` are optional: without
+// The bindings of the agent runtime. `RUN_QUEUE` and `BUCKET` are optional: without
 // the queue a run waits for the next cron tick, without the bucket large span payloads
-// are cut instead of stored.
+// are cut instead of stored. The span payloads live in the shared bucket (BUCKET) under the
+// `spans/` prefix, which the exporter writes into each key.
 export interface AgentBindings {
   DB: D1Like;
   RUN_QUEUE?: RunQueueLike;
-  TRACE_PAYLOADS?: R2Like;
+  BUCKET?: R2Like;
 }
 
 // The handle every function of the runtime that runs an agent takes first: the Drizzle
@@ -50,17 +51,26 @@ export interface AgentRuntime {
   db: Db;
   d1: D1Like;
   payloads: R2Like | null;
+  // The whole bucket (attachments, imports), not just the span prefix; null without one.
+  bucket: R2Bucket | null;
   queue: RunQueueLike | null;
   // The better-auth instance (`ctx.auth` in a route, `createAuth(env, db)` in a consumer):
   // an internal agent's own API key is issued through it.
   auth: AgentKeyAuth;
 }
 
-export function agentRuntime(env: AgentBindings, auth: AgentKeyAuth): AgentRuntime {
+// The Worker's `Env` is accepted as is: its bindings are the workers-types classes, which
+// satisfy the structural interfaces above at runtime but not for tsc (the api package does
+// not load those types), hence the cast below.
+export type AgentEnv = { DB: unknown; RUN_QUEUE?: unknown; BUCKET?: unknown };
+
+export function agentRuntime(rawEnv: AgentEnv, auth: AgentKeyAuth): AgentRuntime {
+  const env = rawEnv as unknown as AgentBindings;
   return {
     db: createDb(env.DB as unknown as Parameters<typeof createDb>[0]),
     d1: env.DB,
-    payloads: env.TRACE_PAYLOADS ?? null,
+    payloads: env.BUCKET ?? null,
+    bucket: (env.BUCKET as unknown as R2Bucket | undefined) ?? null,
     queue: env.RUN_QUEUE ?? null,
     auth,
   };
@@ -68,3 +78,9 @@ export function agentRuntime(env: AgentBindings, auth: AgentKeyAuth): AgentRunti
 
 // Large JSON payloads of a span go to R2 above this size (D1 caps a row at 2 MB).
 export const SPAN_INLINE_MAX_BYTES = 16 * 1024;
+
+// The run queue of a Worker's `env`, for a caller that enqueues a run without building a whole
+// runtime (issues/activity, issues/service): pass it as the `queue` argument of enqueueAgentRun.
+export function runQueueOf(env: AgentEnv): RunQueueLike | null {
+  return ((env as unknown as AgentBindings).RUN_QUEUE ?? null) as RunQueueLike | null;
+}

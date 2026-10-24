@@ -22,7 +22,7 @@ export const agentRunnerRoutes = new Elysia({
 })
   .use(runnerAuth)
 
-  .post('/agent-runs/claim', async ({ agent }) => ({ run: await claimRunnerRun(db, agent) }), {
+  .post('/agent-runs/claim', async ({ db, agent }) => ({ run: await claimRunnerRun(db, agent) }), {
     runnerAgent: true,
     response: { 200: ClaimResponse, ...errors(401, 403, 409) },
     detail: {

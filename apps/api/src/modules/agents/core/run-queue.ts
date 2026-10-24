@@ -98,7 +98,7 @@ export async function countRunsAhead(
 
 // Sends the message of a run. A failure is swallowed: the row is already stored, and the
 // cron sends the message of any due run that has none.
-async function sendRunMessage(
+export async function sendRunMessage(
   queue: RunQueueLike | null | undefined,
   runId: number,
   delaySeconds: number,
@@ -252,7 +252,7 @@ export async function claimRun(
     WHERE q.id = ${runId} AND q.status = 'pending' AND q.next_attempt_at <= ${now}
       AND (SELECT kind FROM ai_agent a WHERE a.id = q.agent_id) = 'internal'
       AND ${issueRunTurn(now)}
-    RETURNING q.id AS id
+    RETURNING id
   `);
   if (claimed.length === 0) return null;
   const [run] = await db.all<Omit<ClaimedRun, 'executionDeadline' | 'threadContext'>>(sql`

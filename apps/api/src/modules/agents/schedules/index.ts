@@ -1,3 +1,4 @@
+import { agentRuntime, runQueueOf } from '../core/runtime/bindings';
 import { Elysia, t } from 'elysia';
 import { authContext } from '#shared/auth-context';
 import { guards } from '#shared/guards';
@@ -169,8 +170,15 @@ export const agentScheduleRoutes = new Elysia({
   )
   .delete(
     '/projects/:projectKey/agent-schedules/:scheduleId',
-    async ({ db, project, params, user }) => {
-      if (!(await deleteAgentSchedule(db, project.id, params.scheduleId, requireUser(user).id))) {
+    async ({ env, auth, project, params, user }) => {
+      if (
+        !(await deleteAgentSchedule(
+          agentRuntime(env, auth),
+          project.id,
+          params.scheduleId,
+          requireUser(user).id,
+        ))
+      ) {
         throw new HttpError(404, 'Schedule not found');
       }
       return noContent();
@@ -188,12 +196,13 @@ export const agentScheduleRoutes = new Elysia({
   )
   .post(
     '/projects/:projectKey/agent-schedules/:scheduleId/run',
-    async ({ db, project, params, set, user }) => {
+    async ({ env, db, project, params, set, user }) => {
       const runId = await enqueueManualScheduleRun(
         db,
         project.id,
         params.scheduleId,
         requireUser(user).id,
+        runQueueOf(env),
       );
       if (runId == null) throw new HttpError(404, 'Schedule not found');
       set.status = 202;

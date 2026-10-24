@@ -141,7 +141,7 @@ async function buildAgent(
     // are the external integrations configured on the team and enabled here.
     tools: {
       ...buildRouteTools(project, apiKey, row.tools),
-      ...buildLocalTools(projectId, row.tools),
+      ...buildLocalTools(rt, projectId, row.tools),
       ...(skills.length > 0 ? buildSkillTool(rt.db, row.teamId, skills) : {}),
       ...buildCustomTools(customTools),
     },
