@@ -1,4 +1,4 @@
-import { db, issue, issueActivity, project, type ActivityPayload } from '@repo/db';
+import { type Db, issue, issueActivity, project, type ActivityPayload } from '@repo/db';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { textSide, userName, userSide, type ActivityInput } from '#modules/issues/activity';
@@ -42,6 +42,7 @@ export interface FeedPage {
 
 // One page of an initiative's feed, newest first. limit is clamped to 1..100.
 export async function listFeed(
+  db: Db,
   initiativeId: number,
   opts: { before?: FeedCursor | null; limit?: number } = {},
 ): Promise<FeedPage> {
@@ -63,7 +64,7 @@ export async function listFeed(
       action: issueActivity.action,
       payload: issueActivity.payload,
       createdAt: issueActivity.createdAt,
-      cursorTs: sql<string>`${issueActivity.createdAt}::text`,
+      cursorTs: sql<string>`cast(${issueActivity.createdAt} as text)`,
       seq: issue.sequenceNumber,
       projectKey: project.key,
     })
@@ -77,7 +78,7 @@ export async function listFeed(
           inArray(issueActivity.issueId, linkedIssueIds),
         ),
         before
-          ? sql`(${issueActivity.createdAt}, ${issueActivity.id}) < (${before.ts}::timestamptz, ${before.id}::integer)`
+          ? sql`(${issueActivity.createdAt}, ${issueActivity.id}) < (${Number(before.ts)}, ${before.id})`
           : undefined,
       ),
     )
@@ -110,13 +111,14 @@ export async function listFeed(
 // initiative_id set). The initiative mutation functions call it.
 
 export async function recordActivity(
+  db: Db,
   initiativeId: number,
   events: ActivityInput[],
   actorUserId?: string | null,
 ): Promise<void> {
   if (!events.length) return;
   const resolvedActorId = actorUserId ?? null;
-  const actorName = await userName(resolvedActorId);
+  const actorName = await userName(db, resolvedActorId);
   await db.insert(issueActivity).values(
     events.map(({ action, ...payload }) => ({
       issueId: null,
@@ -146,6 +148,7 @@ export interface InitiativeSnapshot {
 // field. Owner resolves to a name snapshot (kept correct after a rename/delete);
 // the rest store their raw value (the UI formats status/priority/dates).
 export async function logInitiativeUpdate(
+  db: Db,
   before: InitiativeSnapshot,
   after: InitiativeSnapshot,
   actorUserId?: string | null,
@@ -160,8 +163,8 @@ export async function logInitiativeUpdate(
   if (before.ownerUserId !== after.ownerUserId)
     events.push({
       action: 'owner',
-      from: await userSide(before.ownerUserId),
-      to: await userSide(after.ownerUserId),
+      from: await userSide(db, before.ownerUserId),
+      to: await userSide(db, after.ownerUserId),
     });
   if ((before.priority ?? '') !== (after.priority ?? ''))
     events.push({
@@ -181,5 +184,5 @@ export async function logInitiativeUpdate(
       from: textSide(before.targetDate),
       to: textSide(after.targetDate),
     });
-  await recordActivity(after.id, events, actorUserId);
+  await recordActivity(db, after.id, events, actorUserId);
 }

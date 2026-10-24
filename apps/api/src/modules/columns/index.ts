@@ -22,9 +22,9 @@ export const columnRoutes = new Elysia({ name: 'columns', detail: { tags: ['Colu
   .use(guards)
   .post(
     '/projects/:projectKey/columns',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       set.status = 201;
-      return createColumn({ projectId: project.id, ...body });
+      return createColumn(db, { projectId: project.id, ...body });
     },
     {
       body: createColumnBody,
@@ -42,9 +42,9 @@ export const columnRoutes = new Elysia({ name: 'columns', detail: { tags: ['Colu
 
   .put(
     '/projects/:projectKey/columns/reorder',
-    async ({ project, body }) => {
-      await reorderColumns(project.id, body.orderedIds);
-      return listColumns(project.id);
+    async ({ db, project, body }) => {
+      await reorderColumns(db, project.id, body.orderedIds);
+      return listColumns(db, project.id);
     },
     {
       body: reorderColumnsBody,
@@ -62,8 +62,8 @@ export const columnRoutes = new Elysia({ name: 'columns', detail: { tags: ['Colu
 
   .patch(
     '/projects/:projectKey/columns/:columnId',
-    async ({ params, project, body }) => {
-      const column = await updateColumn(params.columnId, project.id, body);
+    async ({ db, params, project, body }) => {
+      const column = await updateColumn(db, params.columnId, project.id, body);
       if (!column) throw new HttpError(404, 'Column not found');
       return column;
     },
@@ -84,8 +84,8 @@ export const columnRoutes = new Elysia({ name: 'columns', detail: { tags: ['Colu
 
   .delete(
     '/projects/:projectKey/columns/:columnId',
-    async ({ params, project, body, user }) => {
-      await deleteColumn(params.columnId, project.id, body, requireUser(user).id);
+    async ({ db, params, project, body, user }) => {
+      await deleteColumn(db, params.columnId, project.id, body, requireUser(user).id);
       return noContent();
     },
     {

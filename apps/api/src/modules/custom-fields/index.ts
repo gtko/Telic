@@ -28,8 +28,8 @@ export const customFieldRoutes = new Elysia({
   // project-wide ones; omitting it returns only the project-wide fields.
   .get(
     '/projects/:projectKey/custom-fields',
-    async ({ project, query }) => {
-      return listCustomFields(project.id, { issueTypeId: query.issueTypeId });
+    async ({ db, project, query }) => {
+      return listCustomFields(db, project.id, { issueTypeId: query.issueTypeId });
     },
     {
       query: listFieldsQuery,
@@ -45,10 +45,10 @@ export const customFieldRoutes = new Elysia({
 
   .post(
     '/projects/:projectKey/custom-fields',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       try {
         set.status = 201;
-        return await createCustomField({ projectId: project.id, ...body });
+        return await createCustomField(db, { projectId: project.id, ...body });
       } catch (err) {
         rethrowDuplicate(err, 'field option');
       }
@@ -67,10 +67,10 @@ export const customFieldRoutes = new Elysia({
 
   .patch(
     '/projects/:projectKey/custom-fields/:fieldId',
-    async ({ project, params, body }) => {
+    async ({ db, project, params, body }) => {
       let field;
       try {
-        field = await updateCustomField(project.id, params.fieldId, body);
+        field = await updateCustomField(db, project.id, params.fieldId, body);
       } catch (err) {
         rethrowDuplicate(err, 'field option');
       }
@@ -95,8 +95,8 @@ export const customFieldRoutes = new Elysia({
 
   .delete(
     '/projects/:projectKey/custom-fields/:fieldId',
-    async ({ project, params }) => {
-      const deleted = await deleteCustomField(project.id, params.fieldId);
+    async ({ db, project, params }) => {
+      const deleted = await deleteCustomField(db, project.id, params.fieldId);
       if (!deleted) throw new HttpError(404, 'Custom field not found');
       return noContent();
     },

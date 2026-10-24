@@ -32,13 +32,13 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
     savedView: entityGuard(
       'views',
       'View not found',
-      async (p) => (await getView(Number(p.viewId)))?.projectId ?? null,
+      async (p, db) => (await getView(db, Number(p.viewId)))?.projectId ?? null,
     ),
   })
   .get(
     '/projects/:projectKey/views',
-    async ({ project, user }) => {
-      return listViews(project.id, requireUser(user).id);
+    async ({ db, project, user }) => {
+      return listViews(db, project.id, requireUser(user).id);
     },
     {
       permission: ['views', 'read'],
@@ -53,9 +53,9 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
 
   .post(
     '/projects/:projectKey/views',
-    async ({ project, body, set }) => {
+    async ({ db, project, body, set }) => {
       set.status = 201;
-      return { ...(await createView({ projectId: project.id, ...body })), favorite: false };
+      return { ...(await createView(db, { projectId: project.id, ...body })), favorite: false };
     },
     {
       body: createViewBody,
@@ -71,8 +71,8 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
 
   .put(
     '/projects/:projectKey/views/reorder',
-    async ({ project, body, user }) => {
-      return reorderViews(project.id, body.orderedIds, requireUser(user).id);
+    async ({ db, project, body, user }) => {
+      return reorderViews(db, project.id, body.orderedIds, requireUser(user).id);
     },
     {
       body: reorderViewsBody,
@@ -88,10 +88,10 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
 
   .patch(
     '/views/:viewId',
-    async ({ params, body, user }) => {
-      const view = await updateView(params.viewId, body);
+    async ({ db, params, body, user }) => {
+      const view = await updateView(db, params.viewId, body);
       if (!view) throw new HttpError(404, 'View not found');
-      return { ...view, favorite: await isFavoriteView(view.id, requireUser(user).id) };
+      return { ...view, favorite: await isFavoriteView(db, view.id, requireUser(user).id) };
     },
     {
       body: updateViewBody,
@@ -109,8 +109,8 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
   // Favorites are the caller's own, so reading the view is enough to mark one.
   .put(
     '/views/:viewId/favorite',
-    async ({ params, user }) => {
-      await addFavoriteView(params.viewId, requireUser(user).id);
+    async ({ db, params, user }) => {
+      await addFavoriteView(db, params.viewId, requireUser(user).id);
       return noContent();
     },
     {
@@ -126,8 +126,8 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
 
   .delete(
     '/views/:viewId/favorite',
-    async ({ params, user }) => {
-      await removeFavoriteView(params.viewId, requireUser(user).id);
+    async ({ db, params, user }) => {
+      await removeFavoriteView(db, params.viewId, requireUser(user).id);
       return noContent();
     },
     {
@@ -143,8 +143,8 @@ export const viewRoutes = new Elysia({ name: 'views', detail: { tags: ['Views'] 
 
   .delete(
     '/views/:viewId',
-    async ({ params }) => {
-      await deleteView(params.viewId);
+    async ({ db, params }) => {
+      await deleteView(db, params.viewId);
       return noContent();
     },
     {
