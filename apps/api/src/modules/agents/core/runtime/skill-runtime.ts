@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import type { Db } from '@repo/db';
 import { getSkillMarkdown, getSkillRefContent, type SkillRow } from '../../skills/service';
 
 // Wires the skills of the agent's team into an internal agent run using progressive
@@ -31,7 +32,7 @@ export function skillsPreamble(skills: SkillRow[]): string {
 // A read_skill tool restricted to the agent's enabled skills. Reads the SKILL.md by
 // default, or a named reference file. Reading is scoped to (teamId, enabled ids) so
 // an agent cannot pull skills it was not granted.
-export function buildSkillTool(teamId: number, skills: SkillRow[]) {
+export function buildSkillTool(db: Db, teamId: number, skills: SkillRow[]) {
   const allowed = new Set(skills.map((s) => s.id));
   return {
     read_skill: createTool({
@@ -53,8 +54,8 @@ export function buildSkillTool(teamId: number, skills: SkillRow[]) {
         }
         try {
           const content = path
-            ? await getSkillRefContent(skillId, teamId, path)
-            : await getSkillMarkdown(skillId, teamId);
+            ? await getSkillRefContent(db, skillId, teamId, path)
+            : await getSkillMarkdown(db, skillId, teamId);
           return { content };
         } catch {
           return { error: 'Could not read that skill or reference file.' };

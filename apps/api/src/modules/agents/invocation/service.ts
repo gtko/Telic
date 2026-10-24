@@ -1,5 +1,5 @@
-import { db, aiAgent, agentChatMessage, agentRun } from '@repo/db';
-import { and, eq, inArray, isNotNull, lte, or, sql, exists } from 'drizzle-orm';
+import { type Db, aiAgent, agentChatMessage, agentRun } from '@repo/db';
+import { and, eq, inArray, isNotNull, lte, or, exists } from 'drizzle-orm';
 import { signPayload } from '@repo/crypto';
 import { pinnedFetch } from '@repo/net';
 import { intEnv } from '#shared/lib';
@@ -125,7 +125,7 @@ export async function testInvocation(agent: {
 // The bot users of the agents with an invocation URL that have a run or a chat answer
 // due. The secret is issued with the URL, so an agent without one is left out rather
 // than sent unsigned requests.
-async function agentsWithDueWork(): Promise<string[]> {
+async function agentsWithDueWork(db: Db, now = Date.now()): Promise<string[]> {
   const dueRun = db
     .select({ id: agentRun.id })
     .from(agentRun)
@@ -133,7 +133,7 @@ async function agentsWithDueWork(): Promise<string[]> {
       and(
         eq(agentRun.agentId, aiAgent.id),
         eq(agentRun.status, 'pending'),
-        lte(agentRun.nextAttemptAt, sql`now()`),
+        lte(agentRun.nextAttemptAt, new Date(now)),
       ),
     );
   const dueAnswer = db
@@ -144,7 +144,7 @@ async function agentsWithDueWork(): Promise<string[]> {
         eq(agentChatMessage.agentId, aiAgent.id),
         eq(agentChatMessage.role, 'assistant'),
         inArray(agentChatMessage.status, ['pending', 'streaming']),
-        lte(agentChatMessage.nextAttemptAt, sql`now()`),
+        lte(agentChatMessage.nextAttemptAt, new Date(now)),
       ),
     );
   const rows = await db
@@ -212,8 +212,8 @@ async function dispatchAgent(userId: string): Promise<void> {
 // agent is not sent a second batch while its endpoint is still answering the first.
 const dispatching = new Set<string>();
 
-export async function dispatchInvocations(): Promise<void> {
-  const userIds = (await agentsWithDueWork()).filter((userId) => !dispatching.has(userId));
+export async function dispatchInvocations(db: Db): Promise<void> {
+  const userIds = (await agentsWithDueWork(db)).filter((userId) => !dispatching.has(userId));
   await Promise.all(
     userIds.map(async (userId) => {
       dispatching.add(userId);

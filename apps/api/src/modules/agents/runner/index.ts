@@ -22,7 +22,7 @@ export const agentRunnerRoutes = new Elysia({
 })
   .use(runnerAuth)
 
-  .post('/agent-runs/claim', async ({ agent }) => ({ run: await claimRunnerRun(agent) }), {
+  .post('/agent-runs/claim', async ({ agent }) => ({ run: await claimRunnerRun(db, agent) }), {
     runnerAgent: true,
     response: { 200: ClaimResponse, ...errors(401, 403, 409) },
     detail: {
@@ -36,8 +36,8 @@ export const agentRunnerRoutes = new Elysia({
 
   .post(
     '/agent-runs/:runId/heartbeat',
-    async ({ agent, params, body }) => {
-      const ok = await heartbeatRun(agent.id, params.runId, body?.attempt);
+    async ({ db, agent, params, body }) => {
+      const ok = await heartbeatRun(db, agent.id, params.runId, body?.attempt);
       if (!ok) throw new HttpError(404, 'Run not found');
       return noContent();
     },
@@ -55,7 +55,7 @@ export const agentRunnerRoutes = new Elysia({
 
   .post(
     '/agent-runs/:runId/events',
-    ({ agent, params, body }) => appendRunEvents(agent.id, params.runId, body),
+    ({ db, agent, params, body }) => appendRunEvents(db, agent.id, params.runId, body),
     {
       runnerAgent: true,
       params: runParams,
@@ -71,8 +71,8 @@ export const agentRunnerRoutes = new Elysia({
 
   .post(
     '/agent-runs/:runId/result',
-    async ({ agent, params, body }) => {
-      const ok = await finishRun(agent, params.runId, body);
+    async ({ db, agent, params, body }) => {
+      const ok = await finishRun(db, agent, params.runId, body);
       if (!ok) throw new HttpError(404, 'Run not found');
       return noContent();
     },

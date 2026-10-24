@@ -1,4 +1,5 @@
 import { createDb, type Db } from '@repo/db';
+import type { AgentKeyAuth } from '../service';
 
 // What the agent runtime needs from a Worker's `env`. Structural on purpose: the api
 // package does not load @cloudflare/workers-types (they clash with bun's), and the
@@ -50,14 +51,18 @@ export interface AgentRuntime {
   d1: D1Like;
   payloads: R2Like | null;
   queue: RunQueueLike | null;
+  // The better-auth instance (`ctx.auth` in a route, `createAuth(env, db)` in a consumer):
+  // an internal agent's own API key is issued through it.
+  auth: AgentKeyAuth;
 }
 
-export function agentRuntime(env: AgentBindings): AgentRuntime {
+export function agentRuntime(env: AgentBindings, auth: AgentKeyAuth): AgentRuntime {
   return {
     db: createDb(env.DB as unknown as Parameters<typeof createDb>[0]),
     d1: env.DB,
     payloads: env.TRACE_PAYLOADS ?? null,
     queue: env.RUN_QUEUE ?? null,
+    auth,
   };
 }
 

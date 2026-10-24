@@ -1,4 +1,5 @@
-import { db, agentRun, agentSchedule, aiAgent, issue, project, projectColumn } from '@repo/db';
+import { type Db, agentRun, agentSchedule, aiAgent, issue, project, projectColumn } from '@repo/db';
+import { batchAll, chunk } from '../core/helpers/batch';
 import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 import { filterScheduleIssues, isScheduleSupported, type ScheduleForExtension } from './extension';
 
@@ -36,6 +37,7 @@ function notActor(actorUserId: string | null | undefined) {
 // before it started has not started either: deferRun sets its attempts back to 0.
 // Then queues a run of every active status schedule of the column on each issue.
 export async function queueStatusRuns(
+  db: Db,
   issueIds: number[],
   columnId: number,
   actorUserId: string | null | undefined,
@@ -70,6 +72,7 @@ export async function queueStatusRuns(
       ),
     );
   await insertIssueRuns(
+    db,
     schedules.map((schedule) => ({
       ...schedule,
       lead: (row) =>
@@ -83,6 +86,7 @@ export async function queueStatusRuns(
 // starts the schedules of its own types. A schedule of a core type or a paused one is
 // skipped, as is an issue of another project than the schedule's.
 export async function queueScheduleRuns(
+  db: Db,
   scheduleIds: number[],
   issueIds: number[],
   actorUserId: string | null | undefined,
@@ -102,12 +106,13 @@ export async function queueScheduleRuns(
       ),
     );
   await insertIssueRuns(
+    db,
     schedules.map((schedule) => ({ ...schedule, lead })),
     issueIds,
   );
 }
 
-async function insertIssueRuns(all: IssueSchedule[], issueIds: number[]): Promise<void> {
+async function insertIssueRuns(db: Db, all: IssueSchedule[], issueIds: number[]): Promise<void> {
   const schedules = all.filter(isScheduleSupported);
   if (schedules.length === 0) return;
   const issues = await db
@@ -121,6 +126,7 @@ async function insertIssueRuns(all: IssueSchedule[], issueIds: number[]): Promis
     .innerJoin(project, eq(project.id, issue.projectId))
     .where(inArray(issue.id, issueIds));
 
+  const now = Date.now();
   const perSchedule = await Promise.all(
     schedules.map(async (schedule) => {
       const own = issues.filter((row) => row.projectId === schedule.projectId);
@@ -140,13 +146,17 @@ async function insertIssueRuns(all: IssueSchedule[], issueIds: number[]): Promis
           scheduleId: schedule.id,
           trigger: schedule.type === 'status' ? 'status' : 'event',
           prompt: issueRunPrompt(schedule.lead(row), schedule.prompt),
-          nextAttemptAt: sql`now() + make_interval(secs => ${schedule.delaySec})`,
+          nextAttemptAt: new Date(now + schedule.delaySec * 1000),
         }));
     }),
   );
   const runs = perSchedule.flat();
   if (runs.length === 0) return;
-  await db.insert(agentRun).values(runs);
+  // Eight bound columns per run, 100 parameters at most per statement.
+  await batchAll(
+    db,
+    chunk(runs, 10).map((rows) => db.insert(agentRun).values(rows)),
+  );
   await db
     .update(agentSchedule)
     .set({ lastRunAt: new Date() })
@@ -160,7 +170,7 @@ function issueRunPrompt(lead: string, task: string): string {
 // Whether a status schedule of the column has a run that has not finished: one waiting
 // out its delay or one being executed. Deleting the column deletes the schedule and
 // its runs with it.
-export async function hasUnfinishedStatusRuns(columnId: number): Promise<boolean> {
+export async function hasUnfinishedStatusRuns(db: Db, columnId: number): Promise<boolean> {
   const [row] = await db
     .select({ id: agentRun.id })
     .from(agentRun)

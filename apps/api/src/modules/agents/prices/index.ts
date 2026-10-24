@@ -28,7 +28,7 @@ export const modelPriceRoutes = new Elysia({
 
   .get(
     '/workspaces/:workspaceId/model-prices/used',
-    ({ standing }) => listUsedModelPrices(standing.workspaceId),
+    ({ db, standing }) => listUsedModelPrices(db, standing.workspaceId),
     {
       workspaceManager: true,
       params: workspaceParams,
@@ -45,8 +45,10 @@ export const modelPriceRoutes = new Elysia({
 
   .get(
     '/workspaces/:workspaceId/model-prices/catalog',
-    ({ standing, query }) =>
-      paginate(query, (window) => listCatalogPrices(standing.workspaceId, query.search, window)),
+    ({ db, standing, query }) =>
+      paginate(query, (window) =>
+        listCatalogPrices(db, standing.workspaceId, query.search, window),
+      ),
     {
       workspaceManager: true,
       params: workspaceParams,
@@ -63,7 +65,7 @@ export const modelPriceRoutes = new Elysia({
 
   .put(
     '/workspaces/:workspaceId/model-prices',
-    ({ standing, body }) => setModelPrice(standing.workspaceId, body),
+    ({ db, standing, body }) => setModelPrice(db, standing.workspaceId, body),
     {
       workspaceManager: true,
       params: workspaceParams,
@@ -80,8 +82,8 @@ export const modelPriceRoutes = new Elysia({
 
   .delete(
     '/workspaces/:workspaceId/model-prices/:priceId',
-    async ({ standing, params }) => {
-      if (!(await deleteModelPrice(standing.workspaceId, params.priceId)))
+    async ({ db, standing, params }) => {
+      if (!(await deleteModelPrice(db, standing.workspaceId, params.priceId)))
         throw new HttpError(404, 'Price not found');
       return noContent();
     },

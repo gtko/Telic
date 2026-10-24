@@ -1,4 +1,4 @@
-import { db, agentRun, agentSchedule, aiAgent, projectColumn, user } from '@repo/db';
+import { type Db, agentRun, agentSchedule, aiAgent, projectColumn, user } from '@repo/db';
 import { and, desc, eq, getTableColumns, isNull, sql } from 'drizzle-orm';
 import { HttpError, iso, rethrowDuplicate } from '#shared/lib';
 import { getTeamLimits } from '#shared/limits';
@@ -72,7 +72,7 @@ const columns = {
   ownerUserId: aiAgent.ownerUserId,
 };
 
-function baseQuery() {
+function baseQuery(db: Db) {
   return db
     .select(columns)
     .from(agentSchedule)
@@ -99,12 +99,13 @@ function mapSchedule(row: SelectedSchedule, actorUserId: string): AgentScheduleR
 
 // One page of the project's schedules, newest first, with how many it holds in total.
 export async function listAgentSchedules(
+  db: Db,
   projectId: number,
   actorUserId: string,
   window: { limit: number; offset: number },
 ): Promise<{ items: AgentScheduleRow[]; total: number }> {
   const [rows, counted] = await Promise.all([
-    baseQuery()
+    baseQuery(db)
       .where(eq(agentSchedule.projectId, projectId))
       .orderBy(desc(agentSchedule.id))
       .limit(window.limit)
@@ -123,21 +124,23 @@ export async function listAgentSchedules(
 // Every schedule of the project, newest first. Not exposed over HTTP — a project copy
 // carries all of them over.
 export async function listAllAgentSchedules(
+  db: Db,
   projectId: number,
   actorUserId: string,
 ): Promise<AgentScheduleRow[]> {
-  const rows = await baseQuery()
+  const rows = await baseQuery(db)
     .where(eq(agentSchedule.projectId, projectId))
     .orderBy(desc(agentSchedule.id));
   return rows.map((row) => mapSchedule(row, actorUserId));
 }
 
 export async function getAgentSchedule(
+  db: Db,
   projectId: number,
   scheduleId: number,
   actorUserId: string,
 ): Promise<AgentScheduleRow | null> {
-  const rows = await baseQuery().where(
+  const rows = await baseQuery(db).where(
     and(eq(agentSchedule.projectId, projectId), eq(agentSchedule.id, scheduleId)),
   );
   return rows[0] ? mapSchedule(rows[0], actorUserId) : null;
@@ -184,7 +187,7 @@ export function requiredText(value: string, field: string): string {
   return trimmed;
 }
 
-async function assertProjectColumn(projectId: number, columnId: number): Promise<void> {
+async function assertProjectColumn(db: Db, projectId: number, columnId: number): Promise<void> {
   const [row] = await db
     .select({ id: projectColumn.id })
     .from(projectColumn)
@@ -196,6 +199,7 @@ async function assertProjectColumn(projectId: number, columnId: number): Promise
 // field of another type is refused rather than ignored, so a caller that mixes them up
 // learns it. An extension's type takes the fields of a 'status' one but the column.
 export async function scheduleTriggerFields(
+  db: Db,
   project: { id: number; teamId: number },
   type: AgentScheduleType,
   input: ScheduleTriggerInput,
@@ -219,7 +223,7 @@ export async function scheduleTriggerFields(
   if (input.prompt !== undefined) out.prompt = input.prompt.trim();
   if (input.columnId !== undefined) {
     if (type !== 'status') throw new HttpError(400, 'Only a status schedule takes a column');
-    await assertProjectColumn(project.id, input.columnId);
+    await assertProjectColumn(db, project.id, input.columnId);
     out.columnId = input.columnId;
   }
   if (input.delaySec !== undefined) out.delaySec = input.delaySec;
@@ -228,6 +232,7 @@ export async function scheduleTriggerFields(
 
 // The trigger of a new schedule: the fields its type requires, with the rest left empty.
 export async function newScheduleTrigger(
+  db: Db,
   project: { id: number; teamId: number },
   type: AgentScheduleType,
   input: ScheduleTriggerInput,
@@ -238,7 +243,7 @@ export async function newScheduleTrigger(
   } else if (type === 'status' && input.columnId === undefined) {
     throw new HttpError(400, 'Column is required');
   }
-  const fields = await scheduleTriggerFields(project, type, input);
+  const fields = await scheduleTriggerFields(db, project, type, input);
   return {
     prompt: fields.prompt ?? '',
     cron: fields.cron ?? null,
@@ -249,6 +254,7 @@ export async function newScheduleTrigger(
 }
 
 export async function createAgentSchedule(
+  db: Db,
   input: {
     projectId: number;
     agentId: number;
@@ -279,10 +285,11 @@ export async function createAgentSchedule(
     })
     .returning({ id: agentSchedule.id })
     .catch((err) => rethrowDuplicate(err, 'schedule for this agent'));
-  return getAgentSchedule(input.projectId, row.id, input.actorUserId);
+  return getAgentSchedule(db, input.projectId, row.id, input.actorUserId);
 }
 
 export async function updateAgentSchedule(
+  db: Db,
   projectId: number,
   scheduleId: number,
   patch: Partial<ScheduleTrigger> & {
@@ -293,7 +300,7 @@ export async function updateAgentSchedule(
   },
   actorUserId: string,
 ): Promise<AgentScheduleRow | null> {
-  const current = await getAgentSchedule(projectId, scheduleId, actorUserId);
+  const current = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!current) return null;
   if (patch.agentId !== undefined) {
     if (!(await agentWorksInProject(patch.agentId, projectId))) return null;
@@ -304,17 +311,18 @@ export async function updateAgentSchedule(
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(agentSchedule.id, scheduleId))
     .catch((err) => rethrowDuplicate(err, 'schedule for this agent'));
-  return getAgentSchedule(projectId, scheduleId, actorUserId);
+  return getAgentSchedule(db, projectId, scheduleId, actorUserId);
 }
 
 // Deletes a schedule and the conversation thread its runs shared, which lives outside
 // the database cascades (see ../core/runtime/memory).
 export async function deleteAgentSchedule(
+  db: Db,
   projectId: number,
   scheduleId: number,
   actorUserId: string,
 ): Promise<boolean> {
-  const current = await getAgentSchedule(projectId, scheduleId, actorUserId);
+  const current = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!current) return false;
   await db.delete(agentSchedule).where(eq(agentSchedule.id, scheduleId));
   await deleteThreadsWhere({ scheduleId });
@@ -322,11 +330,12 @@ export async function deleteAgentSchedule(
 }
 
 export async function enqueueManualScheduleRun(
+  db: Db,
   projectId: number,
   scheduleId: number,
   actorUserId: string,
 ): Promise<number | null> {
-  const schedule = await getAgentSchedule(projectId, scheduleId, actorUserId);
+  const schedule = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!schedule) return null;
   if (schedule.type !== 'cron') {
     throw new HttpError(400, 'Only a cron schedule runs on demand');
@@ -350,12 +359,13 @@ export async function enqueueManualScheduleRun(
 // claim, retry, and result path filters on 'pending'. Null when the schedule is not in
 // the project, otherwise how many runs were ended.
 export async function cancelPendingScheduleRuns(
+  db: Db,
   projectId: number,
   scheduleId: number,
   actorUserId: string,
   runId?: number,
 ): Promise<number | null> {
-  const schedule = await getAgentSchedule(projectId, scheduleId, actorUserId);
+  const schedule = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!schedule) return null;
   await assertTriggerable(schedule.agentId, actorUserId);
   const rows = await db
@@ -393,11 +403,12 @@ export interface ScheduleRunRow {
 }
 
 export async function listScheduleRuns(
+  db: Db,
   projectId: number,
   scheduleId: number,
   actorUserId: string,
 ): Promise<ScheduleRunRow[] | null> {
-  const schedule = await getAgentSchedule(projectId, scheduleId, actorUserId);
+  const schedule = await getAgentSchedule(db, projectId, scheduleId, actorUserId);
   if (!schedule) return null;
   const rows = await db
     .select({ ...getTableColumns(agentRun), executionState, kind: aiAgent.kind })

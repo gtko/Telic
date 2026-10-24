@@ -124,7 +124,7 @@ async function buildAgent(
   const model = await resolveModel(rt, row, sessionId);
   const skills = await listAgentSkills(rt.db, row.id);
   const customTools = await listAgentToolsForRun(rt.db, row.id);
-  const apiKey = await getInternalAgentApiKey(rt.db, row);
+  const apiKey = await getInternalAgentApiKey(rt.db, rt.auth, row);
   const instructions =
     projectPreamble(project) +
     contextPreamble +
@@ -142,7 +142,7 @@ async function buildAgent(
     tools: {
       ...buildRouteTools(project, apiKey, row.tools),
       ...buildLocalTools(projectId, row.tools),
-      ...(skills.length > 0 ? buildSkillTool(row.teamId, skills) : {}),
+      ...(skills.length > 0 ? buildSkillTool(rt.db, row.teamId, skills) : {}),
       ...buildCustomTools(customTools),
     },
     // Conversation memory (last N messages of a thread) when enabled.

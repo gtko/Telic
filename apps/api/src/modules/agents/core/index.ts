@@ -463,10 +463,10 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .get(
     '/teams/:teamId/ai-agents/:agentId/traces/:traceId',
-    async ({ db, env, params, membership }) => {
+    async ({ db, env, auth, params, membership }) => {
       await requireVisibleAgent(db, params.agentId, membership);
       const trace = await getAgentTrace(
-        agentRuntime(env),
+        agentRuntime(env, auth),
         params.agentId,
         params.traceId,
         membership.userId,
@@ -548,7 +548,7 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
     async ({ env, db, params, membership }) => {
       await requireVisibleAgent(db, params.agentId, membership);
       await assertFullAgentAccess(db, membership, params.agentId);
-      const ok = await deleteAgent(agentRuntime(env), params.agentId, membership.teamId);
+      const ok = await deleteAgent(agentRuntime(env, auth), params.agentId, membership.teamId);
       if (!ok) throw new HttpError(404, 'Agent not found');
       return noContent();
     },
@@ -568,9 +568,9 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // project of this path, which it has to be a member of.
   .post(
     '/projects/:projectKey/ai-agents/:agentId/run',
-    async ({ env, params, project, body, user }) =>
+    async ({ env, auth, params, project, body, user }) =>
       runAgent(
-        agentRuntime(env),
+        agentRuntime(env, auth),
         params.agentId,
         project.id,
         body.prompt,
@@ -601,11 +601,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // nobody reading it.
   .post(
     '/projects/:projectKey/ai-agents/:agentId/run/stream',
-    ({ env, params, project, body, user, request }) =>
+    ({ env, auth, params, project, body, user, request }) =>
       sseResponse(
         runFrames(
           streamAgent(
-            agentRuntime(env),
+            agentRuntime(env, auth),
             params.agentId,
             project.id,
             body.prompt,
@@ -636,11 +636,15 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // conversations. `q` searches them and `favorites` returns the starred ones instead.
   .get(
     '/projects/:projectKey/ai-agents/:agentId/threads',
-    async ({ db, env, params, project, query, user }) => {
+    async ({ db, env, auth, params, project, query, user }) => {
       const caller = requireUser(user);
       const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      return threadStore(agent.kind, agentRuntime(env)).list(caller.id, params.agentId, query);
+      return threadStore(agent.kind, agentRuntime(env, auth)).list(
+        caller.id,
+        params.agentId,
+        query,
+      );
     },
     {
       params: projectAgentParams,
@@ -656,12 +660,12 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // with this agent is a 404.
   .put(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId/favorite',
-    async ({ db, env, params, project, user }) => {
+    async ({ db, env, auth, params, project, user }) => {
       const caller = requireUser(user);
       const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
       if (
-        !(await threadStore(agent.kind, agentRuntime(env)).owns(
+        !(await threadStore(agent.kind, agentRuntime(env, auth)).owns(
           params.threadId,
           caller.id,
           params.agentId,
@@ -681,12 +685,12 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
 
   .delete(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId/favorite',
-    async ({ db, env, params, project, user }) => {
+    async ({ db, env, auth, params, project, user }) => {
       const caller = requireUser(user);
       const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
       if (
-        !(await threadStore(agent.kind, agentRuntime(env)).owns(
+        !(await threadStore(agent.kind, agentRuntime(env, auth)).owns(
           params.threadId,
           caller.id,
           params.agentId,
@@ -708,11 +712,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // in the UI. 404 when the thread does not exist or is not owned by the caller.
   .get(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId/messages',
-    async ({ db, env, params, project, query, user }) => {
+    async ({ db, env, auth, params, project, query, user }) => {
       const caller = requireUser(user);
       const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const messages = await threadStore(agent.kind, agentRuntime(env)).messages(
+      const messages = await threadStore(agent.kind, agentRuntime(env, auth)).messages(
         params.threadId,
         caller.id,
         query.page,
@@ -733,11 +737,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // thread owned by another user is a 404.
   .patch(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId',
-    async ({ db, env, params, project, body, user }) => {
+    async ({ db, env, auth, params, project, body, user }) => {
       const caller = requireUser(user);
       const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const renamed = await threadStore(agent.kind, agentRuntime(env)).rename(
+      const renamed = await threadStore(agent.kind, agentRuntime(env, auth)).rename(
         params.threadId,
         caller.id,
         body.title,
@@ -758,11 +762,11 @@ export const aiAgentRoutes = new Elysia({ name: 'ai-agents', detail: { tags: ['A
   // reading it: a thread owned by another user is a 404.
   .delete(
     '/projects/:projectKey/ai-agents/:agentId/threads/:threadId',
-    async ({ db, env, params, project, user }) => {
+    async ({ db, env, auth, params, project, user }) => {
       const caller = requireUser(user);
       const agent = await getAgentInProject(db, params.agentId, project.id);
       if (!agent) throw new HttpError(404, 'Agent not found');
-      const deleted = await threadStore(agent.kind, agentRuntime(env)).remove(
+      const deleted = await threadStore(agent.kind, agentRuntime(env, auth)).remove(
         params.threadId,
         caller.id,
       );
