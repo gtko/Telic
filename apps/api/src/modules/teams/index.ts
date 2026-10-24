@@ -369,11 +369,19 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .post(
     '/teams/:teamId/projects/:projectId/copy',
-    async ({ db, body, membership, params, set }) => {
+    async ({ db, env, body, membership, params, set }) => {
       await requireTeamProject(db, membership.teamId, params.projectId);
       const { include, ...meta } = body;
       set.status = 201;
-      return copyProject(db, params.projectId, meta, membership.userId, membership.teamId, include);
+      return copyProject(
+        db,
+        env.BUCKET,
+        params.projectId,
+        meta,
+        membership.userId,
+        membership.teamId,
+        include,
+      );
     },
     {
       teamManager: true,

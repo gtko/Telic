@@ -209,6 +209,7 @@ export const cycleRoutes = new Elysia({
       const started = await startNextCycle(db, params.cycleId);
       if (!started) throw new HttpError(404, 'Cycle not found');
       const moved = await transferCycleIssues(
+        db,
         projectId,
         params.cycleId,
         started.id,
@@ -234,8 +235,9 @@ export const cycleRoutes = new Elysia({
   .post(
     '/cycles/:cycleId/transfer',
     // projectId comes from the cycle guard, which resolved it to check access.
-    async ({ params, body, user, projectId }) => {
+    async ({ db, params, body, user, projectId }) => {
       const moved = await transferCycleIssues(
+        db,
         projectId,
         params.cycleId,
         body.targetCycleId ?? null,

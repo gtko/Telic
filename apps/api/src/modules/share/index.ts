@@ -45,8 +45,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .post(
     '/issues/:issueId/share',
-    async ({ params, body }) => {
-      const token = await enableIssueShare(params.issueId, body?.extended);
+    async ({ db, params, body }) => {
+      const token = await enableIssueShare(db, params.issueId, body?.extended);
       if (!token) throw new HttpError(404, 'Issue not found');
       return { token };
     },
@@ -61,8 +61,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .delete(
     '/issues/:issueId/share',
-    async ({ params }) => {
-      const ok = await disableIssueShare(params.issueId);
+    async ({ db, params }) => {
+      const ok = await disableIssueShare(db, params.issueId);
       if (!ok) throw new HttpError(404, 'Issue not found');
       return noContent();
     },
@@ -76,8 +76,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .post(
     '/views/:viewId/share',
-    async ({ params, body }) => {
-      const token = await enableViewShare(params.viewId, body?.extended);
+    async ({ db, params, body }) => {
+      const token = await enableViewShare(db, params.viewId, body?.extended);
       if (!token) throw new HttpError(404, 'View not found');
       return { token };
     },
@@ -92,8 +92,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .delete(
     '/views/:viewId/share',
-    async ({ params }) => {
-      const ok = await disableViewShare(params.viewId);
+    async ({ db, params }) => {
+      const ok = await disableViewShare(db, params.viewId);
       if (!ok) throw new HttpError(404, 'View not found');
       return noContent();
     },
@@ -109,8 +109,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .get(
     '/share/issue/:token',
-    async ({ params }) => {
-      const bundle = await getSharedIssue(params.token);
+    async ({ db, params }) => {
+      const bundle = await getSharedIssue(db, params.token);
       if (!bundle) throw new HttpError(404, 'Not found');
       return bundle;
     },
@@ -123,8 +123,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .get(
     '/share/view/:token',
-    async ({ params }) => {
-      const bundle = await getSharedView(params.token);
+    async ({ db, params }) => {
+      const bundle = await getSharedView(db, params.token);
       if (!bundle) throw new HttpError(404, 'Not found');
       return bundle;
     },
@@ -137,8 +137,8 @@ export const shareRoutes = new Elysia({ name: 'share', detail: { tags: ['Share']
 
   .get(
     '/share/view/:token/issues/:issueId',
-    async ({ params }) => {
-      const bundle = await getSharedViewIssue(params.token, params.issueId);
+    async ({ db, params }) => {
+      const bundle = await getSharedViewIssue(db, params.token, params.issueId);
       if (!bundle) throw new HttpError(404, 'Not found');
       return bundle;
     },

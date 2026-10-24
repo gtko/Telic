@@ -43,6 +43,7 @@ function uniqueRefs(refs: IssueRef[]): IssueRef[] {
 }
 
 async function resolveIssues(
+  db: Db,
   project: { id: number; key: string },
   refs: IssueRef[],
 ): Promise<{ id: number; sequenceNumber: number }[]> {
@@ -79,7 +80,7 @@ export async function handleGitEvent(
       await removeBranchLinks(db, project.id, null, providerKey, event.repo, event.branch);
       return 'branch';
     }
-    const branchIssues = await resolveIssues(project, parseIssueIdentifiers(event.branch));
+    const branchIssues = await resolveIssues(db, project, parseIssueIdentifiers(event.branch));
     await upsertBranchLinks(
       db,
       branchIssues.map((issue) => issue.id),
@@ -102,7 +103,7 @@ export async function handleGitEvent(
     ),
     skipped: magic.skipped,
   };
-  const skippedIssues = await resolveIssues(project, magic.skipped);
+  const skippedIssues = await resolveIssues(db, project, magic.skipped);
   await removePullRequestLinks(
     db,
     skippedIssues.map((issue) => issue.id),
@@ -120,7 +121,7 @@ export async function handleGitEvent(
     );
   }
   const projectKey = project.key.toUpperCase();
-  const uniqueIssues = await resolveIssues(project, [...refs.closes, ...refs.references]);
+  const uniqueIssues = await resolveIssues(db, project, [...refs.closes, ...refs.references]);
   const promotedIssueIds = await promoteBranchLinksToPullRequest(
     db,
     uniqueIssues.map((issue) => issue.id),
@@ -195,8 +196,8 @@ export async function handlePullRequestEvent(
       if (await hasOpenDevelopmentLinks(db, issue.id)) continue;
       const stateType = (await columnStateTypes(db, [issue.columnId])).get(issue.columnId);
       if (stateType && CLOSED_STATE_TYPES.includes(stateType)) continue;
-      await recordActivity(issue.id, [prEntry('merged')], actor);
-      await updateIssue(issue.id, { columnId: targetId }, actor, {
+      await recordActivity(db, issue.id, [prEntry('merged')], actor);
+      await updateIssue(db, issue.id, { columnId: targetId }, actor, {
         skipIfColumnFull: true,
       });
     }
@@ -210,14 +211,14 @@ export async function handlePullRequestEvent(
   for (const ref of inProject([...parsed.closes, ...parsed.references])) {
     const issue = await getIssueBySequence(db, project.id, ref.sequenceNumber);
     if (!issue || issue.archivedAt) continue;
-    await recordActivity(issue.id, [prEntry('opened')], actor);
+    await recordActivity(db, issue.id, [prEntry('opened')], actor);
     if (targetId == null || issue.columnId === targetId || issue.projectId !== project.id) continue;
     const stateType = (await columnStateTypes(db, [issue.columnId])).get(issue.columnId);
     // Only pull work forward: an issue already started or closed stays put.
     // The guard makes that atomic — a user moving the issue between this read
     // and the write wins over the automation.
     if (stateType === 'backlog' || stateType === 'unstarted')
-      await updateIssue(issue.id, { columnId: targetId }, actor, {
+      await updateIssue(db, issue.id, { columnId: targetId }, actor, {
         onlyIfColumnId: issue.columnId,
         skipIfColumnFull: true,
       });

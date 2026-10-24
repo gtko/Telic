@@ -110,10 +110,18 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
 
   .post(
     '/projects/:projectKey/copy',
-    async ({ db, project, body, user, set }) => {
+    async ({ db, env, project, body, user, set }) => {
       const { include, ...meta } = body;
       set.status = 201;
-      return await copyProject(db, project.id, meta, requireUser(user).id, project.teamId, include);
+      return await copyProject(
+        db,
+        env.BUCKET,
+        project.id,
+        meta,
+        requireUser(user).id,
+        project.teamId,
+        include,
+      );
     },
     {
       body: copyProjectBody,

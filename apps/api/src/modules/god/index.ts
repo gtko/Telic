@@ -269,7 +269,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/google-settings',
-    async ({ db, body }) => {
+    async ({ db, env, body }) => {
       const current = await getGoogleSettings(db);
       const enabled = body.enabled ?? current.enabled;
       const clientId = body.clientId ?? current.clientId;
@@ -285,7 +285,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         await hasConfiguredOidc(db),
       );
       const next = await setGoogleSettings(db, body);
-      return { ...next, redirectUri: GOOGLE_REDIRECT_URI };
+      return { ...next, redirectUri: googleRedirectUri(env) };
     },
     {
       body: GoogleSettingsBody,
@@ -311,7 +311,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .put(
     '/god/oidc-settings',
-    async ({ db, body }) => {
+    async ({ db, env, body }) => {
       const current = await getOidcSettings(db);
       const enabled = body.enabled ?? current.enabled;
       const discoveryUrl = body.discoveryUrl ?? current.discoveryUrl;
@@ -328,7 +328,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         await hasConfiguredGoogle(db),
       );
       const next = await setOidcSettings(db, body);
-      return { ...next, redirectUri: OIDC_REDIRECT_URI };
+      return { ...next, redirectUri: oidcRedirectUri(env) };
     },
     {
       body: OidcSettingsBody,

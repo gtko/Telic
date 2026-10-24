@@ -234,6 +234,7 @@ const MAX_COPY_QUERIES = 850;
 
 export async function copyProject(
   db: Db,
+  bucket: R2Bucket,
   sourceProjectId: number,
   input: { key: string; name: string; description?: string },
   ownerId: string,
@@ -555,7 +556,7 @@ export async function copyProject(
           const targetDocumentId = documentMap.get(asset.documentId);
           if (targetDocumentId == null) continue;
           const key = attachmentObjectKey(proj.id, 'documents', targetDocumentId, asset.filename);
-          await cloneAttachmentObject(asset.s3Key, key, asset.contentType);
+          await cloneAttachmentObject(bucket, asset.s3Key, key, asset.contentType);
           copiedDocumentAssetKeys.push(key);
           const [copy] = await db
             .insert(documentAsset)
@@ -675,7 +676,7 @@ export async function copyProject(
         .delete(project)
         .where(eq(project.id, createdProjectId))
         .catch(() => undefined);
-    await Promise.all(copiedDocumentAssetKeys.map(deleteAttachmentObject));
+    await Promise.all(copiedDocumentAssetKeys.map((key) => deleteAttachmentObject(bucket, key)));
     throw error;
   }
 

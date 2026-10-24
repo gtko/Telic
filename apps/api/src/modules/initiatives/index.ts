@@ -288,8 +288,12 @@ export const initiativeRoutes = new Elysia({
 
   .get(
     '/initiatives/:initiativeId/images',
-    async ({ db, params }) =>
-      viewAttachments(db, await listInitiativeAttachments(db, params.initiativeId), attachmentDto),
+    async ({ db, env, params }) =>
+      viewAttachments(
+        env.BUCKET,
+        await listInitiativeAttachments(db, params.initiativeId),
+        attachmentDto,
+      ),
     {
       params: initiativeParams,
       initiative: 'read',
@@ -308,7 +312,7 @@ export const initiativeRoutes = new Elysia({
   // object store, and records the metadata.
   .post(
     '/initiatives/:initiativeId/attachments',
-    async ({ db, params, body, set, projectId }) => {
+    async ({ db, env, params, body, set, projectId }) => {
       const file = body.file;
       if (!(file instanceof File)) throw new HttpError(400, 'No file uploaded (form field "file")');
       if (file.size === 0) throw new HttpError(400, 'Uploaded file is empty');
@@ -318,7 +322,12 @@ export const initiativeRoutes = new Elysia({
       await assertAttachmentUploadAllowed(db, projectId, file.size, contentType);
 
       const key = attachmentObjectKey(projectId, 'initiatives', params.initiativeId, filename);
-      await storeAttachmentObject(key, Buffer.from(await file.arrayBuffer()), contentType);
+      await storeAttachmentObject(
+        env.BUCKET,
+        key,
+        Buffer.from(await file.arrayBuffer()),
+        contentType,
+      );
 
       let row;
       try {
@@ -331,7 +340,7 @@ export const initiativeRoutes = new Elysia({
           sizeBytes: file.size,
         });
       } catch (error) {
-        await deleteAttachmentObject(key);
+        await deleteAttachmentObject(env.BUCKET, key);
         throw error;
       }
       set.status = 201;
@@ -348,13 +357,13 @@ export const initiativeRoutes = new Elysia({
 
   .delete(
     '/initiative-attachments/:publicId',
-    async ({ db, params }) => {
+    async ({ db, env, params }) => {
       const row = await deleteInitiativeAttachment(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
       await removeInitiativeAttachmentEmbeds(db, row.initiativeId, row.publicId);
       // Row is already gone; a failed object delete only orphans bytes, so don't
       // fail the request over it.
-      await deleteAttachmentObject(row.s3Key);
+      await deleteAttachmentObject(env.BUCKET, row.s3Key);
       return noContent();
     },
     {
@@ -370,11 +379,12 @@ export const initiativeRoutes = new Elysia({
   // with the headers that keep attacker-controlled bytes inert.
   .get(
     '/initiative-attachments/:publicId/raw',
-    async ({ db, params, query, request }) => {
+    async ({ db, env, params, query, request }) => {
       const row = await getInitiativeAttachment(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
 
       return attachmentObjectResponse({
+        bucket: env.BUCKET,
         s3Key: row.s3Key,
         contentType: row.contentType,
         filename: row.filename,

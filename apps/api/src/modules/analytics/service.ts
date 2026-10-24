@@ -1,5 +1,4 @@
 import {
-  db,
   issue,
   projectColumn,
   projectMember,
@@ -12,6 +11,7 @@ import {
   webhookDelivery,
   initiative,
   type ActivityPayload,
+  type Db,
 } from '@repo/db';
 import { and, desc, eq, gte, inArray, isNull, isNotNull, lt, sql } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
@@ -56,7 +56,7 @@ export interface StatsDto {
 
 const OPEN_STATES = sql`${projectColumn.stateType} NOT IN ('completed', 'canceled')`;
 
-export async function getStats(projectId: number): Promise<StatsDto> {
+export async function getStats(db: Db, projectId: number): Promise<StatsDto> {
   // One row per state type with its issue count; the open/backlog/in-progress
   // figures are derived from it.
   const stateRows = await db
@@ -87,7 +87,7 @@ export async function getStats(projectId: number): Promise<StatsDto> {
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
     .where(and(eq(issue.projectId, projectId), isNull(issue.assigneeUserId), OPEN_STATES));
 
-  const closedRows = (await db.execute(sql`
+  const closedRows = (await db.all(sql`
     SELECT count(*)::int AS count
       FROM (${closings(projectId)}) c
      WHERE c.closed_at >= now() - interval '7 days'`)) as unknown as { count: number }[];
@@ -115,7 +115,11 @@ const PRIORITY_LABEL: Record<string, string> = {
   none: 'No priority',
 };
 
-export async function getBreakdown(projectId: number, by: BreakdownBy): Promise<BreakdownItem[]> {
+export async function getBreakdown(
+  db: Db,
+  projectId: number,
+  by: BreakdownBy,
+): Promise<BreakdownItem[]> {
   if (by === 'status') {
     // Every column, including empty ones, in work items order.
     const rows = await db
@@ -269,6 +273,7 @@ export function pulseRows(unit: PulseUnit): number {
 // reconciliation. projectId and columns are validated numbers and the unit tokens
 // are whitelisted, so the interpolation is injection-safe.
 export async function getPulse(
+  db: Db,
   projectId: number,
   unit: PulseUnit,
   columns: number,
@@ -299,7 +304,7 @@ export async function getPulse(
     GROUP BY s.bucket
     ORDER BY s.bucket
   `;
-  const rows = (await db.execute(q)) as unknown as { label: string; count: number }[];
+  const rows = (await db.all(q)) as unknown as { label: string; count: number }[];
   return rows.map((r) => ({ label: r.label, count: Number(r.count) }));
 }
 
@@ -314,9 +319,13 @@ export interface ThroughputWeek {
 // Creations come from the change log, closings from the status history; the two are
 // counted in one pass over their union so the weeks need no merging afterwards. A
 // week with neither is absent from the result.
-export async function getThroughput(projectId: number, weeks: number): Promise<ThroughputWeek[]> {
+export async function getThroughput(
+  db: Db,
+  projectId: number,
+  weeks: number,
+): Promise<ThroughputWeek[]> {
   const since = sql`date_trunc('week', now()) - make_interval(weeks => ${weeks - 1})`;
-  const rows = (await db.execute(sql`
+  const rows = (await db.all(sql`
     SELECT to_char(e.week, 'YYYY-MM-DD') AS week,
            (count(*) FILTER (WHERE e.kind = 'created'))::int AS created,
            (count(*) FILTER (WHERE e.kind = 'closed'))::int AS closed
@@ -381,11 +390,15 @@ export interface BurnupParams {
 // whose stretch covers that midnight. So an issue that was reopened leaves the
 // completed line for the days it was open again, and a canceled issue leaves the
 // scope line — the chart is a history of the project, not of the events.
-export async function getBurnup(projectId: number, params: BurnupParams): Promise<BurnupDto> {
-  const targetDate = await initiativeTargetDate(projectId, params.initiativeId);
+export async function getBurnup(
+  db: Db,
+  projectId: number,
+  params: BurnupParams,
+): Promise<BurnupDto> {
+  const targetDate = await initiativeTargetDate(db, projectId, params.initiativeId);
   const initiativeFilter =
     params.initiativeId == null ? sql`` : sql`AND i.initiative_id = ${params.initiativeId}::int`;
-  const rows = (await db.execute(sql`
+  const rows = (await db.all(sql`
     WITH d AS (
       SELECT generate_series(current_date - ${params.days - 1}::int, current_date, '1 day')::date AS day
     )
@@ -416,6 +429,7 @@ export async function getBurnup(projectId: number, params: BurnupParams): Promis
 // project is charted. An initiative from another project is a 404, not an empty
 // chart, so a wrong id does not read as an initiative with no issues.
 async function initiativeTargetDate(
+  db: Db,
   projectId: number,
   initiativeId: number | null,
 ): Promise<string | null> {
@@ -540,6 +554,7 @@ export interface ActivityPage {
 // issue ids the client resolved from a work items filter set. An empty issueIds array
 // means "the filter matched no issues", so the feed is empty.
 export async function listActivity(
+  db: Db,
   projectId: number,
   opts: {
     before?: ActivityCursor | null;
@@ -629,6 +644,7 @@ export interface AgentRunFeedItem {
 // carries the project it worked in; ai_agent is joined for the agent name and issue
 // when the run is issue-triggered.
 export async function listAgentRunFeed(
+  db: Db,
   projectId: number,
   opts: { status?: string | null; limit?: number } = {},
 ): Promise<AgentRunFeedItem[]> {
@@ -679,7 +695,11 @@ export interface AgentRunStatsDto {
 
 // Agent run outcome counts over the last `days` days for the project. Backs the
 // agent health widget's success rate and failure count.
-export async function getAgentRunStats(projectId: number, days: number): Promise<AgentRunStatsDto> {
+export async function getAgentRunStats(
+  db: Db,
+  projectId: number,
+  days: number,
+): Promise<AgentRunStatsDto> {
   const rows = await db
     .select({ status: agentRun.status, count: sql<number>`count(*)::int` })
     .from(agentRun)
@@ -715,7 +735,11 @@ export interface WebhookStatsDto {
 // Webhook delivery outcome counts over the last `days` days plus the current
 // active/disabled subscription split (a dead endpoint is auto-disabled once its
 // consecutive failures cross the worker threshold). Backs the webhook health widget.
-export async function getWebhookStats(projectId: number, days: number): Promise<WebhookStatsDto> {
+export async function getWebhookStats(
+  db: Db,
+  projectId: number,
+  days: number,
+): Promise<WebhookStatsDto> {
   const deliveryRows = await db
     .select({ status: webhookDelivery.status, count: sql<number>`count(*)::int` })
     .from(webhookDelivery)
@@ -770,7 +794,7 @@ export interface AgentWorkloadItem {
 // Per-agent workload for the project: how many open issues each agent is currently
 // delegated, and its lifetime run outcomes. Three cheap grouped reads merged in
 // memory (one per source), keyed by the agent's bot user id and agent id.
-export async function getAgentWorkload(projectId: number): Promise<AgentWorkloadItem[]> {
+export async function getAgentWorkload(db: Db, projectId: number): Promise<AgentWorkloadItem[]> {
   const agents = await db
     .select({ id: aiAgent.id, userId: aiAgent.userId, name: aiAgent.username, kind: aiAgent.kind })
     .from(aiAgent)
