@@ -1,0 +1,15 @@
+{
+  // SPIKE S3 (ODY-296): local D1 target for the sqlite migrations in drizzle-d1/.
+  // Only `wrangler d1 ... --local` is used; the database_id is a placeholder and is never
+  // sent anywhere.
+  "name": "telic-d1-spike",
+  "compatibility_date": "2026-01-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "telic-spike",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle-d1",
+    },
+  ],
+}

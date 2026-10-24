@@ -1,37 +1,30 @@
 // Task planner tables: projects, workflow columns, issue types, labels, custom
 // fields, issues, and their dependent rows. Exposed to the web app over HTTP by
 // the API.
-import { sql } from 'drizzle-orm';
+import { sql, desc } from 'drizzle-orm';
 import {
-  bigint,
-  bigserial,
-  boolean,
-  check,
-  type AnyPgColumn,
-  date,
-  doublePrecision,
-  index,
   integer,
-  jsonb,
-  numeric,
-  pgTable,
-  primaryKey,
-  serial,
+  check,
+  type AnySQLiteColumn,
   text,
-  timestamp,
+  real,
+  index,
+  sqliteTable,
+  primaryKey,
   unique,
   uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
-import { user } from './auth';
+} from 'drizzle-orm/sqlite-core';
+import { user } from './auth-stub';
 
 // Global key-value settings for the instance, not scoped to a project. The value is
 // a jsonb blob owned by whatever feature reads the key, so one table backs many
 // settings.
-export const appSetting = pgTable('app_setting', {
+export const appSetting = sqliteTable('app_setting', {
   key: text('key').primaryKey(),
-  value: jsonb('value').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  value: text('value', { mode: 'json' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
 });
 
 // Instance-wide secrets, the encrypted counterpart of app_setting. One row per key
@@ -40,28 +33,32 @@ export const appSetting = pgTable('app_setting', {
 // same blob with every secret replaced by a boolean, for the settings UI to read
 // without decrypting. Encryption is AES-256-GCM with APP_ENCRYPTION_KEY — changing
 // that env value makes stored rows undecryptable.
-export const appSecret = pgTable('app_secret', {
+export const appSecret = sqliteTable('app_secret', {
   key: text('key').primaryKey(),
   ciphertext: text('ciphertext').notNull(),
   iv: text('iv').notNull(),
   authTag: text('auth_tag').notNull(),
-  redacted: jsonb('redacted').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  redacted: text('redacted', { mode: 'json' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
 });
 
 // A workspace owns teams; its members are derived from them. Every person, the instance
 // owner included, gets one of their own at sign-up, and a team is always created in one.
-export const workspace = pgTable(
+export const workspace = sqliteTable(
   'workspace',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     name: text('name').notNull(),
     // The tile colour in the workspace rails, as #rrggbb; null keeps the neutral tile.
     color: text('color'),
     // Who creates teams in it: the owner alone, the owner and admins (managers), or
     // anyone in one of its teams (members).
     teamCreation: text('team_creation').notNull().default('owner'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -73,7 +70,7 @@ export const workspace = pgTable(
 
 // The people who administer a workspace. Nobody else is listed here: membership comes
 // from team_member.
-export const workspaceManager = pgTable(
+export const workspaceManager = sqliteTable(
   'workspace_manager',
   {
     workspaceId: integer('workspace_id')
@@ -83,7 +80,9 @@ export const workspaceManager = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     role: text('role').notNull().default('admin'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     primaryKey({ columns: [t.workspaceId, t.userId] }),
@@ -97,10 +96,10 @@ export const workspaceManager = pgTable(
 
 // A team owns projects and holds its own member list. Every project belongs to exactly
 // one team.
-export const team = pgTable(
+export const team = sqliteTable(
   'team',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     workspaceId: integer('workspace_id')
       .notNull()
       .references(() => workspace.id, { onDelete: 'cascade' }),
@@ -111,9 +110,14 @@ export const team = pgTable(
     // Whether the team is reachable through the MCP server at all. Off closes both the
     // team's own resources (agents, skills, tools, roles, integrations) and every
     // project it owns, whatever each project's own flag says.
-    mcpEnabled: boolean('mcp_enabled').notNull().default(true),
-    defaultAgentIds: jsonb('default_agent_ids').$type<number[]>().notNull().default([]),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    mcpEnabled: integer('mcp_enabled', { mode: 'boolean' }).notNull().default(true),
+    defaultAgentIds: text('default_agent_ids', { mode: 'json' })
+      .$type<number[]>()
+      .notNull()
+      .default([]),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('team_workspace_idx').on(t.workspaceId)],
 );
@@ -124,7 +128,7 @@ export const team = pgTable(
 // belongs to the team and shows up in its member list, but never manages it, so the
 // owner and manager guards stay closed to it. What an agent may do comes from
 // ai_agent.role_id, not from this column.
-export const teamMember = pgTable(
+export const teamMember = sqliteTable(
   'team_member',
   {
     teamId: integer('team_id')
@@ -139,7 +143,9 @@ export const teamMember = pgTable(
     // deprovisioning removes it again; everything else is 'invite' and a sync never
     // touches it.
     source: text('source').notNull().default('invite'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     primaryKey({ columns: [t.teamId, t.userId] }),
@@ -153,10 +159,10 @@ export const teamMember = pgTable(
 // issues. next_sequence is the atomic counter behind each issue's human
 // identifier (e.g. "MKT-42"): incrementing it under a row lock keeps concurrent
 // creates from colliding.
-export const project = pgTable(
+export const project = sqliteTable(
   'project',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -167,31 +173,39 @@ export const project = pgTable(
     // Whether this project is in the team's MCP reach. Managed from the team's MCP
     // settings, not from the project, and only counts while team.mcp_enabled is on.
     // The starting value is the instance-wide project default set in god mode.
-    mcpEnabled: boolean('mcp_enabled').notNull().default(false),
+    mcpEnabled: integer('mcp_enabled', { mode: 'boolean' }).notNull().default(false),
     // Optional sections of the app, toggled per project in Settings -> Features. All
     // on by default. Turning one off only hides its UI; the rows it owns stay and
     // come back with it.
-    initiativesEnabled: boolean('initiatives_enabled').notNull().default(true),
-    dashboardsEnabled: boolean('dashboards_enabled').notNull().default(true),
-    documentsEnabled: boolean('documents_enabled').notNull().default(true),
-    notesEnabled: boolean('notes_enabled').notNull().default(true),
-    cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
-    subtasksEnabled: boolean('subtasks_enabled').notNull().default(true),
-    checklistsEnabled: boolean('checklists_enabled').notNull().default(true),
-    issueStatsEnabled: boolean('issue_stats_enabled').notNull().default(true),
+    initiativesEnabled: integer('initiatives_enabled', { mode: 'boolean' }).notNull().default(true),
+    dashboardsEnabled: integer('dashboards_enabled', { mode: 'boolean' }).notNull().default(true),
+    documentsEnabled: integer('documents_enabled', { mode: 'boolean' }).notNull().default(true),
+    notesEnabled: integer('notes_enabled', { mode: 'boolean' }).notNull().default(true),
+    cyclesEnabled: integer('cycles_enabled', { mode: 'boolean' }).notNull().default(true),
+    subtasksEnabled: integer('subtasks_enabled', { mode: 'boolean' }).notNull().default(true),
+    checklistsEnabled: integer('checklists_enabled', { mode: 'boolean' }).notNull().default(true),
+    issueStatsEnabled: integer('issue_stats_enabled', { mode: 'boolean' }).notNull().default(true),
     // Which kinds of estimate the issues of this project carry, set in Settings ->
     // Configuration. Both off by default; turning one off hides its UI and keeps the
     // values, which show again when it is turned back on.
-    pointsEstimateEnabled: boolean('points_estimate_enabled').notNull().default(false),
-    timeEstimateEnabled: boolean('time_estimate_enabled').notNull().default(false),
+    pointsEstimateEnabled: integer('points_estimate_enabled', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    timeEstimateEnabled: integer('time_estimate_enabled', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     // Whether members log the time they spend on the issues of this project, set in
     // the same place. Independent of the time estimate: a team can log time without
     // estimating first. Turning it off hides the entries and keeps them.
-    timeLoggingEnabled: boolean('time_logging_enabled').notNull().default(false),
+    timeLoggingEnabled: integer('time_logging_enabled', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     // When set, the project is archived: read-only, left out of the members' project
     // lists, and its agent schedules do not run. Its rows are kept and it can be restored.
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [unique('project_team_key_uq').on(t.teamId, t.key)],
 );
@@ -200,15 +214,17 @@ export const project = pgTable(
 // The value is a jsonb blob owned by whatever feature reads the key, so one table
 // backs many project settings (e.g. auto-archive thresholds under key
 // 'auto_archive'). Composite PK (project_id, key).
-export const projectSetting = pgTable(
+export const projectSetting = sqliteTable(
   'project_setting',
   {
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     key: text('key').notNull(),
-    value: jsonb('value').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    value: text('value', { mode: 'json' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.key] })],
 );
@@ -234,7 +250,7 @@ export const projectSetting = pgTable(
 // not stored — it lasts as long as that issue stays open. auto_watch is whether the
 // user is subscribed to the issues they create, are assigned, comment on or are
 // mentioned in (see issue_watcher); off means they only ever subscribe by hand.
-export const userPreference = pgTable(
+export const userPreference = sqliteTable(
   'user_preference',
   {
     userId: text('user_id')
@@ -245,23 +261,29 @@ export const userPreference = pgTable(
     theme: text('theme').notNull().default('system'),
     issueOpenMode: text('issue_open_mode').notNull().default('panel'),
     startPage: text('start_page').notNull().default('work-items'),
-    showChatByDefault: boolean('show_chat_by_default').notNull().default(false),
-    issueStatsOpen: boolean('issue_stats_open').notNull().default(true),
+    showChatByDefault: integer('show_chat_by_default', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    issueStatsOpen: integer('issue_stats_open', { mode: 'boolean' }).notNull().default(true),
     issueStatsView: text('issue_stats_view').notNull().default('compact'),
     issueActivityView: text('issue_activity_view').notNull().default('flat'),
-    autoWatch: boolean('auto_watch').notNull().default(true),
+    autoWatch: integer('auto_watch', { mode: 'boolean' }).notNull().default(true),
     // The user's own keyboard shortcut overrides, as { hotkeyId: combo }. Only the
     // bindings they changed are stored; the rest come from the instance defaults
     // (app_setting key 'hotkeys') and then the built-in ones.
-    hotkeys: jsonb('hotkeys').$type<Record<string, string>>(),
+    hotkeys: text('hotkeys', { mode: 'json' }).$type<Record<string, string>>(),
     lastProjectId: integer('last_project_id').references(() => project.id, {
       onDelete: 'set null',
     }),
     // The release whose "what's new" screen this user has closed. Null until they
     // close one, which is what an account created before the screen existed reads as.
     seenVersion: text('seen_version'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('user_preference_theme_check', sql`${t.theme} IN ('light', 'dark', 'system')`),
@@ -290,17 +312,19 @@ export const userPreference = pgTable(
 // entirely (they always have full access), so their project_member.role_id stays
 // NULL. A member of a project may only be put on a role of that project's team;
 // the API checks it, no foreign key can.
-export const teamRole = pgTable(
+export const teamRole = sqliteTable(
   'team_role',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    isDefault: boolean('is_default').notNull().default(false),
-    permissions: jsonb('permissions').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+    permissions: text('permissions', { mode: 'json' }).notNull().default({}),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.teamId, t.name),
@@ -320,7 +344,7 @@ export const teamRole = pgTable(
 // team_role of the project's team, whose permission matrix decides what that member
 // may do; a NULL role_id falls back to the team's default role. Access checks resolve
 // the owning project of any entity and look for the current user here.
-export const projectMember = pgTable(
+export const projectMember = sqliteTable(
   'project_member',
   {
     projectId: integer('project_id')
@@ -342,9 +366,11 @@ export const projectMember = pgTable(
     // it only ever updates or removes its own rows, so a sync never undoes a
     // membership someone set up by hand.
     source: text('source').notNull().default('invite'),
-    isFavorite: boolean('is_favorite').notNull().default(false),
-    isHidden: boolean('is_hidden').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
+    isHidden: integer('is_hidden', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     primaryKey({ columns: [t.projectId, t.userId] }),
@@ -362,11 +388,14 @@ export const projectMember = pgTable(
 // invitee already in the team keeps the rank they have. At most one pending invite
 // per email into a team and per email into a project. email is stored lowercased.
 // Revoking a pending invite removes its row.
-export const teamInvite = pgTable(
+export const teamInvite = sqliteTable(
   'team_invite',
   {
-    id: serial('id').primaryKey(),
-    token: uuid('token').notNull().defaultRandom().unique(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    token: text('token')
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID())
+      .unique(),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -390,8 +419,10 @@ export const teamInvite = pgTable(
     acceptedByUserId: text('accepted_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    respondedAt: integer('responded_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     check('team_invite_team_role_check', sql`${t.teamRole} IN ('owner', 'manager', 'member')`),
@@ -412,10 +443,10 @@ export const teamInvite = pgTable(
   ],
 );
 
-export const projectColumn = pgTable(
+export const projectColumn = sqliteTable(
   'project_column',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -434,7 +465,9 @@ export const projectColumn = pgTable(
     autoAssignUserId: text('auto_assign_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -447,43 +480,47 @@ export const projectColumn = pgTable(
   ],
 );
 
-export const issueType = pgTable(
+export const issueType = sqliteTable(
   'issue_type',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     icon: text('icon').notNull().default(''),
     color: text('color').notNull().default('#6b7280'),
-    isDefault: boolean('is_default').notNull().default(false),
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
     position: integer('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [unique().on(t.projectId, t.name)],
 );
 
 // Optional container a label can belong to. A label has at most one group;
 // deleting a group ungroups its labels (label.groupId -> SET NULL).
-export const labelGroup = pgTable(
+export const labelGroup = sqliteTable(
   'label_group',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull().default('#6b7280'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [unique().on(t.projectId, t.name)],
 );
 
-export const label = pgTable(
+export const label = sqliteTable(
   'label',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -492,7 +529,9 @@ export const label = pgTable(
     }),
     name: text('name').notNull(),
     color: text('color').notNull().default('#6b7280'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [unique().on(t.projectId, t.name)],
 );
@@ -507,10 +546,10 @@ export const label = pgTable(
 // that attach it; what it may do there is the intersection of the tools it is
 // granted and the role that membership carries, which is per project like a
 // person's.
-export const aiAgent = pgTable(
+export const aiAgent = sqliteTable(
   'ai_agent',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -529,8 +568,8 @@ export const aiAgent = pgTable(
     instructions: text('instructions'),
     // Enabled capability-tool keys (from the code tool registry). System tools
     // that act on the API with the agent's own token are implicit and not listed.
-    tools: jsonb('tools').notNull().default([]),
-    temperature: doublePrecision('temperature'),
+    tools: text('tools', { mode: 'json' }).notNull().default([]),
+    temperature: real('temperature'),
     // NULL leaves the reasoning effort to the provider's default.
     reasoningEffort: text('reasoning_effort'),
     maxSteps: integer('max_steps'),
@@ -539,8 +578,8 @@ export const aiAgent = pgTable(
     // Internal-agent run triggers. A mention in a comment enqueues a run when
     // trigger_on_mention is set; being set as an issue's delegate enqueues one when
     // trigger_on_assign is set.
-    triggerOnMention: boolean('trigger_on_mention').notNull().default(true),
-    triggerOnAssign: boolean('trigger_on_assign').notNull().default(false),
+    triggerOnMention: integer('trigger_on_mention', { mode: 'boolean' }).notNull().default(true),
+    triggerOnAssign: integer('trigger_on_assign', { mode: 'boolean' }).notNull().default(false),
     // How long a delegation run waits before it becomes claimable, which leaves time
     // to keep editing the issue after delegating it. Applies to delegation only: a
     // mention is a question already asked, and its author waits for the reply.
@@ -555,7 +594,7 @@ export const aiAgent = pgTable(
     // Conversation memory: when enabled, the agent recalls the last
     // memory_last_messages messages of a thread (persisted by Mastra's Postgres
     // store). memory_last_messages is NULL when memory is off.
-    memoryEnabled: boolean('memory_enabled').notNull().default(false),
+    memoryEnabled: integer('memory_enabled', { mode: 'boolean' }).notNull().default(false),
     memoryLastMessages: integer('memory_last_messages'),
     // The member who created the agent. An external agent's runner authenticates
     // with the agent's key, so `owner` scope means the runner only receives runs
@@ -564,7 +603,7 @@ export const aiAgent = pgTable(
     runnerScope: text('runner_scope').notNull().default('team'),
     // Last time a runner claimed work or sent a heartbeat for this agent, which is
     // what the UI shows as its presence. NULL for an agent no runner ever polled.
-    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }),
     // Where an external agent receives its work instead of from a runner: each of its
     // runs and chat answers is POSTed here, and the endpoint reports back through the
     // routes a runner uses. NULL for an agent a runner drains, and for an internal one.
@@ -575,7 +614,9 @@ export const aiAgent = pgTable(
     invocationSecretCiphertext: text('invocation_secret_ciphertext'),
     invocationSecretIv: text('invocation_secret_iv'),
     invocationSecretAuthTag: text('invocation_secret_auth_tag'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     uniqueIndex('ai_agent_team_username_uq').on(t.teamId, sql`lower(${t.username})`),
@@ -596,10 +637,10 @@ export const aiAgent = pgTable(
 
 // Recurring autonomous tasks for internal agents. The worker claims rows whose
 // next_run_at is due, advances the cadence, and inserts an agent_run snapshot.
-export const agentSchedule = pgTable(
+export const agentSchedule = sqliteTable(
   'agent_schedule',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     agentId: integer('agent_id')
       .notNull()
       .references(() => aiAgent.id, { onDelete: 'cascade' }),
@@ -620,15 +661,22 @@ export const agentSchedule = pgTable(
     cron: text('cron'),
     timezone: text('timezone').notNull(),
     status: text('status').notNull().default('active'),
-    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+    nextRunAt: integer('next_run_at', { mode: 'timestamp_ms' }),
     columnId: integer('column_id').references(() => projectColumn.id, { onDelete: 'cascade' }),
     delaySec: integer('delay_sec').notNull().default(0),
     // Settings an extension of the api keeps on the schedule. The core stores and
     // copies them and reads none.
-    options: jsonb('options').$type<Record<string, unknown>>().notNull().default({}),
-    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    options: text('options', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('agent_schedule_status_check', sql`${t.status} IN ('active', 'paused')`),
@@ -654,20 +702,22 @@ export const agentSchedule = pgTable(
 // model-pricing.ts), so a model the table lacks, or one bought at another rate, is
 // costed as the workspace pays for it. Provider and model are kept lowercased, as the
 // table compares them. A cache rate left null bills those tokens at the input rate.
-export const modelPrice = pgTable(
+export const modelPrice = sqliteTable(
   'model_price',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     workspaceId: integer('workspace_id')
       .notNull()
       .references(() => workspace.id, { onDelete: 'cascade' }),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
-    input: doublePrecision('input').notNull(),
-    output: doublePrecision('output').notNull(),
-    cacheRead: doublePrecision('cache_read'),
-    cacheWrite: doublePrecision('cache_write'),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    input: real('input').notNull(),
+    output: real('output').notNull(),
+    cacheRead: real('cache_read'),
+    cacheWrite: real('cache_write'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -681,10 +731,10 @@ export const modelPrice = pgTable(
 // Queued autonomous runs of an internal agent. A run triggered on an issue carries it;
 // a cron schedule's run and a manual one do not. The worker claims due rows with a lease,
 // runs the agent, and records the result for history and retries.
-export const agentRun = pgTable(
+export const agentRun = sqliteTable(
   'agent_run',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     agentId: integer('agent_id')
       .notNull()
       .references(() => aiAgent.id, { onDelete: 'cascade' }),
@@ -699,7 +749,7 @@ export const agentRun = pgTable(
     scheduleId: integer('schedule_id').references(() => agentSchedule.id, { onDelete: 'cascade' }),
     // 'event' is a run an extension queued on an issue for a schedule of its own type.
     trigger: text('trigger').notNull().default('delegation'),
-    scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+    scheduledFor: integer('scheduled_for', { mode: 'timestamp_ms' }),
     // The comment that mentioned the agent, kept for traceability. The prompt is
     // snapshotted into `prompt` so a run still works if the comment is later deleted.
     sourceActivityId: integer('source_activity_id').references(() => issueActivity.id, {
@@ -712,7 +762,9 @@ export const agentRun = pgTable(
     // crashes mid-flight becomes claimable again after the lease expires.
     status: text('status').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     lastError: text('last_error'),
     output: text('output'),
     // What the last model call of the run read and wrote, cache included. Null for a run
@@ -720,10 +772,12 @@ export const agentRun = pgTable(
     // the run history shows nothing for either.
     inputTokens: integer('input_tokens'),
     outputTokens: integer('output_tokens'),
-    startedAt: timestamp('started_at', { withTimezone: true }),
-    executionStartedAt: timestamp('execution_started_at', { withTimezone: true }),
-    finishedAt: timestamp('finished_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' }),
+    executionStartedAt: integer('execution_started_at', { mode: 'timestamp_ms' }),
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -742,7 +796,7 @@ export const agentRun = pgTable(
 );
 
 // A bounded execution transcript for one external runner attempt.
-export const agentRunTrace = pgTable(
+export const agentRunTrace = sqliteTable(
   'agent_run_trace',
   {
     runId: integer('run_id')
@@ -750,10 +804,12 @@ export const agentRunTrace = pgTable(
       .references(() => agentRun.id, { onDelete: 'cascade' }),
     attempt: integer('attempt').notNull(),
     sessionId: text('session_id'),
-    events: jsonb('events').notNull().default([]),
+    events: text('events', { mode: 'json' }).notNull().default([]),
     nextOffset: integer('next_offset').notNull().default(0),
-    truncated: boolean('truncated').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    truncated: integer('truncated', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [primaryKey({ columns: [t.runId, t.attempt] })],
 );
@@ -763,7 +819,7 @@ export const agentRunTrace = pgTable(
 // its operator's machine, which has no memory of its own, so the conversation lives
 // here. The id carries the same shape as a Mastra chat thread id (see
 // runtime/thread-ids), which is what lets the chat UI address both kinds the same way.
-export const agentChatThread = pgTable(
+export const agentChatThread = sqliteTable(
   'agent_chat_thread',
   {
     id: text('id').primaryKey(),
@@ -778,10 +834,14 @@ export const agentChatThread = pgTable(
     // Set once the runner reports the session it started; null means the next message
     // starts a fresh one and is sent with the conversation framed into its prompt.
     cliSessionId: text('cli_session_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
-  (t) => [index('agent_chat_thread_agent_user_idx').on(t.agentId, t.userId, t.updatedAt.desc())],
+  (t) => [index('agent_chat_thread_agent_user_idx').on(t.agentId, t.userId, desc(t.updatedAt))],
 );
 
 // One turn of a chat thread, and for an agent turn also the queue row the runner
@@ -791,10 +851,10 @@ export const agentChatThread = pgTable(
 // lease, so an answer whose runner dies is claimable again once the lease expires —
 // which is why the due index covers both live states. agent_id repeats the thread's
 // agent so a runner finds its due turns with one index.
-export const agentChatMessage = pgTable(
+export const agentChatMessage = sqliteTable(
   'agent_chat_message',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     threadId: text('thread_id')
       .notNull()
       .references(() => agentChatThread.id, { onDelete: 'cascade' }),
@@ -807,11 +867,15 @@ export const agentChatMessage = pgTable(
     content: text('content').notNull().default(''),
     status: text('status').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     lastError: text('last_error'),
-    startedAt: timestamp('started_at', { withTimezone: true }),
-    finishedAt: timestamp('finished_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' }),
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('agent_chat_message_role_check', sql`${t.role} IN ('user', 'assistant')`),
@@ -830,15 +894,17 @@ export const agentChatMessage = pgTable(
 // deltas, tool calls, the run's lifecycle). Append-only: the id is the cursor a reader
 // resumes from, which is what lets the browser reconnect mid-answer without replaying
 // what it already has.
-export const agentChatEvent = pgTable(
+export const agentChatEvent = sqliteTable(
   'agent_chat_event',
   {
-    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     messageId: integer('message_id')
       .notNull()
       .references(() => agentChatMessage.id, { onDelete: 'cascade' }),
-    payload: jsonb('payload').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    payload: text('payload', { mode: 'json' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('agent_chat_event_message_idx').on(t.messageId, t.id)],
 );
@@ -855,7 +921,7 @@ export const agentChatEvent = pgTable(
 // is minted by runtime/thread-ids, which prefixes each kind of thread with what it is
 // scoped to, so no two kinds collide. The row is deleted where the thread is deleted,
 // and the cascade covers the deletion of the agent.
-export const agentChatUsage = pgTable(
+export const agentChatUsage = sqliteTable(
   'agent_chat_usage',
   {
     threadId: text('thread_id').primaryKey(),
@@ -864,7 +930,9 @@ export const agentChatUsage = pgTable(
       .references(() => aiAgent.id, { onDelete: 'cascade' }),
     inputTokens: integer('input_tokens'),
     outputTokens: integer('output_tokens'),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('agent_chat_usage_agent_idx').on(t.agentId)],
 );
@@ -873,7 +941,7 @@ export const agentChatUsage = pgTable(
 // history. Like agent_chat_usage the row carries no foreign key to the thread: an
 // internal agent's thread lives in Mastra's own tables. Deleting a thread deletes its
 // row; a row left behind is harmless, since the history is built from the threads.
-export const agentChatFavorite = pgTable(
+export const agentChatFavorite = sqliteTable(
   'agent_chat_favorite',
   {
     userId: text('user_id')
@@ -897,10 +965,10 @@ export const agentChatFavorite = pgTable(
 // object with secret fields masked, kept in plaintext for a masked display. The
 // secret is never returned to the client. A team may hold several credentials per
 // integration (e.g. two Jina keys), told apart by `label`.
-export const integrationCredential = pgTable(
+export const integrationCredential = sqliteTable(
   'integration_credential',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -911,16 +979,18 @@ export const integrationCredential = pgTable(
     authTag: text('auth_tag').notNull(),
     // The credential with secret fields masked; non-secret fields verbatim. Owned by
     // the store, derived from the integration's credential schema.
-    redacted: jsonb('redacted').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    redacted: text('redacted', { mode: 'json' }).notNull().default({}),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('integration_credential_team_idx').on(t.teamId)],
 );
 
-export const gitProviderConnection = pgTable(
+export const gitProviderConnection = sqliteTable(
   'git_provider_connection',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -930,16 +1000,20 @@ export const gitProviderConnection = pgTable(
     ciphertext: text('ciphertext').notNull(),
     iv: text('iv').notNull(),
     authTag: text('auth_tag').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('git_provider_connection_team_idx').on(t.teamId)],
 );
 
-export const gitManagedRepository = pgTable(
+export const gitManagedRepository = sqliteTable(
   'git_managed_repository',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -952,8 +1026,12 @@ export const gitManagedRepository = pgTable(
     webhookExternalId: text('webhook_external_id').notNull(),
     status: text('status').notNull().default('connected'),
     lastError: text('last_error'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique('git_managed_repository_project_connection_external_unique').on(
@@ -977,15 +1055,17 @@ export const gitManagedRepository = pgTable(
 // user_notification_preference, not here. The Telegram bot token here is optional: a
 // team that sets one delivers through its own bot, otherwise delivery falls back
 // to the instance bot in app_secret key 'telegram.bot'.
-export const teamNotificationSetting = pgTable('team_notification_setting', {
+export const teamNotificationSetting = sqliteTable('team_notification_setting', {
   teamId: integer('team_id')
     .primaryKey()
     .references(() => team.id, { onDelete: 'cascade' }),
   ciphertext: text('ciphertext').notNull(),
   iv: text('iv').notNull(),
   authTag: text('auth_tag').notNull(),
-  redacted: jsonb('redacted').notNull().default({}),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  redacted: text('redacted', { mode: 'json' }).notNull().default({}),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
 });
 
 // A member's own notification preferences for one project: for each issue event
@@ -995,20 +1075,24 @@ export const teamNotificationSetting = pgTable('team_notification_setting', {
 // notification types (assigned/mentioned/commented/state_changed). Email is sent to
 // the member's account address; Telegram to the chat of the account they linked in
 // user_telegram_account, which is instance-wide rather than per project.
-export const userNotificationPreference = pgTable(
+export const userNotificationPreference = sqliteTable(
   'user_notification_preference',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
-    emailEvents: jsonb('email_events').notNull().default({}),
-    telegramEvents: jsonb('telegram_events').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    emailEvents: text('email_events', { mode: 'json' }).notNull().default({}),
+    telegramEvents: text('telegram_events', { mode: 'json' }).notNull().default({}),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [unique('user_notification_pref_user_project_unique').on(t.userId, t.projectId)],
 );
@@ -1019,7 +1103,7 @@ export const userNotificationPreference = pgTable(
 // arrives as `/start <code>`. So the row is "pending" while chat_id is null and
 // "linked" once it is set — link_code is cleared at that point. chat_id is unique, so
 // one Telegram account cannot serve two product accounts.
-export const userTelegramAccount = pgTable(
+export const userTelegramAccount = sqliteTable(
   'user_telegram_account',
   {
     userId: text('user_id')
@@ -1031,9 +1115,11 @@ export const userTelegramAccount = pgTable(
     username: text('username'),
     firstName: text('first_name'),
     linkCode: text('link_code'),
-    linkCodeExpiresAt: timestamp('link_code_expires_at', { withTimezone: true }),
-    linkedAt: timestamp('linked_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    linkCodeExpiresAt: integer('link_code_expires_at', { mode: 'timestamp_ms' }),
+    linkedAt: integer('linked_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     uniqueIndex('user_telegram_account_chat_id_unique')
@@ -1072,21 +1158,25 @@ export interface DeliveryPayload {
   projectInviteId?: number;
 }
 
-export const notificationDelivery = pgTable(
+export const notificationDelivery = sqliteTable(
   'notification_delivery',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     channel: text('channel').notNull(),
     recipient: text('recipient'),
-    payload: jsonb('payload').$type<DeliveryPayload>().notNull(),
+    payload: text('payload', { mode: 'json' }).$type<DeliveryPayload>().notNull(),
     status: text('status').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     lastError: text('last_error'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('notification_delivery_channel_check', sql`${t.channel} IN ('email', 'telegram')`),
@@ -1104,10 +1194,10 @@ export const notificationDelivery = pgTable(
 // under s3_prefix; `files` lists the reference file paths and their object keys.
 // Sourced from an upload, inline text, or a GitHub URL. Enabled on an agent via
 // agent_skill_link.
-export const agentSkill = pgTable(
+export const agentSkill = sqliteTable(
   'agent_skill',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -1118,8 +1208,10 @@ export const agentSkill = pgTable(
     // Object-store prefix holding SKILL.md and reference files for this skill.
     s3Prefix: text('s3_prefix').notNull(),
     // Reference files beyond SKILL.md: [{ path, s3Key, size }]. Owned by the store.
-    files: jsonb('files').notNull().default([]),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    files: text('files', { mode: 'json' }).notNull().default([]),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.teamId, t.name),
@@ -1130,7 +1222,7 @@ export const agentSkill = pgTable(
 
 // Which skills are enabled on which agents (many-to-many). Deleting an agent or a
 // skill removes the link.
-export const agentSkillLink = pgTable(
+export const agentSkillLink = sqliteTable(
   'agent_skill_link',
   {
     agentId: integer('agent_id')
@@ -1152,10 +1244,10 @@ export const agentSkillLink = pgTable(
 // the runtime decrypts at call time. Different tools of the same integration may be
 // bound to different credentials (e.g. two Jina keys). Enabled on an agent via
 // agent_tool_link.
-export const agentTool = pgTable(
+export const agentTool = sqliteTable(
   'agent_tool',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     teamId: integer('team_id')
       .notNull()
       .references(() => team.id, { onDelete: 'cascade' }),
@@ -1163,7 +1255,9 @@ export const agentTool = pgTable(
     credentialId: integer('credential_id')
       .notNull()
       .references(() => integrationCredential.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.teamId, t.toolKey, t.credentialId),
@@ -1174,7 +1268,7 @@ export const agentTool = pgTable(
 
 // Which configured tools are enabled on which agents (many-to-many). Deleting an
 // agent or a configured tool removes the link.
-export const agentToolLink = pgTable(
+export const agentToolLink = sqliteTable(
   'agent_tool_link',
   {
     agentId: integer('agent_id')
@@ -1193,10 +1287,10 @@ export const agentToolLink = pgTable(
 // Custom fields. Always scoped to a project. A NULL issue_type_id applies the
 // field to every issue in that project; a non-null issue_type_id scopes it to
 // that one type.
-export const customField = pgTable(
+export const customField = sqliteTable(
   'custom_field',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -1210,9 +1304,11 @@ export const customField = pgTable(
     memberScope: text('member_scope'),
     // When true the field renders in the issue body (under the description),
     // like a second description; when false it renders as a Properties row.
-    showInBody: boolean('show_in_body').notNull().default(false),
+    showInBody: integer('show_in_body', { mode: 'boolean' }).notNull().default(false),
     position: integer('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -1226,10 +1322,10 @@ export const customField = pgTable(
   ],
 );
 
-export const customFieldOption = pgTable(
+export const customFieldOption = sqliteTable(
   'custom_field_option',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     fieldId: integer('field_id')
       .notNull()
       .references(() => customField.id, { onDelete: 'cascade' }),
@@ -1244,7 +1340,7 @@ export const customFieldOption = pgTable(
 // listed fields enqueues a run for it, the way being made an issue's delegate does
 // with trigger_on_assign. A field the agent is not linked to holds it without
 // starting anything.
-export const agentFieldTrigger = pgTable(
+export const agentFieldTrigger = sqliteTable(
   'agent_field_trigger',
   {
     agentId: integer('agent_id')
@@ -1268,10 +1364,10 @@ export const agentFieldTrigger = pgTable(
 // the issue starts with plus the properties applied on top of it — every one of
 // them optional, and one left NULL leaves the create dialog on its own default.
 // The labels are in issue_template_label.
-export const issueTemplate = pgTable(
+export const issueTemplate = sqliteTable(
   'issue_template',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -1285,12 +1381,14 @@ export const issueTemplate = pgTable(
     columnId: integer('column_id').references(() => projectColumn.id, { onDelete: 'set null' }),
     priority: text('priority'),
     assigneeUserId: text('assignee_user_id').references(() => user.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [unique().on(t.projectId, t.name)],
 );
 
-export const issueTemplateLabel = pgTable(
+export const issueTemplateLabel = sqliteTable(
   'issue_template_label',
   {
     templateId: integer('template_id')
@@ -1309,10 +1407,10 @@ export const issueTemplateLabel = pgTable(
 // initiative's issue progress against its timeline. owner_user_id is the person
 // accountable. start_date/target_date bound the timeline (start defaults to
 // created_at when null); priority mirrors issue.priority (free text).
-export const initiative = pgTable(
+export const initiative = sqliteTable(
   'initiative',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -1323,11 +1421,15 @@ export const initiative = pgTable(
       onDelete: 'set null',
     }),
     priority: text('priority'),
-    startDate: date('start_date'),
-    targetDate: date('target_date'),
-    position: doublePrecision('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    startDate: text('start_date'),
+    targetDate: text('target_date'),
+    position: real('position').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -1340,7 +1442,7 @@ export const initiative = pgTable(
 
 // Labels attached to an initiative. Reuses the project's labels (label table);
 // mirrors issue_label. Composite PK, no id, no timestamps.
-export const initiativeLabel = pgTable(
+export const initiativeLabel = sqliteTable(
   'initiative_label',
   {
     initiativeId: integer('initiative_id')
@@ -1356,19 +1458,24 @@ export const initiativeLabel = pgTable(
 // File attachments on an initiative. Mirrors issue_attachment: bytes live in the
 // S3-compatible object store, this table holds the metadata and the object key,
 // and public_id is the unguessable id used in the public download URL.
-export const initiativeAttachment = pgTable(
+export const initiativeAttachment = sqliteTable(
   'initiative_attachment',
   {
-    id: serial('id').primaryKey(),
-    publicId: uuid('public_id').notNull().defaultRandom().unique(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    publicId: text('public_id')
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID())
+      .unique(),
     initiativeId: integer('initiative_id')
       .notNull()
       .references(() => initiative.id, { onDelete: 'cascade' }),
     s3Key: text('s3_key').notNull(),
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('initiative_attachment_initiative_idx').on(t.initiativeId)],
 );
@@ -1380,24 +1487,28 @@ export const initiativeAttachment = pgTable(
 // a cycle finished ahead of its dates counts as completed from that moment on.
 // Cycles of one project may not overlap, which is what makes at most one of them
 // active; the API enforces that.
-export const cycle = pgTable(
+export const cycle = sqliteTable(
   'cycle',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     // What the team commits to in this cycle (the sprint goal). Empty when unset.
     goal: text('goal').notNull().default(''),
-    startDate: date('start_date').notNull(),
-    endDate: date('end_date').notNull(),
+    startDate: text('start_date').notNull(),
+    endDate: text('end_date').notNull(),
     // When the cycle was finished before its planned end date. NULL while it still
     // runs on its dates; once set it is never cleared, and end_date keeps the date
     // the cycle was planned to run until.
-    completedAt: timestamp('completed_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('cycle_dates_check', sql`${t.endDate} >= ${t.startDate}`),
@@ -1405,10 +1516,10 @@ export const cycle = pgTable(
   ],
 );
 
-export const issue = pgTable(
+export const issue = sqliteTable(
   'issue',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -1433,7 +1544,7 @@ export const issue = pgTable(
     // with a parent cannot itself be a parent, which the API enforces. Deleting or
     // archiving a parent asks what to do with its subtasks, so the ON DELETE here
     // only covers the paths that bypass that choice (a deleted project).
-    parentId: integer('parent_id').references((): AnyPgColumn => issue.id, {
+    parentId: integer('parent_id').references((): AnySQLiteColumn => issue.id, {
       onDelete: 'set null',
     }),
     assigneeUserId: text('assignee_user_id').references(() => user.id, {
@@ -1451,23 +1562,27 @@ export const issue = pgTable(
     priority: text('priority'),
     // How big the work is, one column per estimate kind the project can turn on.
     // Time is held in minutes; the UI enters and shows it as hours and minutes.
-    estimatePoints: numeric('estimate_points'),
+    estimatePoints: real('estimate_points'),
     estimateMinutes: integer('estimate_minutes'),
-    startDate: date('start_date'),
-    dueDate: date('due_date'),
-    position: doublePrecision('position').notNull().default(0),
+    startDate: text('start_date'),
+    dueDate: text('due_date'),
+    position: real('position').notNull().default(0),
     // When set, the issue is archived: hidden from the board and lists but kept and
     // restorable. Set manually (archive action) or by the worker's auto-archive
     // sweep for issues that sat in a completed/canceled column past the project's
     // configured threshold. NULL means active (on the board).
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
     // Unguessable token for the public read-only share link. NULL means the issue
     // is not shared; setting it enables the link, clearing it revokes access.
-    shareToken: uuid('share_token').unique(),
+    shareToken: text('share_token').unique(),
     // How much the share link exposes, the same choice a shared view carries.
-    shareExtended: boolean('share_extended').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    shareExtended: integer('share_extended', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.projectId, t.sequenceNumber),
@@ -1480,7 +1595,7 @@ export const issue = pgTable(
       .where(sql`${t.archivedAt} IS NULL`),
     // Backs the import duplicate check: the titles a project already holds,
     // archived ones included, normalised the way titleKey compares them.
-    index('issue_project_title_idx').on(t.projectId, sql`lower(btrim(${t.title}))`),
+    index('issue_project_title_idx').on(t.projectId, sql`lower(trim(${t.title}))`),
     // Backs reading a parent's subtasks, on the issue page and on every write that
     // has to know whether an issue has any.
     index('issue_parent_idx')
@@ -1497,7 +1612,7 @@ export const issue = pgTable(
 // The number an issue held in a project it was moved out of, so a link to the old
 // identifier still resolves. project.next_sequence never hands that number out again,
 // so it cannot collide with an issue of that project.
-export const issueKeyAlias = pgTable(
+export const issueKeyAlias = sqliteTable(
   'issue_key_alias',
   {
     projectId: integer('project_id')
@@ -1519,19 +1634,21 @@ export const issueKeyAlias = pgTable(
 // history of an issue reads, and what carry-over metrics are counted from.
 // Deleting a cycle removes its records, so an issue stops counting a cycle that no
 // longer exists.
-export const issueCycle = pgTable(
+export const issueCycle = sqliteTable(
   'issue_cycle',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
     cycleId: integer('cycle_id')
       .notNull()
       .references(() => cycle.id, { onDelete: 'cascade' }),
-    enteredAt: timestamp('entered_at', { withTimezone: true }).notNull().defaultNow(),
+    enteredAt: integer('entered_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     // NULL while the issue still sits on the cycle.
-    leftAt: timestamp('left_at', { withTimezone: true }),
+    leftAt: integer('left_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     index('issue_cycle_issue_idx').on(t.issueId, t.enteredAt),
@@ -1550,10 +1667,10 @@ export const issueCycle = pgTable(
 // and what the closing metrics are counted from. The name and the state type are
 // copied in rather than read through column_id, because both are editable: renaming
 // a column or switching its type would otherwise rewrite what past stretches say.
-export const issueStatus = pgTable(
+export const issueStatus = sqliteTable(
   'issue_status',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -1565,9 +1682,11 @@ export const issueStatus = pgTable(
     // The type the column had at that moment. NULL only in a backfilled row whose
     // column could not be resolved; such a stretch never counts as completed.
     stateType: text('state_type'),
-    enteredAt: timestamp('entered_at', { withTimezone: true }).notNull().defaultNow(),
+    enteredAt: integer('entered_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     // NULL while the issue still sits in the column.
-    leftAt: timestamp('left_at', { withTimezone: true }),
+    leftAt: integer('left_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     index('issue_status_issue_idx').on(t.issueId, t.enteredAt),
@@ -1582,7 +1701,7 @@ export const issueStatus = pgTable(
   ],
 );
 
-export const issueLabel = pgTable(
+export const issueLabel = sqliteTable(
   'issue_label',
   {
     issueId: integer('issue_id')
@@ -1598,10 +1717,10 @@ export const issueLabel = pgTable(
 // A relation between two issues of the same project. One row per relation: the
 // inverse side ("blocked by" for 'blocks', "duplicated by" for 'duplicates') is
 // read from the same row by matching target_issue_id.
-export const issueLink = pgTable(
+export const issueLink = sqliteTable(
   'issue_link',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     sourceIssueId: integer('source_issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -1609,7 +1728,9 @@ export const issueLink = pgTable(
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('issue_link_kind_check', sql`${t.kind} IN ('blocks', 'relates', 'duplicates')`),
@@ -1619,8 +1740,8 @@ export const issueLink = pgTable(
     // other. Indexing the ordered pair makes the database reject the second one,
     // which a read-then-insert in the application cannot do without a race.
     uniqueIndex('issue_link_pair_kind_idx').on(
-      sql`least(${t.sourceIssueId}, ${t.targetIssueId})`,
-      sql`greatest(${t.sourceIssueId}, ${t.targetIssueId})`,
+      sql`CASE WHEN ${t.sourceIssueId} <= ${t.targetIssueId} THEN ${t.sourceIssueId} ELSE ${t.targetIssueId} END`,
+      sql`CASE WHEN ${t.sourceIssueId} >= ${t.targetIssueId} THEN ${t.sourceIssueId} ELSE ${t.targetIssueId} END`,
       t.kind,
     ),
     // The pair index is on least/greatest, so it serves neither column on its
@@ -1636,7 +1757,7 @@ export const issueLink = pgTable(
 // them whether they watch it or not. `subscribed` false is an unsubscription: the
 // row stays so the auto-subscribe rules (see watchers.ts) cannot put the member
 // back on the next comment they write.
-export const issueWatcher = pgTable(
+export const issueWatcher = sqliteTable(
   'issue_watcher',
   {
     issueId: integer('issue_id')
@@ -1645,16 +1766,18 @@ export const issueWatcher = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    subscribed: boolean('subscribed').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    subscribed: integer('subscribed', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [primaryKey({ columns: [t.issueId, t.userId] })],
 );
 
-export const issueFieldValue = pgTable(
+export const issueFieldValue = sqliteTable(
   'issue_field_value',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -1662,13 +1785,13 @@ export const issueFieldValue = pgTable(
       .notNull()
       .references(() => customField.id, { onDelete: 'cascade' }),
     valueText: text('value_text'),
-    valueNumber: numeric('value_number'),
-    valueBool: boolean('value_bool'),
-    valueDate: date('value_date'),
+    valueNumber: real('value_number'),
+    valueBool: integer('value_bool', { mode: 'boolean' }),
+    valueDate: text('value_date'),
     // datetime and datetime_range fields. A datetime_range keeps its end here;
     // for a datetime the end stays NULL.
-    valueDatetime: timestamp('value_datetime', { withTimezone: true }),
-    valueDatetimeEnd: timestamp('value_datetime_end', { withTimezone: true }),
+    valueDatetime: integer('value_datetime', { mode: 'timestamp_ms' }),
+    valueDatetimeEnd: integer('value_datetime_end', { mode: 'timestamp_ms' }),
     // member fields. Deleting the user clears the field rather than the row, so the
     // issue keeps the rest of its values.
     valueUserId: text('value_user_id').references(() => user.id, { onDelete: 'set null' }),
@@ -1676,7 +1799,7 @@ export const issueFieldValue = pgTable(
   (t) => [unique().on(t.issueId, t.fieldId)],
 );
 
-export const issueFieldOption = pgTable(
+export const issueFieldOption = sqliteTable(
   'issue_field_option',
   {
     issueId: integer('issue_id')
@@ -1695,27 +1818,32 @@ export const issueFieldOption = pgTable(
 // File attachments on issues. Bytes live in the S3-compatible object store;
 // this table holds metadata and the object key. public_id is the unguessable id
 // used in the public download URL.
-export const issueAttachment = pgTable(
+export const issueAttachment = sqliteTable(
   'issue_attachment',
   {
-    id: serial('id').primaryKey(),
-    publicId: uuid('public_id').notNull().defaultRandom().unique(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    publicId: text('public_id')
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID())
+      .unique(),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
     s3Key: text('s3_key').notNull(),
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('issue_attachment_issue_idx').on(t.issueId)],
 );
 
-export const issueDevelopmentLink = pgTable(
+export const issueDevelopmentLink = sqliteTable(
   'issue_development_link',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -1727,26 +1855,28 @@ export const issueDevelopmentLink = pgTable(
     title: text('title').notNull(),
     url: text('url'),
     state: text('state').notNull(),
-    draft: boolean('draft').notNull().default(false),
+    draft: integer('draft', { mode: 'boolean' }).notNull().default(false),
     sourceBranch: text('source_branch'),
     targetBranch: text('target_branch').notNull(),
     headSha: text('head_sha'),
     pipelineStatus: text('pipeline_status'),
     pipelineUrl: text('pipeline_url'),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.issueId, t.provider, t.repository, t.externalKey),
-    index('issue_development_link_issue_idx').on(t.issueId, t.updatedAt.desc()),
+    index('issue_development_link_issue_idx').on(t.issueId, desc(t.updatedAt)),
     index('issue_development_link_pr_idx').on(t.provider, t.repository, t.number),
     index('issue_development_link_sha_idx').on(t.provider, t.repository, t.headSha),
   ],
 );
 
-export const issueDevelopmentCheck = pgTable(
+export const issueDevelopmentCheck = sqliteTable(
   'issue_development_check',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     developmentLinkId: integer('development_link_id')
       .notNull()
       .references(() => issueDevelopmentLink.id, { onDelete: 'cascade' }),
@@ -1756,7 +1886,9 @@ export const issueDevelopmentCheck = pgTable(
     status: text('status').notNull(),
     url: text('url'),
     headSha: text('head_sha').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique().on(t.developmentLinkId, t.appId, t.name),
@@ -1768,11 +1900,14 @@ export const issueDevelopmentCheck = pgTable(
 // this table holds the metadata and the object key. public_id is the unguessable
 // id used in the public download URL. Kept free of any workflow state so an
 // upload can serve more than one purpose (an issue import, a spec, a log).
-export const chatAttachment = pgTable(
+export const chatAttachment = sqliteTable(
   'chat_attachment',
   {
-    id: serial('id').primaryKey(),
-    publicId: uuid('public_id').notNull().defaultRandom().unique(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    publicId: text('public_id')
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID())
+      .unique(),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -1782,8 +1917,10 @@ export const chatAttachment = pgTable(
     s3Key: text('s3_key').notNull(),
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('chat_attachment_project_idx').on(t.projectId)],
 );
@@ -1792,11 +1929,14 @@ export const chatAttachment = pgTable(
 // and the state of the draft. The file itself is the referenced chat_attachment;
 // creating the issues happens only through the confirm route, never by the model
 // itself.
-export const issueImport = pgTable(
+export const issueImport = sqliteTable(
   'issue_import',
   {
-    id: serial('id').primaryKey(),
-    publicId: uuid('public_id').notNull().defaultRandom().unique(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    publicId: text('public_id')
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID())
+      .unique(),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -1806,10 +1946,14 @@ export const issueImport = pgTable(
     // mapped: an agent saved a column mapping. confirmed: the issues were
     // created. canceled and failed are terminal, with errorText on a failure.
     status: text('status').notNull().default('mapped'),
-    mapping: jsonb('mapping'),
+    mapping: text('mapping', { mode: 'json' }),
     errorText: text('error_text'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('issue_import_project_idx').on(t.projectId)],
 );
@@ -1817,32 +1961,36 @@ export const issueImport = pgTable(
 // Checklists on an issue: a lightweight list of steps that does not warrant a
 // subtask of its own. An issue holds several checklists, each ordered by position
 // among the issue's checklists.
-export const issueChecklist = pgTable(
+export const issueChecklist = sqliteTable(
   'issue_checklist',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
-    position: doublePrecision('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    position: real('position').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('issue_checklist_issue_idx').on(t.issueId, t.position)],
 );
 
 // One checkbox line of a checklist, ordered by position within its checklist.
-export const issueChecklistItem = pgTable(
+export const issueChecklistItem = sqliteTable(
   'issue_checklist_item',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     checklistId: integer('checklist_id')
       .notNull()
       .references(() => issueChecklist.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
-    done: boolean('done').notNull().default(false),
-    position: doublePrecision('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    done: integer('done', { mode: 'boolean' }).notNull().default(false),
+    position: real('position').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('issue_checklist_item_checklist_idx').on(t.checklistId, t.position)],
 );
@@ -1852,10 +2000,10 @@ export const issueChecklistItem = pgTable(
 // is stored, since two numbers kept next to the entries drift apart. Each entry
 // belongs to the member who logged it, so several people log their own days on the
 // same issue and one member's correction never overwrites another's.
-export const issueWorklog = pgTable(
+export const issueWorklog = sqliteTable(
   'issue_worklog',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -1866,15 +2014,17 @@ export const issueWorklog = pgTable(
     minutes: integer('minutes').notNull(),
     // The day the work happened on, which is not the day it was logged: a member
     // enters yesterday's work today.
-    spentOn: date('spent_on').notNull(),
+    spentOn: text('spent_on').notNull(),
     note: text('note'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('issue_worklog_minutes_check', sql`${t.minutes} > 0`),
     // Backs the entries of an issue, read newest day first, and the sums the issue
     // payload carries.
-    index('issue_worklog_issue_idx').on(t.issueId, t.spentOn.desc()),
+    index('issue_worklog_issue_idx').on(t.issueId, desc(t.spentOn)),
   ],
 );
 
@@ -1911,10 +2061,10 @@ export interface ActivityPayload {
 // actor_user_id is the author, taken from the session user (a member or an
 // agent's bot user). actor_name is a snapshot so an entry still reads correctly
 // after that user is renamed or deleted.
-export const issueActivity = pgTable(
+export const issueActivity = sqliteTable(
   'issue_activity',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     issueId: integer('issue_id').references(() => issue.id, {
       onDelete: 'cascade',
     }),
@@ -1925,7 +2075,7 @@ export const issueActivity = pgTable(
     // The comment this one replies to, for the threaded feed. Only comments carry
     // it, and the parent belongs to the same issue. Deleting a comment deletes its
     // replies with it.
-    replyToId: integer('reply_to_id').references((): AnyPgColumn => issueActivity.id, {
+    replyToId: integer('reply_to_id').references((): AnySQLiteColumn => issueActivity.id, {
       onDelete: 'cascade',
     }),
     actorUserId: text('actor_user_id').references(() => user.id, {
@@ -1934,10 +2084,12 @@ export const issueActivity = pgTable(
     actorName: text('actor_name'),
     body: text('body'),
     action: text('action'),
-    payload: jsonb('payload').$type<ActivityPayload>().notNull().default({}),
+    payload: text('payload', { mode: 'json' }).$type<ActivityPayload>().notNull().default({}),
     // Set when a comment is edited; null on entries never changed.
-    editedAt: timestamp('edited_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    editedAt: integer('edited_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('issue_activity_kind_check', sql`${t.kind} IN ('comment', 'activity')`),
@@ -1946,36 +2098,38 @@ export const issueActivity = pgTable(
       'issue_activity_owner_check',
       sql`(${t.issueId} IS NOT NULL) <> (${t.initiativeId} IS NOT NULL)`,
     ),
-    index('issue_activity_issue_idx').on(t.issueId, t.createdAt.desc(), t.id.desc()),
+    index('issue_activity_issue_idx').on(t.issueId, desc(t.createdAt), desc(t.id)),
     index('issue_activity_reply_idx').on(t.replyToId),
-    index('issue_activity_initiative_idx').on(t.initiativeId, t.createdAt.desc(), t.id.desc()),
+    index('issue_activity_initiative_idx').on(t.initiativeId, desc(t.createdAt), desc(t.id)),
   ],
 );
 
 // Saved views (the tabs above a project's work items view). filters and display are jsonb
 // blobs owned by the UI; the server stores and returns them without inspecting
 // them. position orders the tabs.
-export const projectView = pgTable(
+export const projectView = sqliteTable(
   'project_view',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     icon: text('icon'),
-    filters: jsonb('filters').notNull().default({}),
-    display: jsonb('display').notNull().default({}),
-    position: doublePrecision('position').notNull().default(0),
+    filters: text('filters', { mode: 'json' }).notNull().default({}),
+    display: text('display', { mode: 'json' }).notNull().default({}),
+    position: real('position').notNull().default(0),
     // Unguessable token for the public read-only share link of this view. NULL
     // means not shared; setting it enables the link, clearing it revokes access.
-    shareToken: uuid('share_token').unique(),
+    shareToken: text('share_token').unique(),
     // How much of each issue the share link exposes. False keeps the public
     // payload to the issue's title, description, state, type, priority, dates,
     // subtasks and links; true adds the assignees, labels, custom fields and
     // activity the members see.
-    shareExtended: boolean('share_extended').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    shareExtended: integer('share_extended', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('project_view_project_idx').on(t.projectId, t.position)],
 );
@@ -1983,7 +2137,7 @@ export const projectView = pgTable(
 // The saved views a user marked as favorite. Favorites are personal: they pin the
 // view's tab to the front of the tab row and list it under Work items in the
 // sidebar, for that user only.
-export const projectViewFavorite = pgTable(
+export const projectViewFavorite = sqliteTable(
   'project_view_favorite',
   {
     viewId: integer('view_id')
@@ -2000,18 +2154,20 @@ export const projectViewFavorite = pgTable(
 // owned by the UI: an ordered list of widget entries, each carrying its type,
 // width, title, and widget-specific config. The server stores and returns it
 // without inspecting it. position orders the tabs.
-export const projectDashboard = pgTable(
+export const projectDashboard = sqliteTable(
   'project_dashboard',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     icon: text('icon'),
-    layout: jsonb('layout').notNull().default([]),
-    position: doublePrecision('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    layout: text('layout', { mode: 'json' }).notNull().default([]),
+    position: real('position').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('project_dashboard_project_idx').on(t.projectId, t.position)],
 );
@@ -2019,30 +2175,33 @@ export const projectDashboard = pgTable(
 // Shared Markdown pages arranged as a tree. Version rejects stale autosaves.
 // Private pages are visible only to their owner; project permissions still gate
 // access before that page-level rule is applied.
-export const projectDocument = pgTable(
+export const projectDocument = sqliteTable(
   'project_document',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
-    parentId: integer('parent_id').references((): AnyPgColumn => projectDocument.id, {
+    parentId: integer('parent_id').references((): AnySQLiteColumn => projectDocument.id, {
       onDelete: 'set null',
     }),
     title: text('title').notNull().default(''),
     content: text('content').notNull().default(''),
-    contentJson: jsonb('content_json').$type<Record<string, unknown>>(),
+    contentJson: text('content_json', { mode: 'json' }).$type<Record<string, unknown>>(),
     icon: text('icon'),
-    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
-    fullWidth: boolean('full_width').notNull().default(false),
-    isPrivate: boolean('is_private').notNull().default(false),
-    isLocked: boolean('is_locked').notNull().default(false),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    metadata: text('metadata', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    fullWidth: integer('full_width', { mode: 'boolean' }).notNull().default(false),
+    isPrivate: integer('is_private', { mode: 'boolean' }).notNull().default(false),
+    isLocked: integer('is_locked', { mode: 'boolean' }).notNull().default(false),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
     archivedByAncestorId: integer('archived_by_ancestor_id').references(
-      (): AnyPgColumn => projectDocument.id,
+      (): AnySQLiteColumn => projectDocument.id,
       { onDelete: 'set null' },
     ),
-    position: doublePrecision('position').notNull().default(0),
+    position: real('position').notNull().default(0),
     version: integer('version').notNull().default(1),
     ownerUserId: text('owner_user_id').references(() => user.id, {
       onDelete: 'set null',
@@ -2053,8 +2212,12 @@ export const projectDocument = pgTable(
     updatedByUserId: text('updated_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     index('project_document_project_tree_idx').on(t.projectId, t.parentId, t.position, t.id),
@@ -2067,10 +2230,10 @@ export const projectDocument = pgTable(
 // Immutable snapshots of every persisted document version. A database trigger
 // fills this table so project copies and bulk tree operations receive the same
 // history guarantees as writes made through the Documents API.
-export const projectDocumentRevision = pgTable(
+export const projectDocumentRevision = sqliteTable(
   'project_document_revision',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     documentId: integer('document_id')
       .notNull()
       .references(() => projectDocument.id, { onDelete: 'cascade' }),
@@ -2078,21 +2241,26 @@ export const projectDocumentRevision = pgTable(
     parentId: integer('parent_id'),
     title: text('title').notNull(),
     content: text('content').notNull(),
-    contentJson: jsonb('content_json').$type<Record<string, unknown>>(),
+    contentJson: text('content_json', { mode: 'json' }).$type<Record<string, unknown>>(),
     icon: text('icon'),
-    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
-    fullWidth: boolean('full_width').notNull().default(false),
-    isPrivate: boolean('is_private').notNull().default(false),
-    isLocked: boolean('is_locked').notNull().default(false),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    position: doublePrecision('position').notNull(),
+    metadata: text('metadata', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    fullWidth: integer('full_width', { mode: 'boolean' }).notNull().default(false),
+    isPrivate: integer('is_private', { mode: 'boolean' }).notNull().default(false),
+    isLocked: integer('is_locked', { mode: 'boolean' }).notNull().default(false),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    position: real('position').notNull(),
     ownerUserId: text('owner_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
     createdByUserId: text('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     unique('project_document_revision_document_version_unique').on(t.documentId, t.version),
@@ -2102,7 +2270,7 @@ export const projectDocumentRevision = pgTable(
 
 // Per-user page preferences. Keeping favorites outside the shared page row means
 // one person's sidebar choices never affect another project member.
-export const projectDocumentPreference = pgTable(
+export const projectDocumentPreference = sqliteTable(
   'project_document_preference',
   {
     documentId: integer('document_id')
@@ -2111,8 +2279,10 @@ export const projectDocumentPreference = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    isFavorite: boolean('is_favorite').notNull().default(false),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     primaryKey({ columns: [t.documentId, t.userId] }),
@@ -2124,7 +2294,7 @@ export const projectDocumentPreference = pgTable(
 // separate from page content: renaming either side keeps the link intact, one page
 // can provide context for several work items, and one work item can collect several
 // specs or runbooks. The API verifies that both ends belong to the same project.
-export const projectDocumentIssue = pgTable(
+export const projectDocumentIssue = sqliteTable(
   'project_document_issue',
   {
     documentId: integer('document_id')
@@ -2136,7 +2306,9 @@ export const projectDocumentIssue = pgTable(
     createdByUserId: text('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     primaryKey({ columns: [t.documentId, t.issueId] }),
@@ -2146,7 +2318,7 @@ export const projectDocumentIssue = pgTable(
 
 // Docs pages linked to an initiative. Mirrors project_document_issue; both sides
 // must belong to the same project, which a trigger enforces.
-export const projectDocumentInitiative = pgTable(
+export const projectDocumentInitiative = sqliteTable(
   'project_document_initiative',
   {
     documentId: integer('document_id')
@@ -2158,7 +2330,9 @@ export const projectDocumentInitiative = pgTable(
     createdByUserId: text('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     primaryKey({ columns: [t.documentId, t.initiativeId] }),
@@ -2169,11 +2343,14 @@ export const projectDocumentInitiative = pgTable(
 // Files embedded in Docs pages. Bytes use the same S3-compatible object store as
 // issue/chat attachments; only authenticated document routes expose them, so a
 // private page's unguessable asset id never acts as a public capability URL.
-export const documentAsset = pgTable(
+export const documentAsset = sqliteTable(
   'document_asset',
   {
-    id: serial('id').primaryKey(),
-    publicId: uuid('public_id').notNull().defaultRandom().unique(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    publicId: text('public_id')
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID())
+      .unique(),
     documentId: integer('document_id')
       .notNull()
       .references(() => projectDocument.id, { onDelete: 'cascade' }),
@@ -2183,8 +2360,10 @@ export const documentAsset = pgTable(
     s3Key: text('s3_key').notNull(),
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('document_asset_document_idx').on(t.documentId, t.createdAt)],
 );
@@ -2194,19 +2373,23 @@ export const documentAsset = pgTable(
 // owner_user_id NULL means a public board visible to every project member; a set
 // owner_user_id means a private board, seen by its owner and by the members listed
 // in note_board_member. Only the creator (created_by_user_id) may change any of it.
-export const noteBoard = pgTable(
+export const noteBoard = sqliteTable(
   'note_board',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     ownerUserId: text('owner_user_id').references(() => user.id, { onDelete: 'cascade' }),
     createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
     name: text('name').notNull(),
-    canvas: jsonb('canvas').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    canvas: text('canvas', { mode: 'json' }).notNull().default({}),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   // Listed by updatedAt within a project; the index covers the project filter.
   (t) => [index('note_board_project_idx').on(t.projectId, t.updatedAt)],
@@ -2214,7 +2397,7 @@ export const noteBoard = pgTable(
 
 // The members granted access to a private board besides its owner. A private board
 // with at least one row here is what the UI calls "restricted".
-export const noteBoardMember = pgTable(
+export const noteBoardMember = sqliteTable(
   'note_board_member',
   {
     boardId: integer('board_id')
@@ -2234,20 +2417,22 @@ export const noteBoardMember = pgTable(
 // Manual actions: saved macros on a project. condition is a filter set deciding
 // which issues the action applies to (empty = always); effect is a partial
 // issue patch applied in one update. Both jsonb blobs are owned by the UI.
-export const projectAction = pgTable(
+export const projectAction = sqliteTable(
   'project_action',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     // Icon key for the action, resolved to a lucide icon by the UI (empty = default).
     icon: text('icon').notNull().default(''),
-    condition: jsonb('condition').notNull().default({}),
-    effect: jsonb('effect').notNull().default({}),
-    position: doublePrecision('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    condition: text('condition', { mode: 'json' }).notNull().default({}),
+    effect: text('effect', { mode: 'json' }).notNull().default({}),
+    position: real('position').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('project_action_project_idx').on(t.projectId, t.position)],
 );
@@ -2256,22 +2441,24 @@ export const projectAction = pgTable(
 // payload to `url`, signed with `secret` (HMAC-SHA256). `events` is the list of
 // event types this subscription wants (e.g. "issue.created"); `is_active` gates
 // delivery without deleting the row. Delivery itself is handled separately.
-export const webhook = pgTable(
+export const webhook = sqliteTable(
   'webhook',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     url: text('url').notNull(),
     secret: text('secret').notNull(),
-    events: jsonb('events').notNull().default([]),
-    isActive: boolean('is_active').notNull().default(true),
+    events: text('events', { mode: 'json' }).notNull().default([]),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
     // Count of consecutive failed deliveries. Reset to 0 on a successful delivery.
     // When it crosses the worker's threshold the webhook is auto-disabled
     // (is_active set false) so one dead endpoint cannot occupy the worker.
     consecutiveFailures: integer('consecutive_failures').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('webhook_project_idx').on(t.projectId)],
 );
@@ -2281,24 +2468,28 @@ export const webhook = pgTable(
 // it is atomic with it. The worker claims due rows, posts the payload to the
 // webhook, and records the outcome. event_id is stable across retries so the
 // receiver can deduplicate. status: pending | success | failed.
-export const webhookDelivery = pgTable(
+export const webhookDelivery = sqliteTable(
   'webhook_delivery',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     webhookId: integer('webhook_id')
       .notNull()
       .references(() => webhook.id, { onDelete: 'cascade' }),
-    eventId: uuid('event_id').notNull(),
+    eventId: text('event_id').notNull(),
     eventType: text('event_type').notNull(),
-    payload: jsonb('payload').notNull(),
+    payload: text('payload', { mode: 'json' }).notNull(),
     status: text('status').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     lastError: text('last_error'),
     // Response from the last delivery attempt, for the delivery history view.
     responseStatus: integer('response_status'),
     responseBody: text('response_body'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     // Backs the worker's claim query: due pending rows ordered by next_attempt_at.
@@ -2316,10 +2507,10 @@ export const webhookDelivery = pgTable(
 // status. One source adapter per value (apps/worker/src/import-sources.ts).
 export type ImportSource = 'plane' | 'linear';
 
-export const importJob = pgTable(
+export const importJob = sqliteTable(
   'import_job',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id')
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
@@ -2329,16 +2520,22 @@ export const importJob = pgTable(
     source: text('source').notNull(),
     phase: text('phase').notNull().default('discover'),
     status: text('status').notNull().default('pending'),
-    config: jsonb('config').notNull().default({}),
-    cursor: jsonb('cursor').notNull().default({}),
+    config: text('config', { mode: 'json' }).notNull().default({}),
+    cursor: text('cursor', { mode: 'json' }).notNull().default({}),
     credentialCiphertext: text('credential_ciphertext'),
     credentialIv: text('credential_iv'),
     credentialAuthTag: text('credential_auth_tag'),
     attempts: integer('attempts').notNull().default(0),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
     lastError: text('last_error'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check('import_job_source_check', sql`${t.source} IN ('plane', 'linear')`),
@@ -2362,10 +2559,10 @@ export const importJob = pgTable(
 // (import_job_id, source_entity_type, source_id) makes the upsert idempotent, so
 // a re-run of a phase finds the existing row instead of creating another. No
 // foreign key on local_id: it spans every table an import can create, not one.
-export const importRecord = pgTable(
+export const importRecord = sqliteTable(
   'import_record',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     importJobId: integer('import_job_id')
       .notNull()
       .references(() => importJob.id, { onDelete: 'cascade' }),
@@ -2378,7 +2575,9 @@ export const importRecord = pgTable(
     sourceDisplayId: text('source_display_id'),
     localEntityType: text('local_entity_type'),
     localId: integer('local_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -2404,10 +2603,10 @@ export const importRecord = pgTable(
 // notification (set null if that entry is later removed). type selects the kind.
 // read_at NULL means unread; snoozed_until, when set and still in the future, hides
 // the row from the default inbox until then.
-export const notification = pgTable(
+export const notification = sqliteTable(
   'notification',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
@@ -2425,9 +2624,11 @@ export const notification = pgTable(
       onDelete: 'set null',
     }),
     actorName: text('actor_name'),
-    readAt: timestamp('read_at', { withTimezone: true }),
-    snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    readAt: integer('read_at', { mode: 'timestamp_ms' }),
+    snoozedUntil: integer('snoozed_until', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [
     check(
@@ -2435,10 +2636,10 @@ export const notification = pgTable(
       sql`${t.type} IN ('assigned', 'mentioned', 'commented', 'state_changed')`,
     ),
     // Backs the inbox list: a user's notifications newest first.
-    index('notification_user_idx').on(t.userId, t.createdAt.desc(), t.id.desc()),
+    index('notification_user_idx').on(t.userId, desc(t.createdAt), desc(t.id)),
     // Backs the unread count and the unread-only inbox view.
     index('notification_user_unread_idx')
-      .on(t.userId, t.id.desc())
+      .on(t.userId, desc(t.id))
       .where(sql`${t.readAt} IS NULL`),
   ],
 );
@@ -2454,27 +2655,29 @@ export const notification = pgTable(
 // its issues, and each of those deletes fires a trigger that inserts a row here
 // for a project that is already gone — a foreign key would abort the delete. The
 // rows are removed by the trigger on project instead.
-export const revision = pgTable(
+export const revision = sqliteTable(
   'revision',
   {
     scope: text('scope').primaryKey(),
     projectId: integer('project_id').notNull(),
-    rev: bigint('rev', { mode: 'number' }).notNull().default(0),
+    rev: integer('rev').notNull().default(0),
   },
   // Backs both the project cleanup and the membership join the read does.
   (t) => [index('revision_project_idx').on(t.projectId)],
 );
 
-export const documentCollaboration = pgTable('document_collaboration', {
+export const documentCollaboration = sqliteTable('document_collaboration', {
   documentId: integer('document_id')
     .primaryKey()
     .references(() => projectDocument.id, { onDelete: 'cascade' }),
-  epoch: uuid('epoch').notNull().defaultRandom(),
+  epoch: text('epoch')
+    .notNull()
+    .$defaultFn(() => crypto.randomUUID()),
   version: integer('version').notNull().default(0),
-  contentJson: jsonb('content_json').$type<Record<string, unknown>>().notNull(),
+  contentJson: text('content_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
 });
 
-export const documentStep = pgTable(
+export const documentStep = sqliteTable(
   'document_step',
   {
     documentId: integer('document_id')
@@ -2482,19 +2685,21 @@ export const documentStep = pgTable(
       .references(() => projectDocument.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     clientId: text('client_id').notNull(),
-    step: jsonb('step').$type<Record<string, unknown>>().notNull(),
+    step: text('step', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
   },
   (t) => [primaryKey({ columns: [t.documentId, t.version] })],
 );
 
-export const documentComment = pgTable(
+export const documentComment = sqliteTable(
   'document_comment',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     documentId: integer('document_id')
       .notNull()
       .references(() => projectDocument.id, { onDelete: 'cascade' }),
-    parentId: uuid('parent_id').references((): AnyPgColumn => documentComment.id, {
+    parentId: text('parent_id').references((): AnySQLiteColumn => documentComment.id, {
       onDelete: 'cascade',
     }),
     authorId: text('author_id').references(() => user.id, { onDelete: 'set null' }),
@@ -2502,10 +2707,14 @@ export const documentComment = pgTable(
     quote: text('quote').notNull().default(''),
     from: integer('selection_from'),
     to: integer('selection_to'),
-    orphaned: boolean('orphaned').notNull().default(false),
-    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    orphaned: integer('orphaned', { mode: 'boolean' }).notNull().default(false),
+    resolvedAt: integer('resolved_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
   },
   (t) => [index('document_comment_document_idx').on(t.documentId, t.createdAt)],
 );
