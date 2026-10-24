@@ -1,5 +1,5 @@
 import type { Db } from '@repo/db';
-import { CronExpressionParser } from 'cron-parser';
+import { tryNextCronRun } from '@repo/cron';
 import { allRows, runBatch, type Statement } from './d1';
 import { parseScheduleTimestamp } from './schedule-timestamp';
 
@@ -15,16 +15,6 @@ type DueSchedule = {
 };
 
 const BATCH_LIMIT = 50;
-
-function nextRunAfter(cron: string, nowMs: number): Date | null {
-  try {
-    return CronExpressionParser.parse(cron, { currentDate: new Date(nowMs), tz: 'UTC' })
-      .next()
-      .toDate();
-  } catch {
-    return null;
-  }
-}
 
 // Queues the run of every due cron schedule and moves its next_run_at forward. D1 has no
 // row locks, so the claim is the schedule's own next_run_at: each schedule's run insert and
@@ -49,7 +39,7 @@ export async function enqueueDueSchedules(db: Db, nowMs: number = Date.now()): P
   let queued = 0;
   for (const row of due) {
     const scheduledFor = parseScheduleTimestamp(row.nextRunAt).getTime();
-    const next = nextRunAfter(row.cron, nowMs);
+    const next = row.cron ? tryNextCronRun(row.cron, new Date(nowMs)) : null;
     const statements: Statement[] = [];
     if (!next) {
       statements.push({

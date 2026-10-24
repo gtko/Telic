@@ -10,12 +10,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@repo/cron": "workspace:*",
     "@repo/crypto": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/mailer": "workspace:*",
     "@repo/net": "workspace:*",
     "@repo/storage": "workspace:*",
-    "cron-parser": "^5.4.0",
     "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {

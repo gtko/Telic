@@ -223,9 +223,8 @@ async function readSnapshot(db: Db, nowMs: number): Promise<Snapshot> {
       -- The app_secret row appears on any save, so read the plaintext mirror of the
       -- config: same conditions as hasEmailProvider, isGoogleUsable, isInstanceBotUsable.
       EXISTS(SELECT 1 FROM app_secret WHERE key = 'auth.email'
-        AND ((json_extract(redacted, '$.smtp.enabled') = 1 AND json_extract(redacted, '$.smtp.host') <> '')
-          OR (json_extract(redacted, '$.resend.enabled') = 1
-            AND json_extract(redacted, '$.resend.hasApiKey') = 1))) AS "hasEmail",
+        AND json_extract(redacted, '$.resend.enabled') = 1
+        AND json_extract(redacted, '$.resend.hasApiKey') = 1) AS "hasEmail",
       EXISTS(SELECT 1 FROM app_secret WHERE key = 'auth.google'
         AND json_extract(redacted, '$.enabled') = 1
         AND json_extract(redacted, '$.clientId') <> ''

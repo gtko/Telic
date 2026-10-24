@@ -1,0 +1,26 @@
+{
+  "name": "@repo/cron",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cron-parser": "^5.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "@repo/eslint-config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "croner": "^10.0.1",
+    "eslint": "^9.39.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
