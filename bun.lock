@@ -178,12 +178,12 @@
       "name": "worker",
       "version": "1.0.0",
       "dependencies": {
+        "@repo/cron": "workspace:*",
         "@repo/crypto": "workspace:*",
         "@repo/db": "workspace:*",
         "@repo/mailer": "workspace:*",
         "@repo/net": "workspace:*",
         "@repo/storage": "workspace:*",
-        "cron-parser": "^5.4.0",
         "drizzle-orm": "^0.45.4",
       },
       "devDependencies": {
@@ -233,6 +233,22 @@
         "dotenv-cli": "^11.0.0",
         "eslint": "^9.39.0",
         "miniflare": "^4.20260730.0",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.5",
+      },
+    },
+    "packages/cron": {
+      "name": "@repo/cron",
+      "version": "0.0.0",
+      "dependencies": {
+        "cron-parser": "^5.4.0",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "^5.20261023.1",
+        "@repo/eslint-config": "workspace:*",
+        "@types/node": "^26.6.5",
+        "croner": "^10.0.1",
+        "eslint": "^9.39.0",
         "typescript": "^6.0.3",
         "vitest": "^5.0.5",
       },
@@ -1204,6 +1220,8 @@
     "@repo/agent-tools": ["@repo/agent-tools@workspace:packages/agent-tools"],
 
     "@repo/auth": ["@repo/auth@workspace:packages/auth"],
+
+    "@repo/cron": ["@repo/cron@workspace:packages/cron"],
 
     "@repo/crypto": ["@repo/crypto@workspace:packages/crypto"],
 

@@ -1,7 +1,6 @@
-import { describe, it, expect, afterEach } from 'bun:test';
+import { describe, it, expect, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
-  db,
   team,
   workspace,
   project,
@@ -22,6 +21,9 @@ import { getObject } from '@repo/storage';
 import { readerForJob, sourceProjectKeyForJob } from '../../import-sources';
 import { tickErrorOutcome } from '../../import-retry';
 import { SourceRateLimitedError } from '../../reader';
+import { useTestEnv } from '../helpers/d1';
+
+const ctx = useTestEnv();
 import { PlaneReader } from '../../plane-adapter';
 import {
   claimDueImportJobs,
@@ -41,29 +43,31 @@ import {
 // matching notification-send.test.ts's own convention.
 
 async function makeProject(): Promise<{ projectId: number; columnId: number; userId: string }> {
-  const [ws] = await db
+  const [ws] = await ctx.db
     .insert(workspace)
     .values({ name: 'Importers' })
     .returning({ id: workspace.id });
-  const [teamRow] = await db
+  const [teamRow] = await ctx.db
     .insert(team)
     .values({ workspaceId: ws!.id, name: 'Importers' })
     .returning({ id: team.id });
-  const [projectRow] = await db
+  const [projectRow] = await ctx.db
     .insert(project)
     .values({ teamId: teamRow!.id, key: randomUUID().slice(0, 8), name: 'Imported' })
     .returning({ id: project.id });
-  const [columnRow] = await db
+  const [columnRow] = await ctx.db
     .insert(projectColumn)
     .values({ projectId: projectRow!.id, name: 'Backlog', position: 1 })
     .returning({ id: projectColumn.id });
   const userId = randomUUID();
-  await db.insert(user).values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
+  await ctx.db
+    .insert(user)
+    .values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
   return { projectId: projectRow!.id, columnId: columnRow!.id, userId };
 }
 
 async function makeImportJob(projectId: number, userId: string): Promise<number> {
-  const [row] = await db
+  const [row] = await ctx.db
     .insert(importJob)
     .values({ projectId, createdByUserId: userId, source: 'plane' })
     .returning({ id: importJob.id });
@@ -71,7 +75,7 @@ async function makeImportJob(projectId: number, userId: string): Promise<number>
 }
 
 async function makeIssue(projectId: number, columnId: number, title = 'Task'): Promise<number> {
-  const [row] = await db
+  const [row] = await ctx.db
     .insert(issue)
     .values({ projectId, columnId, sequenceNumber: Math.floor(Math.random() * 1_000_000), title })
     .returning({ id: issue.id });
@@ -97,7 +101,7 @@ describe('claimDueImportJobs', () => {
   it('claims a due pending job, bumps attempts, and clears a stale last_error', async () => {
     const { projectId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
-    await db
+    await ctx.db
       .update(importJob)
       .set({ attempts: 3, lastError: 'rate limited', nextAttemptAt: new Date(Date.now() - 1000) })
       .where(eq(importJob.id, jobId));
@@ -106,12 +110,12 @@ describe('claimDueImportJobs', () => {
     // database from earlier runs of this same suite (nothing here truncates
     // import_job between runs), and claimDueImportJobs orders by next_attempt_at
     // with no per-test scope to filter on.
-    const claimed = await claimDueImportJobs(1000);
+    const claimed = await claimDueImportJobs(ctx.db, 1000);
     const job = claimed.find((j) => j.id === jobId);
 
     expect(job).toBeDefined();
     expect(job!.attempts).toBe(4);
-    const [row] = await db.select().from(importJob).where(eq(importJob.id, jobId));
+    const [row] = await ctx.db.select().from(importJob).where(eq(importJob.id, jobId));
     expect(row!.lastError).toBeNull();
     expect(row!.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
   });
@@ -119,24 +123,24 @@ describe('claimDueImportJobs', () => {
   it('does not claim a job whose next attempt is still in the future', async () => {
     const { projectId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
-    await db
+    await ctx.db
       .update(importJob)
       .set({ nextAttemptAt: new Date(Date.now() + 60_000) })
       .where(eq(importJob.id, jobId));
 
-    const claimed = await claimDueImportJobs(50);
+    const claimed = await claimDueImportJobs(ctx.db, 50);
     expect(claimed.some((j) => j.id === jobId)).toBe(false);
   });
 
   it('does not claim a paused job', async () => {
     const { projectId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
-    await db
+    await ctx.db
       .update(importJob)
       .set({ status: 'paused', nextAttemptAt: new Date(Date.now() - 1000) })
       .where(eq(importJob.id, jobId));
 
-    const claimed = await claimDueImportJobs(50);
+    const claimed = await claimDueImportJobs(ctx.db, 50);
     expect(claimed.some((j) => j.id === jobId)).toBe(false);
   });
 });
@@ -144,7 +148,7 @@ describe('claimDueImportJobs', () => {
 describe('import_job source', () => {
   it('accepts a Linear job and claims it with its source', async () => {
     const { projectId, userId } = await makeProject();
-    const [row] = await db
+    const [row] = await ctx.db
       .insert(importJob)
       .values({
         projectId,
@@ -155,14 +159,14 @@ describe('import_job source', () => {
       })
       .returning({ id: importJob.id });
 
-    const job = (await claimDueImportJobs(1000)).find((j) => j.id === row!.id);
+    const job = (await claimDueImportJobs(ctx.db, 1000)).find((j) => j.id === row!.id);
 
     expect(job?.source).toBe('linear');
   });
 
   it('still refuses a source that has no adapter', async () => {
     const { projectId, userId } = await makeProject();
-    const error = await db
+    const error = await ctx.db
       .insert(importJob)
       .values({ projectId, createdByUserId: userId, source: 'jira' })
       .catch((e: unknown) => e);
@@ -171,16 +175,16 @@ describe('import_job source', () => {
 });
 
 async function claimJob(jobId: number): Promise<number> {
-  await db
+  await ctx.db
     .update(importJob)
     .set({ nextAttemptAt: new Date(Date.now() - 1000) })
     .where(eq(importJob.id, jobId));
-  const claimed = await claimDueImportJobs(1000);
+  const claimed = await claimDueImportJobs(ctx.db, 1000);
   return claimed.find((j) => j.id === jobId)!.attempts;
 }
 
 async function attemptsOf(jobId: number): Promise<number> {
-  const [row] = await db.select().from(importJob).where(eq(importJob.id, jobId));
+  const [row] = await ctx.db.select().from(importJob).where(eq(importJob.id, jobId));
   return row!.attempts;
 }
 
@@ -190,11 +194,11 @@ describe('retryImportJobLater', () => {
     const jobId = await makeImportJob(projectId, userId);
 
     expect(await claimJob(jobId)).toBe(1);
-    await retryImportJobLater(jobId, 1000, 'rate limited', false);
+    await retryImportJobLater(ctx.db, jobId, 1000, 'rate limited', false);
     expect(await attemptsOf(jobId)).toBe(0);
 
     expect(await claimJob(jobId)).toBe(1);
-    await retryImportJobLater(jobId, 1000, 'HTTP 502', true);
+    await retryImportJobLater(ctx.db, jobId, 1000, 'HTTP 502', true);
     expect(await attemptsOf(jobId)).toBe(1);
   });
 
@@ -202,7 +206,7 @@ describe('retryImportJobLater', () => {
     const { projectId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
 
-    await retryImportJobLater(jobId, 1000, 'rate limited', false);
+    await retryImportJobLater(ctx.db, jobId, 1000, 'rate limited', false);
     expect(await attemptsOf(jobId)).toBe(0);
   });
 
@@ -214,7 +218,13 @@ describe('retryImportJobLater', () => {
       const attempts = await claimJob(jobId);
       const outcome = tickErrorOutcome(new SourceRateLimitedError(1000), attempts);
       if (outcome.action !== 'retry') throw new Error('rate limit must retry');
-      await retryImportJobLater(jobId, outcome.delayMs, outcome.lastError, outcome.countsAsAttempt);
+      await retryImportJobLater(
+        ctx.db,
+        jobId,
+        outcome.delayMs,
+        outcome.lastError,
+        outcome.countsAsAttempt,
+      );
     }
     expect(await attemptsOf(jobId)).toBe(0);
 
@@ -232,7 +242,7 @@ describe('decryptImportCredential', () => {
       apiKey: 'plane-api-key',
     };
     const encrypted = encryptSecret(JSON.stringify(credential));
-    const [row] = await db
+    const [row] = await ctx.db
       .insert(importJob)
       .values({
         projectId,
@@ -252,7 +262,7 @@ describe('decryptImportCredential', () => {
       })
       .returning({ id: importJob.id });
 
-    const job = (await claimDueImportJobs(1000)).find((j) => j.id === row!.id);
+    const job = (await claimDueImportJobs(ctx.db, 1000)).find((j) => j.id === row!.id);
 
     expect(job).toMatchObject({ source: 'plane', phase: 'create', cursor: { lastRecordId: 41 } });
     const decrypted = decryptImportCredential(job!);
@@ -267,34 +277,36 @@ describe('createLocalStateAndRecord', () => {
     const { projectId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
 
-    const columnId = await createLocalStateAndRecord(jobId, 'plane-state-1', projectId, {
+    const columnId = await createLocalStateAndRecord(ctx.db, jobId, 'plane-state-1', projectId, {
       sourceId: 'plane-state-1',
       name: 'In Review',
       category: 'started',
     });
 
-    const [row] = await db.select().from(projectColumn).where(eq(projectColumn.id, columnId));
+    const [row] = await ctx.db.select().from(projectColumn).where(eq(projectColumn.id, columnId));
     expect(row?.name).toBe('In Review');
     expect(row?.stateType).toBe('started');
-    expect(await findImportRecord(jobId, 'state', 'plane-state-1')).toEqual({ localId: columnId });
+    expect(await findImportRecord(ctx.db, jobId, 'state', 'plane-state-1')).toEqual({
+      localId: columnId,
+    });
   });
 
   it('reuses an existing column by name without changing its hand-configured state type', async () => {
     const { projectId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
-    const [existing] = await db
+    const [existing] = await ctx.db
       .insert(projectColumn)
       .values({ projectId, name: 'Done', stateType: 'completed', position: 2 })
       .returning({ id: projectColumn.id });
 
-    const columnId = await createLocalStateAndRecord(jobId, 'plane-state-2', projectId, {
+    const columnId = await createLocalStateAndRecord(ctx.db, jobId, 'plane-state-2', projectId, {
       sourceId: 'plane-state-2',
       name: 'Done',
       category: 'canceled',
     });
 
     expect(columnId).toBe(existing!.id);
-    const [row] = await db.select().from(projectColumn).where(eq(projectColumn.id, columnId));
+    const [row] = await ctx.db.select().from(projectColumn).where(eq(projectColumn.id, columnId));
     expect(row?.stateType).toBe('completed');
   });
 });
@@ -307,10 +319,10 @@ describe('createIssueLink', () => {
 
     // Linear returns a "related" relation from both issues, so Link sees the
     // pair once from each side.
-    await createIssueLink(a, b, 'relates');
-    await createIssueLink(b, a, 'relates');
+    await createIssueLink(ctx.db, a, b, 'relates');
+    await createIssueLink(ctx.db, b, a, 'relates');
 
-    const rows = await db.select().from(issueLink).where(eq(issueLink.sourceIssueId, a));
+    const rows = await ctx.db.select().from(issueLink).where(eq(issueLink.sourceIssueId, a));
     expect(rows).toHaveLength(1);
   });
 });
@@ -320,7 +332,7 @@ describe('createLocalIssueAndRecord', () => {
     const { projectId, columnId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
 
-    const issueId = await createLocalIssueAndRecord(jobId, 'plane-issue-1', 'ROOMS-1', {
+    const issueId = await createLocalIssueAndRecord(ctx.db, jobId, 'plane-issue-1', 'ROOMS-1', {
       projectId,
       columnId,
       cycleId: null,
@@ -333,9 +345,11 @@ describe('createLocalIssueAndRecord', () => {
       dueDate: null,
     });
 
-    const [row] = await db.select().from(issue).where(eq(issue.id, issueId));
+    const [row] = await ctx.db.select().from(issue).where(eq(issue.id, issueId));
     expect(row?.title).toBe('Fix the leak');
-    expect(await findImportRecord(jobId, 'issue', 'plane-issue-1')).toEqual({ localId: issueId });
+    expect(await findImportRecord(ctx.db, jobId, 'issue', 'plane-issue-1')).toEqual({
+      localId: issueId,
+    });
   });
 
   it('reuses an issue that already has the same title instead of duplicating it', async () => {
@@ -343,7 +357,7 @@ describe('createLocalIssueAndRecord', () => {
     const existingId = await makeIssue(projectId, columnId, '  Fix the LEAK  ');
     const jobId = await makeImportJob(projectId, userId);
 
-    const issueId = await createLocalIssueAndRecord(jobId, 'plane-issue-2', 'ROOMS-2', {
+    const issueId = await createLocalIssueAndRecord(ctx.db, jobId, 'plane-issue-2', 'ROOMS-2', {
       projectId,
       columnId,
       cycleId: null,
@@ -357,7 +371,7 @@ describe('createLocalIssueAndRecord', () => {
     });
 
     expect(issueId).toBe(existingId);
-    const [row] = await db.select().from(issue).where(eq(issue.id, issueId));
+    const [row] = await ctx.db.select().from(issue).where(eq(issue.id, issueId));
     // The reused issue keeps its own content; the import does not overwrite it.
     expect(row?.description).toBe('');
   });
@@ -366,13 +380,13 @@ describe('createLocalIssueAndRecord', () => {
     const { projectId, columnId, userId } = await makeProject();
     const jobId = await makeImportJob(projectId, userId);
 
-    const issueId = await createLocalIssueAndRecord(jobId, 'plane-issue-3', 'ROOMS-3', {
+    const issueId = await createLocalIssueAndRecord(ctx.db, jobId, 'plane-issue-3', 'ROOMS-3', {
       ...newIssue(projectId, columnId, 'Old work'),
       createdAt: '2024-03-01T09:30:00.000Z',
       updatedAt: '2024-05-20T17:00:00.000Z',
     });
 
-    const [row] = await db.select().from(issue).where(eq(issue.id, issueId));
+    const [row] = await ctx.db.select().from(issue).where(eq(issue.id, issueId));
     expect(row?.createdAt.toISOString()).toBe('2024-03-01T09:30:00.000Z');
     expect(row?.updatedAt.toISOString()).toBe('2024-05-20T17:00:00.000Z');
   });
@@ -382,12 +396,12 @@ describe('createLocalIssueAndRecord', () => {
     const jobId = await makeImportJob(projectId, userId);
     const before = Date.now() - 60_000;
 
-    const issueId = await createLocalIssueAndRecord(jobId, 'plane-issue-4', 'ROOMS-4', {
+    const issueId = await createLocalIssueAndRecord(ctx.db, jobId, 'plane-issue-4', 'ROOMS-4', {
       ...newIssue(projectId, columnId, 'Undated work'),
       createdAt: 'not a date',
     });
 
-    const [row] = await db.select().from(issue).where(eq(issue.id, issueId));
+    const [row] = await ctx.db.select().from(issue).where(eq(issue.id, issueId));
     expect(row!.createdAt.getTime()).toBeGreaterThan(before);
     expect(row!.updatedAt.getTime()).toBeGreaterThan(before);
   });
@@ -395,16 +409,16 @@ describe('createLocalIssueAndRecord', () => {
   it("leaves a reused issue's own dates alone", async () => {
     const { projectId, columnId, userId } = await makeProject();
     const existingId = await makeIssue(projectId, columnId, 'Shared title');
-    const [existing] = await db.select().from(issue).where(eq(issue.id, existingId));
+    const [existing] = await ctx.db.select().from(issue).where(eq(issue.id, existingId));
     const jobId = await makeImportJob(projectId, userId);
 
-    await createLocalIssueAndRecord(jobId, 'plane-issue-5', 'ROOMS-5', {
+    await createLocalIssueAndRecord(ctx.db, jobId, 'plane-issue-5', 'ROOMS-5', {
       ...newIssue(projectId, columnId, 'Shared title'),
       createdAt: '2020-01-01T00:00:00.000Z',
       updatedAt: '2020-01-02T00:00:00.000Z',
     });
 
-    const [row] = await db.select().from(issue).where(eq(issue.id, existingId));
+    const [row] = await ctx.db.select().from(issue).where(eq(issue.id, existingId));
     expect(row?.createdAt).toEqual(existing!.createdAt);
     expect(row?.updatedAt).toEqual(existing!.updatedAt);
   });
@@ -415,14 +429,14 @@ describe('createLocalAttachmentAndRecord', () => {
 
   afterEach(async () => {
     if (originalSettings) {
-      await setSetting(STORAGE_SETTING_KEY, originalSettings);
+      await setSetting(ctx.db, STORAGE_SETTING_KEY, originalSettings);
       originalSettings = null;
     }
   });
 
   async function overrideSettings(patch: Partial<StorageSettings>) {
-    originalSettings = await getStorageSettings();
-    await setSetting(STORAGE_SETTING_KEY, { ...originalSettings, ...patch });
+    originalSettings = await getStorageSettings(ctx.db);
+    await setSetting(ctx.db, STORAGE_SETTING_KEY, { ...originalSettings, ...patch });
   }
 
   it('stores a new attachment and records the mapping', async () => {
@@ -430,7 +444,7 @@ describe('createLocalAttachmentAndRecord', () => {
     const issueId = await makeIssue(projectId, columnId);
     const jobId = await makeImportJob(projectId, userId);
 
-    const attachmentId = await createLocalAttachmentAndRecord(jobId, 'plane-attachment-1', {
+    const attachmentId = await createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-1', {
       projectId,
       issueId,
       filename: 'notes.txt',
@@ -438,13 +452,13 @@ describe('createLocalAttachmentAndRecord', () => {
       bytes: Buffer.from('hello from plane'),
     });
 
-    const [row] = await db
+    const [row] = await ctx.db
       .select()
       .from(issueAttachment)
       .where(eq(issueAttachment.id, attachmentId));
     expect(row?.filename).toBe('notes.txt');
     expect(row?.sizeBytes).toBe(Buffer.byteLength('hello from plane'));
-    expect(await findImportRecord(jobId, 'attachment', 'plane-attachment-1')).toEqual({
+    expect(await findImportRecord(ctx.db, jobId, 'attachment', 'plane-attachment-1')).toEqual({
       localId: attachmentId,
     });
     const stored = await getObject(row!.s3Key);
@@ -455,7 +469,7 @@ describe('createLocalAttachmentAndRecord', () => {
     const { projectId, columnId, userId } = await makeProject();
     const issueId = await makeIssue(projectId, columnId);
     const jobId = await makeImportJob(projectId, userId);
-    const [existing] = await db
+    const [existing] = await ctx.db
       .insert(issueAttachment)
       .values({
         issueId,
@@ -466,7 +480,7 @@ describe('createLocalAttachmentAndRecord', () => {
       })
       .returning({ id: issueAttachment.id });
 
-    const attachmentId = await createLocalAttachmentAndRecord(jobId, 'plane-attachment-2', {
+    const attachmentId = await createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-2', {
       projectId,
       issueId,
       filename: 'notes.txt',
@@ -475,12 +489,12 @@ describe('createLocalAttachmentAndRecord', () => {
     });
 
     expect(attachmentId).toBe(existing!.id);
-    const rows = await db
+    const rows = await ctx.db
       .select()
       .from(issueAttachment)
       .where(eq(issueAttachment.issueId, issueId));
     expect(rows).toHaveLength(1);
-    expect(await findImportRecord(jobId, 'attachment', 'plane-attachment-2')).toEqual({
+    expect(await findImportRecord(ctx.db, jobId, 'attachment', 'plane-attachment-2')).toEqual({
       localId: existing!.id,
     });
   });
@@ -492,7 +506,7 @@ describe('createLocalAttachmentAndRecord', () => {
     const jobId = await makeImportJob(projectId, userId);
 
     await expect(
-      createLocalAttachmentAndRecord(jobId, 'plane-attachment-3', {
+      createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-3', {
         projectId,
         issueId,
         filename: 'big.txt',
@@ -500,7 +514,7 @@ describe('createLocalAttachmentAndRecord', () => {
         bytes: Buffer.from('this file is definitely too big for the limit'),
       }),
     ).rejects.toBeInstanceOf(AttachmentRejectedError);
-    const rows = await db
+    const rows = await ctx.db
       .select()
       .from(issueAttachment)
       .where(eq(issueAttachment.issueId, issueId));
@@ -514,7 +528,7 @@ describe('createLocalAttachmentAndRecord', () => {
     const jobId = await makeImportJob(projectId, userId);
 
     await expect(
-      createLocalAttachmentAndRecord(jobId, 'plane-attachment-4', {
+      createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-4', {
         projectId,
         issueId,
         filename: 'notes.txt',
@@ -522,7 +536,7 @@ describe('createLocalAttachmentAndRecord', () => {
         bytes: Buffer.from('hello'),
       }),
     ).rejects.toBeInstanceOf(AttachmentRejectedError);
-    const rows = await db
+    const rows = await ctx.db
       .select()
       .from(issueAttachment)
       .where(eq(issueAttachment.issueId, issueId));
@@ -536,7 +550,7 @@ describe('createLocalAttachmentAndRecord', () => {
     const jobId = await makeImportJob(projectId, userId);
 
     await expect(
-      createLocalAttachmentAndRecord(jobId, 'plane-attachment-5', {
+      createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-5', {
         projectId,
         issueId,
         filename: 'notes.txt',
@@ -544,7 +558,7 @@ describe('createLocalAttachmentAndRecord', () => {
         bytes: Buffer.from('more bytes than the tiny quota allows'),
       }),
     ).rejects.toBeInstanceOf(AttachmentRejectedError);
-    const rows = await db
+    const rows = await ctx.db
       .select()
       .from(issueAttachment)
       .where(eq(issueAttachment.issueId, issueId));
@@ -564,14 +578,14 @@ describe('createLocalAttachmentAndRecord', () => {
     const bytes = Buffer.alloc(700_000, 'x');
 
     const results = await Promise.allSettled([
-      createLocalAttachmentAndRecord(jobId, 'plane-attachment-6a', {
+      createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-6a', {
         projectId,
         issueId,
         filename: 'a.bin',
         contentType: 'text/plain',
         bytes,
       }),
-      createLocalAttachmentAndRecord(jobId, 'plane-attachment-6b', {
+      createLocalAttachmentAndRecord(ctx.db, jobId, 'plane-attachment-6b', {
         projectId,
         issueId,
         filename: 'b.bin',
@@ -587,7 +601,7 @@ describe('createLocalAttachmentAndRecord', () => {
     expect(rejected).toHaveLength(1);
     expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(AttachmentRejectedError);
 
-    const rows = await db
+    const rows = await ctx.db
       .select()
       .from(issueAttachment)
       .where(eq(issueAttachment.issueId, issueId));
@@ -601,9 +615,9 @@ describe('createLocalAttachmentAndRecord', () => {
       aResult.status === 'fulfilled'
         ? ['plane-attachment-6a', 'plane-attachment-6b']
         : ['plane-attachment-6b', 'plane-attachment-6a'];
-    expect(await findImportRecord(jobId, 'attachment', winnerSourceId)).toEqual({
+    expect(await findImportRecord(ctx.db, jobId, 'attachment', winnerSourceId)).toEqual({
       localId: rows[0]!.id,
     });
-    expect(await findImportRecord(jobId, 'attachment', loserSourceId)).toBeNull();
+    expect(await findImportRecord(ctx.db, jobId, 'attachment', loserSourceId)).toBeNull();
   });
 });

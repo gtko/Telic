@@ -1,7 +1,6 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
-  db,
   workspace,
   team,
   project,
@@ -18,34 +17,39 @@ import {
   findImportRecord,
   upsertImportRecord,
 } from '../../import-store';
+import { useTestEnv } from '../helpers/d1';
+
+const ctx = useTestEnv();
 
 // Each test makes its own team, project and user, like import-store.test.ts. Jobs are
 // 'paused' so no other test's claimDueImportJobs picks them up.
 
 async function makeProject(): Promise<{ projectId: number; columnId: number; userId: string }> {
-  const [ws] = await db
+  const [ws] = await ctx.db
     .insert(workspace)
     .values({ name: 'Importers' })
     .returning({ id: workspace.id });
-  const [teamRow] = await db
+  const [teamRow] = await ctx.db
     .insert(team)
     .values({ workspaceId: ws!.id, name: 'Importers' })
     .returning({ id: team.id });
-  const [projectRow] = await db
+  const [projectRow] = await ctx.db
     .insert(project)
     .values({ teamId: teamRow!.id, key: randomUUID().slice(0, 8), name: 'Imported' })
     .returning({ id: project.id });
-  const [columnRow] = await db
+  const [columnRow] = await ctx.db
     .insert(projectColumn)
     .values({ projectId: projectRow!.id, name: 'Backlog', position: 1 })
     .returning({ id: projectColumn.id });
   const userId = randomUUID();
-  await db.insert(user).values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
+  await ctx.db
+    .insert(user)
+    .values({ id: userId, name: 'Importer', email: `${userId}@example.test` });
   return { projectId: projectRow!.id, columnId: columnRow!.id, userId };
 }
 
 async function makeJob(projectId: number, userId: string): Promise<number> {
-  const [row] = await db
+  const [row] = await ctx.db
     .insert(importJob)
     .values({ projectId, createdByUserId: userId, source: 'plane', status: 'paused' })
     .returning({ id: importJob.id });
@@ -58,7 +62,7 @@ function importIssue(
   number: number,
   target: { projectId: number; columnId: number },
 ): Promise<number> {
-  return createLocalIssueAndRecord(jobId, sourceId, String(number), {
+  return createLocalIssueAndRecord(ctx.db, jobId, sourceId, String(number), {
     projectId: target.projectId,
     columnId: target.columnId,
     cycleId: null,
@@ -75,6 +79,7 @@ function importIssue(
 // What the Create phase does for one source comment: create or reuse, then map it.
 async function importComment(jobId: number, sourceId: string, issueId: number): Promise<number> {
   const localId = await createLocalComment(
+    ctx.db,
     jobId,
     issueId,
     null,
@@ -83,7 +88,7 @@ async function importComment(jobId: number, sourceId: string, issueId: number): 
     new Date('2025-01-05T10:00:00.000Z'),
     null,
   );
-  await upsertImportRecord(jobId, 'comment', sourceId, 'comment', localId);
+  await upsertImportRecord(ctx.db, jobId, 'comment', sourceId, 'comment', localId);
   return localId;
 }
 
@@ -96,7 +101,7 @@ describe('same-titled source issues', () => {
     const second = await importIssue(jobId, 'src-2', 2, target);
 
     expect(second).not.toBe(first);
-    const rows = await db.select().from(issue).where(eq(issue.projectId, target.projectId));
+    const rows = await ctx.db.select().from(issue).where(eq(issue.projectId, target.projectId));
     expect(rows).toHaveLength(2);
   });
 
@@ -109,8 +114,8 @@ describe('same-titled source issues', () => {
 
     expect(await importIssue(rerun, 'src-1', 1, target)).toBe(first);
     expect(await importIssue(rerun, 'src-2', 2, target)).toBe(second);
-    expect(await findImportRecord(rerun, 'issue', 'src-2')).toEqual({ localId: second });
-    const rows = await db.select().from(issue).where(eq(issue.projectId, target.projectId));
+    expect(await findImportRecord(ctx.db, rerun, 'issue', 'src-2')).toEqual({ localId: second });
+    const rows = await ctx.db.select().from(issue).where(eq(issue.projectId, target.projectId));
     expect(rows).toHaveLength(2);
   });
 });
@@ -125,7 +130,10 @@ describe('identical source comments', () => {
     const second = await importComment(jobId, 'comment-2', issueId);
 
     expect(second).not.toBe(first);
-    const rows = await db.select().from(issueActivity).where(eq(issueActivity.issueId, issueId));
+    const rows = await ctx.db
+      .select()
+      .from(issueActivity)
+      .where(eq(issueActivity.issueId, issueId));
     expect(rows).toHaveLength(2);
   });
 
@@ -140,7 +148,10 @@ describe('identical source comments', () => {
 
     expect(await importComment(rerun, 'comment-1', issueId)).toBe(first);
     expect(await importComment(rerun, 'comment-2', issueId)).toBe(second);
-    const rows = await db.select().from(issueActivity).where(eq(issueActivity.issueId, issueId));
+    const rows = await ctx.db
+      .select()
+      .from(issueActivity)
+      .where(eq(issueActivity.issueId, issueId));
     expect(rows).toHaveLength(2);
   });
 });

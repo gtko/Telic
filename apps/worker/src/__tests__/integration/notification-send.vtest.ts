@@ -1,7 +1,10 @@
-import { beforeEach, describe, it, expect } from 'bun:test';
+import { beforeEach, describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { appSecret, db, project, team, teamInvite, workspace } from '@repo/db';
+import { appSecret, project, team, teamInvite, workspace } from '@repo/db';
 import { deliverNotification } from '../../notification-send';
+import { useTestEnv } from '../helpers/d1';
+
+const ctx = useTestEnv();
 
 // The send reads the credentials itself, so these cover the two decisions it makes
 // before a message can leave: a queued invite email whose invite is gone is dropped
@@ -10,15 +13,15 @@ import { deliverNotification } from '../../notification-send';
 // directly — there is no api to call.
 
 async function makeProject(): Promise<{ teamId: number; projectId: number }> {
-  const [ws] = await db
+  const [ws] = await ctx.db
     .insert(workspace)
     .values({ name: 'Senders' })
     .returning({ id: workspace.id });
-  const [row] = await db
+  const [row] = await ctx.db
     .insert(team)
     .values({ workspaceId: ws!.id, name: 'Senders' })
     .returning({ id: team.id });
-  const [created] = await db
+  const [created] = await ctx.db
     .insert(project)
     .values({ teamId: row!.id, key: randomUUID().slice(0, 8), name: 'Marketing' })
     .returning({ id: project.id });
@@ -29,12 +32,12 @@ describe('deliverNotification', () => {
   // A team with no provider of its own falls back to the instance one, so the suite
   // that ran before this in the shared test database must not leave one behind.
   beforeEach(async () => {
-    await db.delete(appSecret);
+    await ctx.db.delete(appSecret);
   });
 
   it('drops an invite email whose invite is no longer pending', async () => {
     const { teamId, projectId } = await makeProject();
-    const [invite] = await db
+    const [invite] = await ctx.db
       .insert(teamInvite)
       .values({
         teamId,
@@ -44,7 +47,7 @@ describe('deliverNotification', () => {
       })
       .returning({ id: teamInvite.id });
 
-    const result = await deliverNotification({
+    const result = await deliverNotification(ctx.db, {
       projectId,
       channel: 'email',
       recipient: 'invitee@example.com',
@@ -57,7 +60,7 @@ describe('deliverNotification', () => {
   it('fails permanently when the team has no email provider', async () => {
     const { projectId } = await makeProject();
 
-    const result = await deliverNotification({
+    const result = await deliverNotification(ctx.db, {
       projectId,
       channel: 'email',
       recipient: 'member@example.com',
@@ -68,7 +71,7 @@ describe('deliverNotification', () => {
   });
 
   it('fails permanently when the project is gone', async () => {
-    const result = await deliverNotification({
+    const result = await deliverNotification(ctx.db, {
       projectId: 0,
       channel: 'email',
       recipient: 'member@example.com',
