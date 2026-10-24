@@ -2,6 +2,7 @@
 // suites run by vitest (see apps/api/vitest.config.ts). The services are called with this
 // `db`, so they run against real D1 semantics: batches, RETURNING, one writer at a time.
 import { createDb, createWorkspace, type Db } from '@repo/db';
+import type { AgentRuntime } from '#modules/agents/core/runtime/bindings';
 import { project, projectColumn, projectMember, team, teamMember, user } from '@repo/db/schema';
 import { Miniflare } from 'miniflare';
 import type { ProjectRow } from '#modules/projects/service';
@@ -9,6 +10,9 @@ import { migrateD1 } from '../../../../../packages/db/src/migrate';
 
 export interface TestDb {
   db: Db;
+  bucket: R2Bucket;
+  // The runtime services that also reach the queue, the bucket or the auth instance take.
+  rt: AgentRuntime;
   dispose(): Promise<void>;
 }
 
@@ -17,12 +21,21 @@ export async function createTestDb(): Promise<TestDb> {
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
     d1Databases: { DB: 'test-db' },
+    r2Buckets: { BUCKET: 'test-bucket' },
   });
-  const db = createDb((await mf.getD1Database('DB')) as unknown as Parameters<typeof createDb>[0]);
-  // For the stand-ins of setup-vtest.ts that cannot be handed a db.
-  (globalThis as { __vtestDb?: Db }).__vtestDb = db;
+  const d1 = await mf.getD1Database('DB');
+  const db = createDb(d1 as unknown as Parameters<typeof createDb>[0]);
+  const bucket = (await mf.getR2Bucket('BUCKET')) as unknown as R2Bucket;
   await migrateD1(db);
-  return { db, dispose: () => mf.dispose() };
+  const rt: AgentRuntime = {
+    db,
+    d1: d1 as unknown as AgentRuntime['d1'],
+    payloads: bucket as unknown as AgentRuntime['payloads'],
+    bucket,
+    queue: null,
+    auth: {} as AgentRuntime['auth'],
+  };
+  return { db, bucket, rt, dispose: () => mf.dispose() };
 }
 
 export interface SeededProject {

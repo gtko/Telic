@@ -1,5 +1,5 @@
 import { userPreference, type Db } from '@repo/db';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { DEFAULT_LOCALE, type Locale } from './locale';
 
 // A user's own interface preferences, held per account so the same choices apply on
@@ -149,7 +149,7 @@ export async function updatePreferences(
     .values({ userId, ...next })
     .onConflictDoUpdate({
       target: userPreference.userId,
-      set: { ...next, updatedAt: sql`now()` },
+      set: { ...next, updatedAt: new Date() },
     });
   return next;
 }

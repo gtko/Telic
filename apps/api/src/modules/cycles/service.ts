@@ -92,15 +92,15 @@ function mapCycle(r: CycleAggregate): CycleRow {
 }
 
 // Today in UTC, the same boundary cycleStatus compares against.
-const TODAY = sql`(now() at time zone 'utc')::date`;
+const TODAY = sql`date('now')`;
 
-const NOW = sql`now()` as unknown as Date;
+const NOW = sql`cast(unixepoch('subsec') * 1000 as integer)` as unknown as Date;
 
 // The last day a cycle blocks another one from starting. A cycle finished early gave
 // up the rest of its planned range, and it shares the day it was finished with
 // whatever starts next — which is what "start the next cycle today" does — so it
 // blocks only up to the day before that.
-const OCCUPIED_UNTIL = sql`coalesce((${cycle.completedAt} at time zone 'utc')::date - 1, ${cycle.endDate})`;
+const OCCUPIED_UNTIL = sql`coalesce(date(${cycle.completedAt} / 1000, 'unixepoch', '-1 day'), ${cycle.endDate})`;
 
 // A cycle has finished when it was finished early or when its planned end date has
 // passed. The planned list and the archive split on exactly this.

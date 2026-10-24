@@ -39,13 +39,20 @@ export default defineConfig(async () => {
           },
         },
         {
+          resolve: {
+            alias: {
+              'cloudflare:workers': path.join(
+                import.meta.dirname,
+                'src/__tests__/helpers/cloudflare-workers.ts',
+              ),
+            },
+          },
           test: {
             name: 'node',
             include: ['src/**/*.vtest.ts', 'src/**/__tests__/d1/**/*.test.ts'],
             hookTimeout: 60_000,
             testTimeout: 60_000,
             fileParallelism: false,
-            setupFiles: ['./src/__tests__/helpers/setup-vtest.ts'],
             env: testEnv,
           },
         },
