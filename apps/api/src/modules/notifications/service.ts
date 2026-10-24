@@ -23,7 +23,7 @@ import { enqueueOutbound } from './outbound';
 // what is addressed to one person ('assigned', 'mentioned') goes to them whether
 // they watch the issue or not, and subscribes them to it. The actor is never
 // notified about their own action, and only project members receive notifications,
-// so agent bot users (assigned via delegate, not members) are excluded.
+// so non-members are excluded.
 
 export const NOTIFICATION_TYPES = ['assigned', 'mentioned', 'commented', 'state_changed'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -37,9 +37,8 @@ export interface NewNotificationRow {
   actorUserId: string | null;
 }
 
-// Keeps only the ids that are members of the project. Filters out non-members (an
-// agent's bot user is assigned via delegate but is not a member) and users who have
-// lost access.
+// Keeps only the ids that are members of the project. Filters out non-members and
+// users who have lost access.
 async function keepProjectMembers(db: Db, projectId: number, ids: string[]): Promise<Set<string>> {
   const kept = new Set<string>();
   // D1 binds at most 100 parameters per statement.
@@ -90,7 +89,7 @@ export async function notifyComment(
   mentionedUsers: MentionedUsers,
 ): Promise<void> {
   const actor = comment.actorUserId;
-  const mentioned = new Set([...mentionedUsers.memberIds, ...mentionedUsers.agentUserIds]);
+  const mentioned = new Set(mentionedUsers.memberIds);
   await autoWatchIssue(db, projectId, comment.issueId, [actor, ...mentioned]);
   const watchers = await watcherUserIds(db, projectId, comment.issueId);
 
@@ -130,9 +129,7 @@ export async function notifyEditedCommentMentions(
   comment: { issueId: number; id: number; actorUserId: string | null },
   mentionedUsers: MentionedUsers,
 ): Promise<void> {
-  const mentioned = [...mentionedUsers.memberIds, ...mentionedUsers.agentUserIds].filter(
-    (userId) => userId !== comment.actorUserId,
-  );
+  const mentioned = mentionedUsers.memberIds.filter((userId) => userId !== comment.actorUserId);
   if (mentioned.length === 0) return;
   await autoWatchIssue(db, projectId, comment.issueId, mentioned);
   await insertNotifications(

@@ -189,17 +189,13 @@ export const ProjectListResponse = t.Array(ProjectListItemResponse);
 export const ProjectSearchPageResponse = pageResponse(ProjectListItemResponse);
 
 // An assignable candidate (AssigneeCandidate from members/service): a project
-// member or an AI agent's bot user.
+// member.
 const AssigneeCandidateResponse = t.Object({
   userId: t.String(),
   name: t.String(),
   email: t.String(),
   username: t.Nullable(t.String()),
   image: t.Nullable(t.String()),
-  kind: t.Union([t.Literal('member'), t.Literal('agent')]),
-  agentKind: t.Nullable(t.Union([t.Literal('external'), t.Literal('internal')])),
-  restrictedToUserId: t.Nullable(t.String()),
-  respondsToMention: t.Nullable(t.Boolean()),
   canReadWorkItems: t.Boolean(),
 });
 

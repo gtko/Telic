@@ -1,4 +1,3 @@
-import { agentRuntime } from '#modules/agents/core/runtime/bindings';
 import { Elysia, t } from 'elysia';
 import { mcpTool } from '#mcp/generate';
 import { noContent } from '#shared/http';
@@ -344,8 +343,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // Owner-only.
   .delete(
     '/projects/:projectKey',
-    async ({ env, auth, project }) => {
-      await deleteProject(agentRuntime(env, auth), project.id);
+    async ({ db, project }) => {
+      await deleteProject(db, project.id);
       return noContent();
     },
     {

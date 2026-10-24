@@ -231,7 +231,6 @@ export interface NoteBoardAccessCandidate {
   userId: string;
   name: string;
   image: string | null;
-  kind: 'member' | 'agent';
   canAccess: boolean;
 }
 
@@ -249,7 +248,6 @@ export async function listNoteBoardAccessCandidates(
       userId: c.userId,
       name: c.name,
       image: c.image,
-      kind: c.kind,
       canAccess: permissions ? hasPermission(permissions, 'note_boards', 'read') : false,
     };
   });

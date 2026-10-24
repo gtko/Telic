@@ -148,9 +148,7 @@ function mergeInputSchema(hooks: Record<string, unknown>, pathParams: string[]):
 }
 
 // The tool table derived from an app's routes, built once per app and cached: routes
-// are fixed after boot, so introspection runs on the first call only. Shared by the
-// MCP endpoint and the internal agent runtime, which build their tools from the same
-// table. Keyed by the app so a second app (a test's) gets its own table instead of
+// are fixed after boot, so introspection runs on the first call only. Keyed by the app so a second app (a test's) gets its own table instead of
 // inheriting whichever one was generated first.
 const cache = new WeakMap<McpApp, McpRouteTool[]>();
 export function routeTools(app: McpApp): McpRouteTool[] {

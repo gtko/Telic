@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDb, projectRowOf, seedProject, type TestDb } from '#tests/helpers/d1';
 import { createIssue } from '#modules/issues/service';
 import {
-  getAgentRunStats,
   getBreakdown,
   getBurnup,
   getPulse,
@@ -93,15 +92,5 @@ describe('analytics on D1', () => {
     const ids = [...first.items, ...second.items].map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('returns zero agent run stats for a project without runs', async () => {
-    const { s } = await seed();
-    expect(await getAgentRunStats(t.db, s.projectId, 7)).toEqual({
-      total: 0,
-      success: 0,
-      failed: 0,
-      pending: 0,
-    });
   });
 });

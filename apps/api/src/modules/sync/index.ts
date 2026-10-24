@@ -1,5 +1,3 @@
-import { isMcpRequest } from '#shared/mcp-request';
-import { runnerQueueRevision } from '#modules/agents/queue/service';
 import { Elysia } from 'elysia';
 import { authContext } from '#shared/auth-context';
 import { requireUser } from '#shared/access';
@@ -19,7 +17,7 @@ export const syncRoutes = new Elysia({ name: 'sync', detail: { tags: ['Sync'] } 
 
   .get(
     '/sync/rev',
-    async ({ db, user, query, request }) => {
+    async ({ db, user, query }) => {
       const userId = requireUser(user).id;
       const requested = query.scopes
         .split(',')
@@ -33,7 +31,6 @@ export const syncRoutes = new Elysia({ name: 'sync', detail: { tags: ['Sync'] } 
       // knowing how a scope is stored.
       const reads = new Map<string, ScopeRead>();
       for (const scope of requested) {
-        if (scope === 'runnerQueue:1') continue;
         const [kind, rawId] = scope.split(':');
         // Own properties only: an inherited name like '__proto__' is not a kind.
         const spec = kind && Object.hasOwn(scopeKind, kind) ? scopeKind[kind] : undefined;
@@ -48,13 +45,6 @@ export const syncRoutes = new Elysia({ name: 'sync', detail: { tags: ['Sync'] } 
       const revs = Object.fromEntries(
         [...reads].map(([scope, read]) => [scope, found[read.key] ?? NO_REV]),
       );
-      if (requested.includes('runnerQueue:1')) {
-        revs['runnerQueue:1'] = await runnerQueueRevision(
-          db,
-          userId,
-          isMcpRequest(request.headers),
-        );
-      }
       return { revs };
     },
     {

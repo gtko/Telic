@@ -1,6 +1,5 @@
 import { t } from 'elysia';
 import { ActivityPayloadResponse } from '#shared/activity';
-import { agentRunTrigger } from '#modules/agents/model';
 import { instantQuery } from '#shared/schemas';
 
 export const StatsDto = t.Object({
@@ -76,25 +75,6 @@ export const ActivityPage = t.Object({
   nextCursor: t.Nullable(ActivityCursorDto),
 });
 
-const AgentRunFeedItem = t.Object({
-  id: t.Number(),
-  status: t.String(),
-  trigger: agentRunTrigger,
-  agentId: t.Number(),
-  agentName: t.String(),
-  issueId: t.Nullable(t.Number()),
-  issueSequence: t.Nullable(t.Number()),
-  lastError: t.Nullable(t.String()),
-  createdAt: t.String(),
-});
-
-export const AgentRunStatsDto = t.Object({
-  total: t.Number(),
-  success: t.Number(),
-  failed: t.Number(),
-  pending: t.Number(),
-});
-
 export const WebhookStatsDto = t.Object({
   total: t.Number(),
   success: t.Number(),
@@ -104,25 +84,11 @@ export const WebhookStatsDto = t.Object({
   disabledWebhooks: t.Number(),
 });
 
-const AgentWorkloadItem = t.Object({
-  agentId: t.Number(),
-  agentName: t.String(),
-  kind: t.String(),
-  delegatedOpen: t.Number(),
-  runsTotal: t.Number(),
-  runsSuccess: t.Number(),
-  runsFailed: t.Number(),
-});
-
 export const BreakdownListResponse = t.Array(BreakdownItem);
 
 export const PulseListResponse = t.Array(PulseBucket);
 
 export const ThroughputListResponse = t.Array(ThroughputWeek);
-
-export const AgentRunFeedListResponse = t.Array(AgentRunFeedItem);
-
-export const AgentWorkloadListResponse = t.Array(AgentWorkloadItem);
 
 export const breakdownQuery = t.Object({
   by: t.Union([
@@ -130,7 +96,6 @@ export const breakdownQuery = t.Object({
     t.Literal('priority'),
     t.Literal('type'),
     t.Literal('assignee'),
-    t.Literal('delegate'),
   ]),
 });
 
@@ -162,11 +127,6 @@ export const activityQuery = t.Object({
   // Comma-separated issue ids the client resolved from the widget's work items
   // filter; absent means no issue-scope restriction.
   issueIds: t.Optional(t.String()),
-});
-
-export const agentRunFeedQuery = t.Object({
-  status: t.Optional(t.Union([t.Literal('pending'), t.Literal('success'), t.Literal('failed')])),
-  limit: t.Optional(t.Numeric()),
 });
 
 export const daysQuery = t.Object({ days: t.Optional(t.Numeric()) });

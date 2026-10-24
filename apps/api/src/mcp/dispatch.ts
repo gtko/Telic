@@ -1,6 +1,6 @@
 import type { McpApp } from './types';
 import type { McpRouteTool } from './generate';
-import { AGENT_PROJECT_HEADER, MCP_LOOPBACK_HEADER, setMcpOAuthToken } from '../shared/mcp-request';
+import { MCP_LOOPBACK_HEADER, setMcpOAuthToken } from '../shared/mcp-request';
 import type { McpCredential } from './credential';
 import { structuredResult, type StructuredResult } from './result';
 import { withPublicAttachmentUrls, withStoredAttachmentUrls } from './attachment-urls';
@@ -18,18 +18,15 @@ const BASE = 'http://localhost';
 // credential is forwarded to the route session guard so permission checks run
 // exactly as they do over HTTP.
 //
-// viaMcpEndpoint says whether the call came from POST /mcp. It is explicit at both
-// call sites because it selects a real behaviour: only an MCP call carries the
+// viaMcpEndpoint says whether the call came from POST /mcp: only an MCP call carries the
 // loopback header, and only a request carrying that header is subject to the
-// per-project MCP toggle. An internal agent run dispatches through the same routes
-// but is not MCP, so disabling MCP on a project must not disarm its agents.
-// projectId is the project an internal agent's run works in (AGENT_PROJECT_HEADER).
+// per-project MCP toggle.
 export async function dispatchTool(
   app: McpApp,
   tool: McpRouteTool,
   args: Record<string, unknown>,
   credential: McpCredential,
-  opts: { viaMcpEndpoint: boolean; projectId?: number },
+  opts: { viaMcpEndpoint: boolean },
 ): Promise<{ text: string; isError: boolean; structuredContent: StructuredResult }> {
   const rest = withStoredAttachmentUrls(args);
 
@@ -60,7 +57,6 @@ export async function dispatchTool(
       ...(credential.kind === 'api-key' ? { 'x-api-key': credential.apiKey } : {}),
       // Marks this as an MCP call so guards enforce the per-project MCP toggle.
       ...(opts.viaMcpEndpoint ? { [MCP_LOOPBACK_HEADER]: '1' } : {}),
-      ...(opts.projectId != null ? { [AGENT_PROJECT_HEADER]: String(opts.projectId) } : {}),
     },
     body,
   });

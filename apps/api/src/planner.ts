@@ -10,18 +10,12 @@ import { inviteRoutes } from './modules/invites';
 import { columnRoutes } from './modules/columns';
 import { issueTypeRoutes } from './modules/issue-types';
 import { labelRoutes } from './modules/labels';
-import { aiAgentRoutes } from './modules/agents/core';
-import { integrationRoutes } from './modules/agents/integrations';
-import { agentSkillRoutes } from './modules/agents/skills';
-import { agentToolRoutes } from './modules/agents/tools';
 import { customFieldRoutes } from './modules/custom-fields';
 import { issueTemplateRoutes } from './modules/issue-templates';
 import { issueRoutes } from './modules/issues';
 import { initiativeRoutes } from './modules/initiatives';
 import { cycleRoutes } from './modules/cycles';
 import { attachmentRoutes } from './modules/attachments';
-import { chatAttachmentRoutes } from './modules/chat-attachments';
-import { importRoutes } from './modules/imports';
 import { importExportRoutes } from './modules/import-export';
 import { avatarRoutes } from './modules/avatars';
 import { viewRoutes } from './modules/views';
@@ -33,15 +27,8 @@ import { dashboardRoutes } from './modules/dashboards';
 import { noteBoardRoutes } from './modules/note-boards';
 import { documentRoutes } from './modules/documents';
 import { analyticsRoutes } from './modules/analytics';
-import { chartRoutes } from './modules/charts';
 import { settingsRoutes } from './modules/settings';
 import { godRoutes } from './modules/god';
-import { agentScheduleRoutes } from './modules/agents/schedules';
-import { modelPriceRoutes } from './modules/agents/prices';
-import { runnerQueueRoutes } from './modules/agents/queue';
-import { agentRunnerRoutes } from './modules/agents/runner';
-import { agentChatRoutes } from './modules/agents/chat';
-import { agentInvocationRoutes } from './modules/agents/invocation';
 import { notificationRoutes } from './modules/notifications';
 import { notificationSettingsRoutes } from './modules/notification-settings';
 import { notificationPreferenceRoutes } from './modules/notification-preferences';
@@ -51,7 +38,7 @@ import { telegramRoutes } from './modules/telegram';
 import { syncRoutes } from './modules/sync';
 import { linkPreviewRoutes } from './modules/link-previews';
 
-// The planner API: projects and their columns, issue types, labels, AI agents,
+// The planner API: projects and their columns, issue types, labels,
 // custom fields, issues, attachments, saved views, and actions. Mounted on the
 // main app in ./index.ts.
 //
@@ -79,18 +66,12 @@ export const planner = new Elysia({ name: 'planner' })
   .use(columnRoutes)
   .use(issueTypeRoutes)
   .use(labelRoutes)
-  .use(aiAgentRoutes)
-  .use(integrationRoutes)
-  .use(agentSkillRoutes)
-  .use(agentToolRoutes)
   .use(customFieldRoutes)
   .use(issueTemplateRoutes)
   .use(issueRoutes)
   .use(initiativeRoutes)
   .use(cycleRoutes)
   .use(attachmentRoutes)
-  .use(chatAttachmentRoutes)
-  .use(importRoutes)
   .use(importExportRoutes)
   .use(avatarRoutes)
   .use(viewRoutes)
@@ -98,17 +79,10 @@ export const planner = new Elysia({ name: 'planner' })
   .use(actionRoutes)
   .use(webhookRoutes)
   .use(gitSettingsRoutes)
-  .use(agentScheduleRoutes)
-  .use(modelPriceRoutes)
-  .use(agentRunnerRoutes)
-  .use(runnerQueueRoutes)
-  .use(agentChatRoutes)
-  .use(agentInvocationRoutes)
   .use(dashboardRoutes)
   .use(noteBoardRoutes)
   .use(documentRoutes)
   .use(analyticsRoutes)
-  .use(chartRoutes)
   .use(notificationRoutes)
   .use(notificationSettingsRoutes)
   .use(notificationPreferenceRoutes)

@@ -1,5 +1,4 @@
 import { env as workerEnv } from 'cloudflare:workers';
-import type { RunMessage } from './queue';
 
 // The Worker's bindings, variables and secrets, in one type shared by the fetch handler, the
 // cron handler, the queue consumer and the tests. wrangler.jsonc declares the bindings and the
@@ -10,7 +9,6 @@ export interface Env {
   // Bindings.
   DB: D1Database;
   BUCKET: R2Bucket;
-  RUN_QUEUE: Queue<RunMessage>;
 
   // Public variables (wrangler.jsonc "vars").
   APP_URL?: string;

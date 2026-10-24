@@ -399,7 +399,6 @@ export interface InstanceProjectMember {
   // agent's handle, not one of its own.
   username: string | null;
   image: string | null;
-  isAgent: boolean;
   role: 'owner' | 'member';
   roleId: number | null;
   roleName: string | null;
@@ -627,7 +626,6 @@ export async function getInstanceProject(
         email: m.email,
         username: m.username,
         image: m.image,
-        isAgent: m.isAgent,
         role: m.role,
         roleId: m.roleId,
         roleName: m.roleName,

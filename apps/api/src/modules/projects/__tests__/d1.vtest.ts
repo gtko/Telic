@@ -91,7 +91,7 @@ describe('deleteProject', () => {
       columnId: s.columnIds[0],
       title: 'gone',
     });
-    await deleteProject(t.rt, s.projectId);
+    await deleteProject(t.db, s.projectId);
     expect(await t.db.select().from(project).where(eq(project.id, s.projectId))).toHaveLength(0);
     expect(await t.db.select().from(issue).where(eq(issue.id, row.id))).toHaveLength(0);
     expect(

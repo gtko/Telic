@@ -2,7 +2,6 @@ import { likeText } from '#modules/issues/sql-helpers';
 import {
   type Db,
   aiAgent,
-  chatAttachment,
   documentAsset,
   initiative,
   initiativeAttachment,
@@ -43,8 +42,6 @@ import { projectAccess, type AccessVia } from '#shared/workspace-roles';
 import { toMemberContext, type MemberRole } from '#modules/members/service';
 import { workspaceGrants } from '#modules/workspaces/service';
 import { assertSeatFree } from '#modules/teams/service';
-import type { AgentRuntime } from '#modules/agents/core/runtime/bindings';
-import { deleteThreadsWhere } from '#modules/agents/core/runtime/memory';
 import { getProjectDefaults } from '#modules/settings/service';
 import { getDefaultRoleId } from '#modules/roles/service';
 import { dropUnusedTeamMembership } from '#modules/scim/reconcile';
@@ -819,12 +816,8 @@ export async function setSubtaskAutomationSettings(
 // actions, which in turn cascade to their own dependents (an issue's labels, field
 // values/options, attachments, and activity; a custom field's values). The
 // issue.column_id foreign key is NO ACTION, checked at end of statement — both the
-// issues and their columns are deleted by the same cascade, so it is satisfied. The
-// conversation threads of the project's agents are deleted first, since they live
-// outside those cascades.
-export async function deleteProject(rt: AgentRuntime, projectId: number): Promise<void> {
-  const { db } = rt;
-  await deleteThreadsWhere(rt, { projectId });
+// issues and their columns are deleted by the same cascade, so it is satisfied.
+export async function deleteProject(db: Db, projectId: number): Promise<void> {
   // A team membership the SCIM reconciliation granted stands on the project
   // memberships it granted with it, and no group change follows the delete to re-check
   // it, so the members are read while they still exist and re-checked afterwards.
@@ -835,16 +828,12 @@ export async function deleteProject(rt: AgentRuntime, projectId: number): Promis
     .where(and(eq(projectMember.projectId, projectId), eq(projectMember.source, 'scim')));
   // The asset keys are read and the project deleted in one atomic batch, so a file added
   // meanwhile either is listed here or loses its foreign key and cleans itself up.
-  const [issueAssets, chatAssets, documentAssets, initiativeAssets] = await db.batch([
+  const [issueAssets, documentAssets, initiativeAssets] = await db.batch([
     db
       .select({ s3Key: issueAttachment.s3Key })
       .from(issueAttachment)
       .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
       .where(eq(issue.projectId, projectId)),
-    db
-      .select({ s3Key: chatAttachment.s3Key })
-      .from(chatAttachment)
-      .where(eq(chatAttachment.projectId, projectId)),
     db
       .select({ s3Key: documentAsset.s3Key })
       .from(documentAsset)
@@ -857,7 +846,7 @@ export async function deleteProject(rt: AgentRuntime, projectId: number): Promis
       .where(eq(initiative.projectId, projectId)),
     db.delete(project).where(eq(project.id, projectId)),
   ]);
-  const assetKeys = [...issueAssets, ...chatAssets, ...documentAssets, ...initiativeAssets].map(
+  const assetKeys = [...issueAssets, ...documentAssets, ...initiativeAssets].map(
     (asset) => asset.s3Key,
   );
   await deleteObjects(assetKeys);

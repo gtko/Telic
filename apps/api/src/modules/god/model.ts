@@ -244,7 +244,6 @@ export const InstanceProjectDetailResponse = t.Composite([
         email: t.String(),
         username: t.Nullable(t.String()),
         image: t.Nullable(t.String()),
-        isAgent: t.Boolean(),
         role: t.UnionEnum(['owner', 'member']),
         roleId: t.Nullable(t.Number()),
         roleName: t.Nullable(t.String()),

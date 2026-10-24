@@ -5,11 +5,10 @@ import {
   teamRole,
   projectColumn,
   user,
-  aiAgent,
   userPreference,
   type Db,
 } from '@repo/db';
-import { and, desc, eq, like, isNotNull, isNull, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, like, notExists, or, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { DEFAULT_TIMEZONE } from '#modules/user-preferences/service';
 import {
@@ -37,8 +36,7 @@ export interface MemberRow {
   userId: string;
   name: string;
   email: string;
-  // The handle they are mentioned by, @username. An agent's bot user is written by
-  // a direct insert and never gets one of its own, so it carries the agent's handle.
+  // The handle they are mentioned by, @username.
   username: string | null;
   // The zone this member reads timestamps in. Falls back to the same default as
   // their preferences do while they have not chosen one.
@@ -51,10 +49,6 @@ export interface MemberRow {
   roleName: string | null;
   // What this member does in the project, free text set by an owner. Empty when unset.
   description: string;
-  // True when this member is an AI agent's bot user (has an ai_agent row). An agent
-  // joins by agent creation or from this list rather than by an invite, and its role
-  // in the project is set here like a person's.
-  isAgent: boolean;
   source: MemberSource;
   createdAt: string;
 }
@@ -67,9 +61,6 @@ export interface MemberCandidate {
   email: string;
   username: string | null;
   image: string | null;
-  // True when this candidate is an AI agent's bot user. Its email is an internal
-  // address nobody reads, so the picker marks the agent rather than showing it.
-  isAgent: boolean;
 }
 
 // A member's effective access in a project: the owner/member flag plus the
@@ -200,9 +191,7 @@ export async function listMemberContexts(
   return new Map(rows.map((r) => [r.userId, toMemberContext(r.role as MemberRole, r.permissions)]));
 }
 
-// A candidate an issue can be assigned to: a project member (a real user) or an
-// AI agent (its bot user). Both are `user` rows, so assignment and authorship use
-// user.id uniformly; `kind` lets the UI group "Members" and "AI Agents".
+// A candidate an issue can be assigned to: a project member.
 export interface AssigneeCandidate {
   userId: string;
   name: string;
@@ -210,18 +199,9 @@ export interface AssigneeCandidate {
   // The handle they are mentioned by, @username. Null for a member who has none.
   username: string | null;
   image: string | null;
-  kind: 'member' | 'agent';
-  agentKind: 'external' | 'internal' | null;
-  // For a member: their owner/member flag and their project description, so callers
-  // (the agent tool) can pick who to tag. Null for an agent.
-  role: MemberRole | null;
-  description: string | null;
-  // The user an 'owner'-scoped external agent works for: only their runs reach its
-  // runner, so delegating it to anyone else does nothing. Null for everyone else.
-  restrictedToUserId: string | null;
-  // Whether @-mentioning this agent starts a run. Null for a person, whom a mention
-  // always reaches as a notification.
-  respondsToMention: boolean | null;
+  // Their owner/member flag and their project description, so callers can pick who to tag.
+  role: MemberRole;
+  description: string;
   canReadWorkItems: boolean;
 }
 
@@ -229,95 +209,48 @@ export async function listAssigneeCandidates(
   db: Db,
   projectId: number,
 ): Promise<AssigneeCandidate[]> {
-  const [memberRows, agentRows] = await Promise.all([
-    db
-      .select({
-        userId: projectMember.userId,
-        name: user.name,
-        email: user.email,
-        username: user.username,
-        image: user.image,
-        role: projectMember.role,
-        permissions: teamRole.permissions,
-        description: projectMember.description,
-      })
-      .from(projectMember)
-      .innerJoin(user, eq(user.id, projectMember.userId))
-      // An agent's bot user also holds a project_member row (that is how it gets its
-      // permissions). It is listed below as kind 'agent', so it is excluded here to
-      // keep the member candidates real people only. Same agent test as listMembers.
-      .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
-      .leftJoin(teamRole, eq(teamRole.id, projectMember.roleId))
-      .where(and(eq(projectMember.projectId, projectId), isNull(aiAgent.id))),
-    db
-      .select({
-        userId: aiAgent.userId,
-        name: user.name,
-        email: user.email,
-        username: aiAgent.username,
-        image: user.image,
-        agentKind: aiAgent.kind,
-        ownerUserId: aiAgent.ownerUserId,
-        runnerScope: aiAgent.runnerScope,
-        triggerOnMention: aiAgent.triggerOnMention,
-      })
-      .from(aiAgent)
-      .innerJoin(user, eq(user.id, aiAgent.userId))
-      // The agents working in the project: the ones its member list holds. An agent of
-      // the team that is not a member is not offered, because the API refuses it.
-      .innerJoin(
-        projectMember,
-        and(eq(projectMember.userId, aiAgent.userId), eq(projectMember.projectId, projectId)),
-      ),
-  ]);
-  const members: AssigneeCandidate[] = memberRows.map((r) => {
-    const context = toMemberContext(r.role as MemberRole, r.permissions);
-    return {
-      userId: r.userId,
-      name: r.name,
-      email: r.email,
-      username: r.username,
-      image: r.image,
-      kind: 'member',
-      agentKind: null,
-      role: r.role as MemberRole,
-      description: r.description,
-      restrictedToUserId: null,
-      respondsToMention: null,
-      canReadWorkItems:
-        context.role === 'owner' || hasPermission(context.permissions, 'work_items', 'read'),
-    };
-  });
-  const agents: AssigneeCandidate[] = agentRows.map((r) => ({
-    userId: r.userId,
-    name: r.name,
-    email: r.email,
-    username: r.username,
-    image: r.image,
-    kind: 'agent',
-    agentKind: r.agentKind as 'external' | 'internal',
-    role: null,
-    description: null,
-    restrictedToUserId: r.runnerScope === 'owner' ? r.ownerUserId : null,
-    respondsToMention: r.triggerOnMention,
-    canReadWorkItems: false,
-  }));
-  return [...members, ...agents].sort((a, b) => a.name.localeCompare(b.name));
+  const memberRows = await db
+    .select({
+      userId: projectMember.userId,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      image: user.image,
+      role: projectMember.role,
+      permissions: teamRole.permissions,
+      description: projectMember.description,
+    })
+    .from(projectMember)
+    .innerJoin(user, eq(user.id, projectMember.userId))
+    .leftJoin(teamRole, eq(teamRole.id, projectMember.roleId))
+    .where(eq(projectMember.projectId, projectId));
+  return memberRows
+    .map((r) => {
+      const context = toMemberContext(r.role as MemberRole, r.permissions);
+      return {
+        userId: r.userId,
+        name: r.name,
+        email: r.email,
+        username: r.username,
+        image: r.image,
+        role: r.role as MemberRole,
+        description: r.description,
+        canReadWorkItems:
+          context.role === 'owner' || hasPermission(context.permissions, 'work_items', 'read'),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
-
-// Which members a list asks for: everyone, the people, or the AI agents' bot users.
-export type MemberKind = 'all' | 'human' | 'agent';
 
 // The filters of a member list. The search term is matched against the name, the
 // address and the handle — the three the list shows.
 export interface MemberFilters {
   search?: string;
-  kind?: MemberKind;
 }
 
 // Filters on the joined user and agent rows alone, so any member query that joins both
 // can reuse it.
-export function matchesFilters({ search, kind }: MemberFilters) {
+export function matchesFilters({ search }: MemberFilters) {
   const term = search?.trim();
   return and(
     term
@@ -325,11 +258,8 @@ export function matchesFilters({ search, kind }: MemberFilters) {
           like(user.name, `%${term}%`),
           like(user.email, `%${term}%`),
           like(user.username, `%${term}%`),
-          like(aiAgent.username, `%${term}%`),
         )
       : undefined,
-    kind === 'human' ? isNull(aiAgent.id) : undefined,
-    kind === 'agent' ? isNotNull(aiAgent.id) : undefined,
   );
 }
 
@@ -343,7 +273,6 @@ async function countMembers(
     .select({ count: sql<number>`count(*)` })
     .from(projectMember)
     .innerJoin(user, eq(user.id, projectMember.userId))
-    .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
     .where(and(eq(projectMember.projectId, projectId), matchesFilters(filters)));
   return rows[0]?.count ?? 0;
 }
@@ -373,14 +302,11 @@ function selectMembers(db: Db, projectId: number, filters: MemberFilters, order:
       roleName: teamRole.name,
       description: projectMember.description,
       source: projectMember.source,
-      agentId: aiAgent.id,
-      agentUsername: aiAgent.username,
       createdAt: projectMember.createdAt,
     })
     .from(projectMember)
     .innerJoin(user, eq(user.id, projectMember.userId))
     .leftJoin(teamRole, eq(teamRole.id, projectMember.roleId))
-    .leftJoin(aiAgent, eq(aiAgent.userId, projectMember.userId))
     .leftJoin(userPreference, eq(userPreference.userId, projectMember.userId))
     .where(and(eq(projectMember.projectId, projectId), matchesFilters(filters)))
     .orderBy(...memberOrderBy(order));
@@ -393,14 +319,13 @@ function mapMembers(rows: SelectedMember[]): MemberRow[] {
     userId: r.userId,
     name: r.name,
     email: r.email,
-    username: r.username ?? r.agentUsername,
+    username: r.username,
     image: r.image,
     timezone: r.timezone ?? DEFAULT_TIMEZONE,
     role: r.role as MemberRole,
     roleId: r.roleId,
     roleName: r.roleName,
     description: r.description,
-    isAgent: r.agentId !== null,
     source: r.source as MemberSource,
     createdAt: iso(r.createdAt),
   }));
@@ -476,13 +401,10 @@ export async function listMemberCandidates(
       name: user.name,
       email: user.email,
       username: user.username,
-      agentId: aiAgent.id,
-      agentUsername: aiAgent.username,
       image: user.image,
     })
     .from(teamMember)
     .innerJoin(user, eq(user.id, teamMember.userId))
-    .leftJoin(aiAgent, eq(aiAgent.userId, teamMember.userId))
     .where(
       and(
         eq(teamMember.teamId, teamId),
@@ -504,9 +426,8 @@ export async function listMemberCandidates(
     userId: r.userId,
     name: r.name,
     email: r.email,
-    username: r.username ?? r.agentUsername,
+    username: r.username,
     image: r.image,
-    isAgent: r.agentId !== null,
   }));
 }
 

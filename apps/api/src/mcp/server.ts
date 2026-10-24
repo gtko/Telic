@@ -1,6 +1,5 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { agentTeam } from '#modules/agents/core/service';
 import { listTeams } from '#modules/teams/service';
 import type { Db } from '@repo/db';
 import type { McpApp } from './types';
@@ -16,13 +15,9 @@ const TEAM_PARAM = 'teamId';
 // The team the caller's tool calls act in, or null when they have to name one.
 //
 // A client knows projects, not teams, so the team is resolved from the key rather
-// than asked for: an agent key acts in the team its agent belongs to, and a person
-// with a single team acts in that one. A person in several teams names the team on
-// each call. It is never resolved from projectKey — an agent has to be creatable in
-// a team that holds no project.
+// than asked for: a person with a single team acts in that one. A person in several
+// teams names the team on each call.
 async function callerTeam(db: Db, userId: string): Promise<number | null> {
-  const ofAgent = await agentTeam(db, userId);
-  if (ofAgent !== null) return ofAgent;
   const teams = await listTeams(db, userId, { mcpOnly: true });
   return teams.length === 1 ? teams[0].id : null;
 }
