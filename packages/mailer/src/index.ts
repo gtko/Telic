@@ -8,6 +8,29 @@
 
 const HTTP_TIMEOUT_MS = 15_000;
 
+// Legacy stored shape. SMTP has no transport on Workers (no sockets): these types only
+// keep configs and DTOs written before the Resend-only switch readable. Nothing sends
+// through them.
+export type SmtpAuth = 'password' | 'microsoft365';
+
+export interface MicrosoftOAuthConfig {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface SmtpConfig {
+  enabled: boolean;
+  host: string;
+  port: number | null;
+  encryption: 'none' | 'ssl' | 'tls';
+  username: string;
+  password: string;
+  timeout: number | null;
+  auth?: SmtpAuth;
+  oauth?: MicrosoftOAuthConfig;
+}
+
 export interface ResendConfig {
   enabled: boolean;
   apiKey: string;

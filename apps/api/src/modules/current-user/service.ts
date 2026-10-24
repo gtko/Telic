@@ -1,10 +1,10 @@
 import { eq } from 'drizzle-orm';
-import { aiAgent, db, user, userPreference } from '@repo/db';
+import { aiAgent, user, userPreference, type Db } from '@repo/db';
 import { iso } from '#shared/lib';
 import type { SessionUser } from '#shared/auth-context';
 import { DEFAULT_TIMEZONE } from '#modules/user-preferences/service';
 
-export async function getCurrentUser(account: SessionUser) {
+export async function getCurrentUser(db: Db, account: SessionUser) {
   const [row] = await db
     .select({
       agentId: aiAgent.id,

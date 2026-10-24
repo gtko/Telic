@@ -464,8 +464,7 @@ export async function ensurePersonalWorkspace(
   // 0 after a statement that wrote no row). This replaces a row lock held over the read.
   // drizzle's batch takes query builders only, so the two statements go to the D1 binding
   // directly: its batch is the same atomic unit.
-  // The typed Db has no $client in drizzle 0.45; the D1 driver sets it at runtime.
-  const client = (db as unknown as { $client: D1Database }).$client;
+  const client = db.$client;
   await client.batch([
     client
       .prepare(

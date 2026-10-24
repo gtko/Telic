@@ -8,7 +8,9 @@ export function createDb(binding: D1Database) {
   return drizzle(binding, { schema });
 }
 
-export type Db = DrizzleD1Database<typeof schema>;
+// `$client` is the D1 binding the driver was built on; drizzle sets it at runtime, and it is
+// what `.batch()` of raw prepared statements needs.
+export type Db = DrizzleD1Database<typeof schema> & { $client: D1Database };
 
 // What a function that reads or writes takes. D1 has no interactive transactions: several
 // writes that must land together go through `db.batch([...])`, which D1 runs atomically,
