@@ -1,13 +1,22 @@
 # worker — rules
 
-Standalone Bun process (own Dockerfile, separate from `apps/api`) that drains a
-few background queues: webhook delivery, notification delivery, agent
-scheduling, and source imports. See root `AGENTS.md`.
+Cloudflare Worker (`telic-worker`, separate from `apps/api`) that drains a few
+background queues: webhook delivery, notification delivery, agent scheduling, and
+source imports. See root `AGENTS.md`.
+
+## Entry point
+
+`src/worker.ts` exports `scheduled` and `queue`. A Cron Trigger runs every minute: it
+sends the due webhook deliveries inline, queues the due agent schedules, and sends a
+wake-up message to the `telic-jobs` Queue when notifications or imports are due. The
+Queue consumer (`runJob`) runs the heavy jobs. The message is only a wake-up: the
+consumer claims the work itself, so a duplicate or late message is harmless. Without
+a queue binding (a local run) the cron runs the job inline.
 
 ## What it does
 
-- Polls `webhook_delivery` for due `pending` rows, claims a batch with
-  `FOR UPDATE SKIP LOCKED`, posts each to its webhook URL, records the outcome.
+- Reads `webhook_delivery` for due `pending` rows, claims a batch with a lease,
+  posts each to its webhook URL, records the outcome.
 - Queues an `agent_run` row for every due `agent_schedule`.
 - Signs every request: `X-Itsaplan-Signature: t=<ts>,v1=<hmac-sha256>` over
   `${ts}.${body}` with the webhook's `secret`. Plus `X-Itsaplan-Event`,
@@ -24,10 +33,11 @@ scheduling, and source imports. See root `AGENTS.md`.
 
 ## Source imports
 
-`import-worker.ts` polls `import_job` for a due `pending` row (`import-store.ts`,
-same claim-with-lease shape as `webhook_delivery`) and advances it by one bounded
-chunk of work per tick — a large import interleaves across many ticks rather than
-running to completion in one.
+`import-worker.ts` claims a due `pending` `import_job` row (`import-store.ts`, same
+claim-with-lease shape as `webhook_delivery`) and advances it by one bounded chunk
+of work per tick. A large import interleaves across many ticks rather than running
+to completion in one. A tick that leaves work re-arms the job and sends another
+wake-up message.
 
 - `canonical.ts` — the source-independent shape an adapter produces
   (`CanonicalIssue`, `CanonicalState`, ...). Plain types, no logic.
@@ -81,8 +91,8 @@ running to completion in one.
   `getStorageSettings`/`mimeAllowed`) before the request; the project's
   storage quota (`@repo/db`'s `projectStoredBytes`, `@repo/storage`'s
   `putObject`/`attachmentObjectKey`) is checked before the upload and once
-  more inside the same advisory lock (`lockAttachmentStorage`) an interactive
-  upload takes, so the two never both pass a check that only one of them can
+  more by the single conditional statement (`reserveStorage`) an interactive
+  upload uses, so the two never both pass a check that only one of them can
   actually fit. A download that answers anything but 2xx (an error page, a
   redirect) is refused before its body is read, and one that runs past the
   size limit is cut off there (`attachment-download.ts`): Linear reports no
@@ -98,8 +108,8 @@ running to completion in one.
   row names its project; the credentials come from the team that owns it and from
   the instance config. Nothing about the recipient or the provider is passed in
   from outside.
-- **No migrations here.** The api applies them on startup; the worker only uses
-  existing tables and tolerates their brief absence (a tick logs and retries).
+- **No migrations here.** `wrangler d1 migrations apply` runs them before the deploy;
+  the worker only uses existing tables.
 - **At-least-once delivery.** Duplicates are possible (a 2xx whose ACK is lost);
   the `event_id` is stable across retries so receivers deduplicate. Never mint a
   new id per attempt.
@@ -107,7 +117,7 @@ running to completion in one.
   `agent_run` row; the api drains that queue, where the agent runtime and the model
   credentials live.
 - **Claim leases, not a status flag.** Claiming pushes `next_attempt_at` forward
-  by `WEBHOOK_LEASE_SECONDS`; a crashed delivery is reclaimed after the lease. Keep
+  by `leaseSeconds`; a crashed delivery is reclaimed after the lease. Keep
   the lease comfortably larger than `WEBHOOK_TIMEOUT_MS`.
 - **Pure logic stays dependency-free.** `backoff.ts`, `signature.ts`, and
   `isRetryableStatus` import nothing from `@repo/db`, so unit tests run without a
@@ -125,28 +135,24 @@ running to completion in one.
 
 ## Config
 
-All via env with defaults (see `src/config.ts`): `WEBHOOK_POLL_INTERVAL_MS`,
+Tuning values are optional Worker variables with defaults (see `src/config.ts`):
 `WEBHOOK_BATCH_SIZE`, `WEBHOOK_TIMEOUT_MS`, `WEBHOOK_MAX_ATTEMPTS`,
 `WEBHOOK_DISABLE_THRESHOLD`, `WEBHOOK_LEASE_SECONDS`, `WEBHOOK_CLEANUP_DAYS`,
-`WEBHOOK_CLEANUP_EVERY_TICKS`. Only `DATABASE_URL` is required for webhook
-delivery. Notification delivery also needs `APP_ENCRYPTION_KEY` (the same value the
-api uses) to read the stored provider credentials, and so does source import (it
-decrypts the stored source credential with it too). `IMPORT_POLL_INTERVAL_MS` tunes
-the import worker's poll interval. The Attachments phase needs the same `S3_*`
-variables (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
-`S3_REGION`, `S3_FORCE_PATH_STYLE`) the api reads for its own uploads — both
-processes write to the same bucket.
+`WEBHOOK_CLEANUP_EVERY_MINUTES`. Bindings: `DB` (D1), `BUCKET` (R2, import
+attachments, the same bucket as the api), `JOBS` (the Queue). The secret
+`APP_ENCRYPTION_KEY` (the same value the api uses) decrypts the stored provider and
+import credentials: `wrangler secret put APP_ENCRYPTION_KEY`.
 
 ## Tests
 
-`src/__tests__/unit/` covers the pure logic with no database. `src/__tests__/integration/`
-covers what needs one — the notification send reads its config from the database — and
-runs against the test DB (`bun run test` loads `.env.test`; the Docker gate runs it
-after the api and bot suites). It inserts the rows the api writes in production, the
-way `apps/bot` does; there is no api to call.
+`vitest run`, two projects. `unit` (`*.test.ts`) covers the pure logic with no
+database. `d1` (`*.vtest.ts`) covers what needs one: the test starts a Miniflare D1,
+applies the migrations and inserts the rows the api writes in production, the way
+`apps/bot` does. There is no api to call.
 
 ## Run
 
-- Dev: `bun run dev` at the repo root runs it under turbo alongside api + web
-  (watch mode, loads root `.env`).
-- Prod: the `worker` service in `docker-compose.yml`.
+- Dev: `bun run dev` at the repo root runs `wrangler dev --test-scheduled --local`
+  alongside the other apps. Trigger a cron run with
+  `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"` against the port wrangler prints.
+- Prod: `wrangler deploy`, done by `.github/workflows/deploy.yml`.

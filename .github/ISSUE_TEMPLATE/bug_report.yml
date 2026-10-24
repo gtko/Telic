@@ -33,8 +33,8 @@ body:
     attributes:
       label: How are you running it
       options:
-        - Self-hosted (Docker Compose)
-        - Local development (bun run dev)
+        - Cloudflare deployment
+        - Local development (wrangler dev)
         - Other
     validations:
       required: true
@@ -43,7 +43,7 @@ body:
     id: version
     attributes:
       label: Version or commit
-      description: Image tag, release tag, or commit SHA.
+      description: Release tag, or commit SHA.
     validations:
       required: true
 
@@ -51,7 +51,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Browser and OS for frontend issues. Docker and Postgres versions for server issues.
+      description: Browser and OS for frontend issues. Wrangler version for server issues.
 
   - type: textarea
     id: logs

@@ -2,7 +2,7 @@
 
 Procédure de bascule des données de production de Postgres vers Cloudflare D1. Le script
 est `scripts/pg-to-d1/main.ts`. Le schéma cible est celui de `packages/db/drizzle-d1/` (baseline
-`0000_*.sql`, 103 tables), le mapping des types est décrit dans `packages/db/PORTING_NOTES.md`.
+`0000_*.sql`, 103 tables), le mapping des types est décrit dans `docs/dev/d1-notes.md`.
 
 Ce document décrit ce que fait le script et ce qu'il ne fait pas. Les décisions encore ouvertes
 sont listées en fin de document, avant toute bascule.

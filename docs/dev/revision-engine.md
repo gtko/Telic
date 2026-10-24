@@ -45,15 +45,15 @@ The inbox is the one scope that belongs to a person rather than an entity. Clien
 
 | File                                   | What it holds                                            |
 | -------------------------------------- | -------------------------------------------------------- |
-| `packages/db/drizzle/0070_*.sql`       | `bump_rev`, the trigger functions, and their triggers    |
-| `apps/api/src/sync/store.ts`           | the scope names and the read query                       |
-| `apps/api/src/sync/routes.ts`          | `GET /sync/rev`                                          |
+| `packages/db/drizzle-d1/0001_triggers.sql` | the SQLite triggers that bump the counters          |
+| `apps/api/src/modules/sync/service.ts` | the scope names and the read query                       |
+| `apps/api/src/modules/sync/index.ts`   | `GET /sync/rev`                                          |
 | `apps/web/src/context/syncContext.tsx` | the one poll every screen shares                         |
 | `apps/web/src/hooks/useLiveRefresh.ts` | what a screen calls                                      |
 | `apps/web/src/utils/revScopes.ts`      | the scope names on the client                            |
 
 Nothing in the application writes a counter. The triggers do, which means a write from the
-worker, the bot, an MCP tool or a hand-typed `UPDATE` in psql moves the marker as surely as a
+worker, the bot, an MCP tool or a hand-typed `UPDATE` in `wrangler d1 execute` moves the marker as surely as a
 write from the API.
 
 ## Using it in a screen
@@ -77,7 +77,7 @@ select r.scope, r.rev, m.role, pr.permissions
 from revision r
 join project_member m on m.project_id = r.project_id and m.user_id = $userId
 left join team_role pr on pr.id = m.role_id
-where r.scope = any($scopes)
+where r.scope in (...scopes)
 ```
 
 The join is also the access check. Ask for a project you are not a member of and no row comes
@@ -94,54 +94,59 @@ be allowed to read.
 One line in a migration. Say reactions on issues get their own table:
 
 ```sql
-CREATE TRIGGER issue_reaction_rev AFTER INSERT OR UPDATE OR DELETE ON issue_reaction
-  FOR EACH ROW EXECUTE FUNCTION rev_issue_child('issue_id', 'detail');
+-- One trigger per operation (_i, _u, _d), each with the inline bump:
+CREATE TRIGGER issue_reaction_rev_i AFTER INSERT ON issue_reaction FOR EACH ROW
+BEGIN
+  INSERT INTO revision (scope, project_id, rev)
+    SELECT 'issue:' || NEW.issue_id, (SELECT project_id FROM issue WHERE id = NEW.issue_id), 1
+    WHERE EXISTS (SELECT 1 FROM issue WHERE id = NEW.issue_id)
+    ON CONFLICT (scope) DO UPDATE SET rev = rev + 1;
+END;
 ```
 
-The first argument is the column holding the issue id. The second says who shows the change:
-`board` if the board does, `detail` if only the issue screen does. The issue screen already
+Copy the three `issue_label_rev_*` triggers. Change the table and the issue id column. Keep the
+`board:` statement when the board shows the change; leave it out when only the issue screen does. The issue screen already
 watches `issue:<id>`, so reactions start arriving with no client change at all.
 
-A table that reaches its owner through another table needs its own function next to the ones in
-the migration. `rev_checklist_item()` is the example to copy: it goes from
-`issue_checklist_item` to `issue_checklist` to `issue`.
+A table that reaches its owner through another table joins through it in the trigger body. The
+`issue_checklist_item` triggers are the example to copy: they go from `issue_checklist_item` to
+`issue_checklist` to `issue`.
 
 ## Adding a new scope
 
 A new kind of scope touches two more places: the entry in `scopeKind` in
-`apps/api/src/sync/store.ts`, which names it, makes the API accept it, and says which resource a
+`apps/api/src/modules/sync/service.ts`, which names it, makes the API accept it, and says which resource a
 watcher must be allowed to read, and the mirror in `apps/web/src/utils/revScopes.ts`.
 `packages/db/AGENTS.md` keeps the same recipe next to the schema.
 
-## Four rules before you touch the triggers
+## Rules before you touch the triggers
 
-**Take the scopes in one order everywhere: board, then issue, then initiative.** Opposite orders
-deadlock. Two counters of the same kind — the initiatives an issue moved between — go in id
-order, for the same reason.
+**Triggers are per operation.** A logical trigger `x` is `x_i`, `x_u` and `x_d`. There are no trigger
+functions: each trigger inlines the bump. `packages/db/src/__tests__/triggers.test.ts` counts them.
 
-**`revision.project_id` has no foreign key on purpose.** Deleting a project cascades into its
-issues, and each of those deletes inserts a counter row for a project on its way out — a foreign
-key would abort the delete. A deferred constraint trigger on `project` removes the leftovers at
-commit, after the cascades.
+**`revision.project_id` has no foreign key on purpose.** Deleting a project cascades into its issues,
+and each of those deletes inserts a counter row for a project on its way out. `project_rev_cleanup`, an
+`AFTER DELETE ON project` trigger, removes the leftovers after the cascades. Bumps on delete paths are
+guarded with `EXISTS (project)`.
 
-**A child trigger does nothing when its issue is already gone.** Its rows cascade away after the
-issue and can no longer resolve a project; the issue's own delete already moved the board counter
-and dropped `issue:<id>`.
+**A child trigger does nothing when its issue is already gone.** Its rows cascade away after the issue
+and can no longer resolve a project; the issue's own delete already moved the board counter and dropped
+`issue:<id>`.
 
-**Bulk writes bump a counter many times, and that is fine.** Nobody reads the value, only the
-change.
+**A table rebuild drops the triggers of that table.** A migration that rebuilds a table must re-create
+them; see `docs/dev/d1-notes.md`.
+
+**Bulk writes bump a counter many times, and that is fine.** Nobody reads the value, only the change.
 
 ## Why it works this way
 
 **A counter, not a log of changes.** The client only needs to know that something changed.
-Answering "what changed since revision X" would mean commit-ordering guarantees (`xid8` with
-`pg_snapshot_xmin`), soft deletes, and patch application in the browser. The marker is opaque, so
+Answering "what changed since revision X" would mean commit-ordering guarantees (commit-ordered
+versions), soft deletes, and patch application in the browser. The marker is opaque, so
 that can still be added later.
 
 **Triggers, not calls from the application.** A counter cannot be forgotten in a new code path,
 and writes that never pass through the API still move it.
 
-**Polling, not a push stream.** `NOTIFY` takes a lock on every commit that carries one, which
-serializes all transactions on the instance; it stops working behind PgBouncer in transaction
-pooling mode, and drops notifications on a broken connection, so a poll would be needed anyway.
-One small request per tab every 8 seconds is cheap enough.
+**Polling, not a push stream.** A Worker holds no open connection between requests, and a push
+stream would need a Durable Object. One small request per tab every 8 seconds is cheap enough.

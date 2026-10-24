@@ -24,7 +24,7 @@ behaviour made right (patch). See CONTRIBUTING.md.
 - [ ] Developed with an AI agent: `tidy`, `code-review` and `security-audit` from `.agents/skills/` ran on the new code
 - [ ] Tests added or updated for the changed behaviour
 - [ ] Database schema changed: migration generated with `bun run db:generate` and committed
-- [ ] New environment variables documented in `.env.example`
+- [ ] New environment variables declared in the app's `Env` type, and in `.dev.vars.example` or `wrangler.jsonc`
 - [ ] Docs updated (`README.md` or the relevant `AGENTS.md`)
 
 ## Screenshots

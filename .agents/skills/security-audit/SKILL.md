@@ -107,7 +107,7 @@ Ordered by how often they appear in real advisories.
 ### 10. Limits and deployment
 
 - One crafted request: unbounded page size, upload size, archive expansion, ReDoS. Request volume is out of scope.
-- Compose, Helm, Dockerfiles: published DB or storage ports, default secrets.
+- `wrangler.jsonc` files: public bindings, secrets or tokens committed in `vars`.
 
 ### 11. Backdoors and supply chain
 
@@ -136,7 +136,7 @@ A diff or a few files: audit alone. A larger target: fan out.
    | auth | 2, 6 | better-auth config and plugins, credential checks, inbound webhooks, CORS, redirects |
    | outbound-files | 3, 5, 7 | outbound connections, uploads and storage, HTML rendering |
    | exec-data | 4, 8 | raw SQL, code and process execution, runner, decrypt calls and responses |
-   | deploy | 10 | compose files, Helm chart, Dockerfiles |
+   | deploy | 10 | `wrangler.jsonc` files, deploy workflow |
    | backdoor | 11 | migrations, `package.json` files and lockfile, `.github/workflows`, binary files, the whole target for hidden paths and obfuscation |
 
 3. Brief each subagent with: the target, its lane, and the instruction to read Rules, Actors, Method, and its classes from this file. It searches its surface itself, writes no tests or code, and reports nothing outside its classes. It returns candidates, strongest first: class, actor, path with `file:line`, impact, and where it searched for the guard. Nothing found → what it covered.

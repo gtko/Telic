@@ -1,8 +1,8 @@
 # AGENTS.md
 
-Bun + Turborepo monorepo. Backend **Elysia**, frontend **Next.js (SSR)** + **shadcn/ui**,
-auth **better-auth**, ORM **Drizzle** + PostgreSQL. Self-hosted with Docker Compose or the
-Helm chart.
+Bun + Turborepo monorepo that runs on Cloudflare: Workers, D1, R2, and Queues. Backend
+**Elysia**, frontend **Next.js (SSR)** through OpenNext + **shadcn/ui**, auth **better-auth**,
+ORM **Drizzle** over D1 (SQLite). Deployed with `wrangler`.
 
 The most specific `AGENTS.md` for the changed area overrides this file. Every app and some
 packages have one. Each `CLAUDE.md` only points to the `AGENTS.md` next to it.
@@ -67,10 +67,13 @@ docs and comments to describe only the current design.
 
 ## Golden rules
 
-- **Runtime is Bun.** Never npm, yarn, or pnpm. Use `bun install` and `bun run`.
+- **Runtime is Cloudflare Workers.** There is no long-running server process, no Docker, and no
+  self-hosted deployment. Code runs on `workerd` with `nodejs_compat`. Do not use Bun APIs in
+  code that ships to a Worker.
+- **Package manager is Bun.** Never npm, yarn, or pnpm. Use `bun install` and `bun run`.
 - **All code, comments, and strings are in English.**
 - Cross-package imports use the workspace protocol: `"@repo/db": "workspace:*"`. Packages
-  export raw `.ts` (see each package's `exports`). Bun and Next transpile them. No build step.
+  export raw `.ts` (see each package's `exports`). Wrangler and Next bundle them. No build step.
 - Run tasks from the **repo root** through Turborepo: `bun run dev` / `build` / `typecheck`.
 - The pre-commit hook (`lefthook.yml`) runs `eslint --fix` and `prettier --write` on the
   staged files and stages the result again. Never skip it with `--no-verify`.
@@ -78,107 +81,106 @@ docs and comments to describe only the current design.
 ## Layout
 
 ```
-apps/api               Elysia (Bun) — better-auth at /api/auth/*, agent runs         :3000
-apps/web               Next.js App Router, SSR (not SPA) + shadcn + TanStack Query  :3001
-apps/worker            webhook and notification delivery, agent schedules, imports
-apps/bot               Telegram bot, long polling
-packages/db            @repo/db          — Drizzle client, schema, migrations, permission matrix, shared config readers
+apps/api               Elysia on a Worker: better-auth at /api/auth/*, agent runs, cron, run queue   :8787
+apps/web               Next.js App Router, SSR on a Worker through OpenNext, shadcn, TanStack Query  :3001
+apps/worker            Worker: webhook and notification delivery, agent schedules, imports (cron + queue)
+apps/bot               Worker: Telegram bot webhook
+packages/db            @repo/db          — Drizzle client for D1, schema, migrations, permission matrix, shared config readers
 packages/auth          @repo/auth        — better-auth server instance + instance auth settings
 packages/crypto        @repo/crypto      — AES-256-GCM encryption for secrets at rest
-packages/storage       @repo/storage     — S3 client (RustFS in Compose) for attachment bytes, used by api and worker
-packages/mailer        @repo/mailer      — SMTP/Resend transport for outbound email
+packages/storage       @repo/storage     — attachment bytes in R2, used by api and worker
+packages/mailer        @repo/mailer      — Resend transport for outbound email
 packages/net           @repo/net         — SSRF guard for server-side fetches of a supplied URL
+packages/cron          @repo/cron        — the cron expression grammar shared by api and worker
 packages/agent-tools   @repo/agent-tools — tool definitions for the AI agent runtime
 packages/runner        @itsaplan/runner  — CLI that runs an external agent's queued tasks on the operator's own machine
 packages/eslint-config @repo/eslint-config — shared ESLint config
-charts/itsaplan        Helm chart
-scripts/               `bun run setup` and its tests
-dev-scripts/           dev-stack.sh (switch dev/PR backing services), permission-matrix.sh (permission → route table)
+scripts/               pg-to-d1 (one-time data migration), codemod-sqlite
 docs/                  see Docs below
 ```
+
+Each Worker has a `wrangler.jsonc` that declares its bindings:
+
+| Worker         | D1 `DB` | R2 `BUCKET` | Queues                                   | Cron                 |
+| -------------- | ------- | ----------- | ---------------------------------------- | -------------------- |
+| `telic-api`    | yes     | yes         | produces and consumes `telic-agent-runs` | every minute, hourly |
+| `telic-worker` | yes     | yes         | produces and consumes `telic-jobs`       | every minute         |
+| `telic-bot`    | yes     | no          | none                                     | none                 |
+| `telic-web`    | no      | no          | none                                     | none                 |
+
+The database is the D1 database `telic`. The bucket is `telic-attachments`.
 
 Dependency graph: `api → @repo/auth → @repo/db → @repo/crypto`. **The web app never imports
 packages directly.** It talks to the API over HTTP (better-auth client + fetch).
 
 ## Docs
 
-| Doc                                                                                                 | Read when the task touches                                       |
-| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `docs/development.md`                                                                               | local setup, `bun run setup`, running tests, the Docker test gate |
-| `docs/self-hosting.md`                                                                              | the self-hosting compose stack, `.env` for a domain, TLS proxy   |
-| `docs/coolify.md`                                                                                   | `docker-compose.coolify*.yml`                                    |
-| `docs/railway.md`                                                                                   | the Railway template                                             |
-| `docs/helm.md`, `charts/itsaplan/README.md`                                                         | the Helm chart and its values                                    |
-| `docs/runner.md`                                                                                    | `packages/runner` and its agent presets                          |
-| `docs/agent-endpoint.md`                                                                            | external agents that receive tasks on their own HTTPS endpoint   |
-| `docs/mcp-results.md`                                                                               | the shape of MCP tool results (`structuredContent`)              |
-| `docs/importing-from-linear.md`, `docs/dev/linear-import.md`                                        | the Linear import: user guide, implementation                    |
-| `docs/importing-from-plane.md`, `docs/dev/plane-import.md`, `docs/dev/plane-import-source-notes.md` | the Plane import: user guide, implementation, Plane API facts    |
-| `docs/dev/revision-engine.md`                                                                       | live updates: scopes, counters, refetch                          |
-| `docs/dev/i18n.md`                                                                                  | interface languages, the language cookie                         |
+| Doc                                                                                                 | Read when the task touches                                               |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `docs/development.md`                                                                               | local setup, running tests, deploying                                    |
+| `docs/dev/d1-notes.md`                                                                              | SQL, migrations, triggers, D1 limits                                     |
+| `docs/migration-data-pg-to-d1.md`                                                                   | `scripts/pg-to-d1`, the one-time data migration                          |
+| `docs/PORTING_TESTS_TODO.md`, `docs/DB_SIGNATURES.md`                                               | API tests not yet ported to the Workers suite; `db`-first signatures     |
+| `docs/runner.md`                                                                                    | `packages/runner` and its agent presets                                  |
+| `docs/agent-endpoint.md`                                                                            | external agents that receive tasks on their own HTTPS endpoint           |
+| `docs/mcp-results.md`                                                                               | the shape of MCP tool results (`structuredContent`)                      |
+| `docs/importing-from-linear.md`, `docs/dev/linear-import.md`                                        | the Linear import: user guide, implementation                            |
+| `docs/importing-from-plane.md`, `docs/dev/plane-import.md`, `docs/dev/plane-import-source-notes.md` | the Plane import: user guide, implementation, Plane API facts            |
+| `docs/dev/revision-engine.md`                                                                       | live updates: scopes, counters, refetch                                  |
+| `docs/dev/i18n.md`                                                                                  | interface languages, the language cookie                                 |
 
 ## Commands (from root)
 
-| Command                   | Purpose                                                            |
-| ------------------------- | ------------------------------------------------------------------ |
-| `bun run dev`             | api, web, worker and bot in watch mode (turbo)                     |
-| `bun run build`           | build all apps                                                     |
-| `bun run typecheck`       | tsc in every workspace member, then at the root                    |
-| `bun run lint`            | ESLint across the workspace                                        |
-| `bun run format:check`    | Prettier check (CI runs the same)                                  |
-| `bun run test`            | `scripts/` tests, then every member's suite, one package at a time |
-| `bun run db:generate`     | generate SQL migrations from Drizzle schema                        |
-| `bun run db:migrate`      | apply migrations                                                   |
-| `bun run db:migrate:test` | apply migrations to the test DB (`.env.test`)                      |
-| `bun run db:studio`       | Drizzle Studio on the dev DB                                       |
-| `bun run setup`           | interactive local setup (see `docs/development.md`)                |
-| `bun run auth:generate`   | regenerate better-auth tables → `packages/db/src/schema/auth.ts`   |
+| Command                     | Purpose                                                                    |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `bun run dev`               | api, web, worker and bot locally (turbo; `wrangler dev` for the Workers)   |
+| `bun run build`             | build the apps                                                             |
+| `bun run typecheck`         | tsc in every workspace member, then at the root                            |
+| `bun run lint`              | ESLint across the workspace                                                |
+| `bun run format:check`      | Prettier check (CI runs the same)                                          |
+| `bun run test`              | `scripts/` tests, then every member's suite, one package at a time         |
+| `bun run db:generate`       | generate a D1 migration from the Drizzle schema                            |
+| `bun run db:migrate:local`  | apply migrations to the local D1 (`wrangler d1 migrations apply --local`)  |
+| `bun run db:migrate:remote` | apply migrations to the deployed D1 (`--remote`)                           |
+| `bun run deploy`            | `wrangler deploy` of api, worker and bot, then the web deploy              |
+| `bun run auth:generate`     | regenerate better-auth tables → `packages/db/src/schema/auth.ts`           |
 
-One test file: `cd apps/api && bun test --env-file=../../.env.test <path>`. worker, bot and
-`packages/db` need the same flag. Packages without a database need no flag.
+One test file: `cd apps/api && bunx vitest run <path>`. Same in every member.
+
+## Tests
+
+Tests use **vitest** on a local Miniflare D1 and `workerd`. They are integration tests, not mocks
+of the database.
+
+- `apps/api` has two projects. `workers` runs `tests/**/*.test.ts` inside `workerd` through
+  `@cloudflare/vitest-pool-workers`, with the real D1 binding and the baseline applied per file.
+  `node` runs `src/**/*.vtest.ts` and `src/**/__tests__/d1/**`, with a Miniflare D1 started by
+  the test.
+- `apps/worker` has the projects `unit` (`*.test.ts`) and `d1` (`*.vtest.ts`). `apps/bot` and
+  `packages/*` run plain `*.test.ts`. `apps/web` and `packages/agent-tools` use `bun test`.
+- The suites never run in parallel (`--concurrency=1`).
 
 CI (`.github/workflows/ci.yml`) runs on every pull request: `format:check`, `lint`,
-`typecheck`, an app build, and the Docker test gate (`docker-compose.test.yml`). Do not add a
+`typecheck`, `bun audit`, an app build, and `bun run test` on `ubuntu-latest`. Do not add a
 workflow for a job that an existing workflow already runs.
 
-## Environment
+## Configuration
 
-- api, worker, bot, drizzle, and docker-compose read the root `.env` (a copy of
-  `.env.example`). Bun apps load it with `--env-file=../../.env`. Drizzle loads it with `dotenv` in
-  `drizzle.config.ts`.
-- `apps/web/.env` is **separate**: Next reads env only from its own folder. It holds
-  `API_URL` (same value as the root one) and the legal document URLs. web reads them from its
-  process at **startup**. Never use `NEXT_PUBLIC_*` for them: `next build` inlines those into
-  the bundle, and the image then works for one instance only.
-- Add a new environment variable to `.env.example`. If a service needs it, also add it to the
-  five deploy compose files and to the Helm chart: `values.yaml`,
-  `templates/configmap.yaml` or `templates/secret.yaml`, and the values table in
-  `charts/itsaplan/README.md`.
+- Bindings and public variables are in each app's `wrangler.jsonc`. Nothing secret goes in it.
+- Secrets are set with `wrangler secret put <NAME>`: `BETTER_AUTH_SECRET` and
+  `APP_ENCRYPTION_KEY` for the api, `TELEGRAM_WEBHOOK_SECRET` for the bot. Provider credentials
+  (Resend, the Telegram token) are stored encrypted in D1 and edited in god mode.
+- Local secrets are in `<app>/.dev.vars`, copied from `.dev.vars.example` and git-ignored.
+- Add a new variable to the `Env` type of its app. A secret or a local value also goes in
+  `.dev.vars.example`. A public value goes in `vars` of `wrangler.jsonc`.
+- Never use `NEXT_PUBLIC_*` in `apps/web`: `next build` inlines it into the bundle.
 
-## Deploy stack
+## Deploy
 
-- `docker-compose.dev.yml` holds only the local backing services (Postgres + RustFS). The apps
-  run on the host. The deploy composes do NOT publish the DB port.
-- A deploy stack change usually needs an edit in **all five** of `docker-compose.yml`,
-  `docker-compose.pro.yml`, `docker-compose.coolify.yml`, `docker-compose.coolify-images.yml`,
-  `docker-compose.coolify-pro.yml`, and in the Helm chart.
-- `docker-compose.pro.yml` and `docker-compose.coolify-pro.yml` run the published Pro
-  images: migrate from `vendor/itsaplan/packages/db/src/migrate.ts`, start the api with
-  `./pro-api`. The Helm chart does the same when `pro: true` (`values-pro.yaml`).
-- Never add `image:` to `docker-compose.coolify.yml`. With both `image:` and `build:` Coolify
-  still builds and stops making rollback images.
-- Migrations run as a separate step before the apps start:
-  - Compose: the one-shot `migrate` service. api, worker and bot wait for it.
-  - Helm: the `migrate` init container of the api pods. Worker and bot pods wait in a
-    `wait-for-migrations` init container.
-  - Both run `migrate.ts` from the api image and override the api command, so the api
-    container only starts the server.
-- The api image's own CMD also runs the migrations before the server starts. Deploy targets
-  with no separate step (Railway, a plain `docker run`) need this.
-- `migrate.ts` first dumps the database into the `db-backups` volume. A failed dump stops the
-  run, so no migration runs without a backup. Every run takes a Postgres advisory lock, so
-  runs that start together apply each migration only once.
-- Run exactly one `bot` replica: it uses Telegram long polling.
+- `.github/workflows/deploy.yml` runs on push to `main`. It applies the D1 migrations
+  (`wrangler d1 migrations apply telic --remote`), then deploys the four Workers. It does
+  nothing while the `CLOUDFLARE_API_TOKEN` repository secret is unset.
+- A deployed database is migrated by wrangler only. Never run `migrateD1` on it.
 
 ## Commits
 
@@ -217,21 +219,13 @@ Release config traps:
   (`bun build --target=node`), and its source uses no Bun APIs because the published CLI runs
   on plain Node. Publish it by hand (`npm publish` after a `version` bump). release-please
   versions the application, not this package.
-- New workspace member under `packages/*` or `apps/*`: add `COPY <path>/package.json ./<path>/`
-  to every Dockerfile that installs deps (`apps/api`, `apps/web`, `apps/worker`, `apps/bot`).
-  The install stage copies manifests from an explicit list. A missing line fails
-  `bun install --frozen-lockfile` in the Docker build with
-  `Workspace dependency "@repo/<name>" not found`, while local dev still works.
 - A better-auth config change in `packages/auth` can change its tables. Run
-  `bun run auth:generate`, then `bun run db:generate` and `db:migrate`.
-- Frontend and backend on different domains in prod: adjust cookie `sameSite`/`secure` and
-  `APP_URL` (see `packages/auth/AGENTS.md`).
-- Tests use `bun test`. They are integration tests against a real test Postgres
-  (`.env.test`), not mocks. `apps/api` uses Eden Treaty. Its setup and test-writing rules are
-  in `apps/api/AGENTS.md`. api, bot and worker share one test database, and the api suite
-  truncates every table before each test. So the suites never run in parallel
-  (`--concurrency=1`).
+  `bun run auth:generate`, then `bun run db:generate` and `db:migrate:local`.
+- D1 has no `db.transaction`, no row locks and at most 100 bound parameters per statement. Read
+  `docs/dev/d1-notes.md` before you write SQL.
+- A Worker has no process lifetime. Do not start timers or keep state between requests. Work
+  that must run later goes through a Queue message or a Cron Trigger.
 - `bun --filter` needs the `=` form: `bun --filter='@repo/db' run <script>`. With the space
   form, Bun reads `run` as the script name and fails.
-- Read the comments in `scripts/setup.ts` before you change it. They give the rules that keep
-  the script safe to run again on a live instance.
+- `packages/db/legacy-pg` and `scripts/pg-to-d1` exist only for the one-time Postgres data
+  migration. Do not extend them.

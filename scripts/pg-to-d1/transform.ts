@@ -1,4 +1,4 @@
-// Mapping des types Postgres vers D1 (SQLite), selon packages/db/PORTING_NOTES.md :
+// Mapping des types Postgres vers D1 (SQLite), selon docs/dev/d1-notes.md :
 // timestamp -> epoch ms, date -> texte ISO, jsonb et tableaux -> texte JSON, uuid -> texte,
 // numeric -> real, booléens -> 0/1. La requête Postgres rend déjà chaque valeur sous une forme
 // simple (voir selectExpr) ; ce module la valide et la normalise avant l'écriture.
