@@ -776,7 +776,6 @@ export async function listTeamProjectMembers(
 
   return {
     items: items.map((m) => ({
-      db,
       userId: m.userId,
       name: m.name,
       email: m.email,

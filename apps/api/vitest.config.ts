@@ -35,6 +35,9 @@ export default defineConfig(async () => {
           ],
           test: {
             name: 'workers',
+            // cron-parser is CommonJS and requires luxon, which the Workers test runtime loads without
+            // the CommonJS interop; bundling both in advance gives it the shape it expects.
+            deps: { optimizer: { ssr: { enabled: true, include: ['cron-parser', 'luxon'] } } },
             include: ['tests/**/*.test.ts'],
             // Ported but not yet green: listed in docs/PORTING_TESTS_TODO.md.
             exclude: excluded,

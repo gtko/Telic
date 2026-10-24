@@ -90,7 +90,7 @@ function scimUserConflict(workspaceId: number | null) {
 
 function scimGroupConflict(workspaceId: number | null) {
   return workspaceId === null
-    ? { target: scimGroup.displayName, where: isNull(scimGroup.workspaceId) }
+    ? { target: scimGroup.displayName, targetWhere: isNull(scimGroup.workspaceId) }
     : { target: [scimGroup.workspaceId, scimGroup.displayName] };
 }
 

@@ -2,6 +2,7 @@ import { Elysia } from 'elysia';
 import { env as workerEnv } from 'cloudflare:workers';
 import { createAuth } from '@repo/auth';
 import { createDb, type Db } from '@repo/db';
+import { useR2Bucket } from '@repo/storage';
 import type { Env } from '../env';
 
 // The better-auth instance of the isolate. Building one is not free and it holds nothing but
@@ -31,6 +32,7 @@ export const requestContext = new Elysia({ name: 'request-context' }).derive(
   () => {
     const env = workerEnv as unknown as Env;
     const db = createDb(env.DB);
+    useR2Bucket(env.BUCKET);
     return { env, db, bucket: env.BUCKET, auth: authFor(env, db) };
   },
 );

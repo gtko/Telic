@@ -93,7 +93,6 @@ async function buildScaffold(
     labelGroups,
     // Drop the email — a public page renders names and avatars only.
     assignees: assignees.map((a) => ({
-      db,
       userId: a.userId,
       name: a.name,
       image: a.image,
