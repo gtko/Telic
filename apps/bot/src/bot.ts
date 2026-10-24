@@ -1,16 +1,29 @@
 import { Bot } from 'grammy';
+import type { Db } from '@repo/db';
 import { confirmTelegramLink } from './db';
 
 // The Telegram bot itself. Today it handles one thing: the `/start <code>` deep link
 // that completes an account link. The code is minted by the api when the user presses
 // "Connect" in their account settings, and the link opens this chat with it attached.
+//
+// A bot is built per request by the Worker (see worker.ts), from the database it is
+// handed. `telegramFetch` replaces the HTTP client that calls the Telegram Bot API; tests
+// use it to answer in place of api.telegram.org.
 
 const HELP =
   'This bot delivers notifications from your project tracker.\n\n' +
   'To connect it, open Accounts in your profile and press Connect for Telegram.';
 
-export function createBot(token: string): Bot {
-  const bot = new Bot(token);
+export interface BotOptions {
+  token: string;
+  db: Db;
+  telegramFetch?: typeof fetch;
+}
+
+export function createBot({ token, db, telegramFetch }: BotOptions): Bot {
+  const bot = new Bot(token, {
+    client: telegramFetch ? { fetch: telegramFetch } : undefined,
+  });
 
   bot.command('start', async (ctx) => {
     // For /start, ctx.match is the deep-link payload — empty when the user opened the
@@ -30,7 +43,7 @@ export function createBot(token: string): Bot {
       return;
     }
 
-    const result = await confirmTelegramLink({
+    const result = await confirmTelegramLink(db, {
       code,
       chatId: String(ctx.chat.id),
       username: from.username ?? null,
@@ -54,8 +67,8 @@ export function createBot(token: string): Bot {
     await ctx.reply(HELP);
   });
 
-  // An unhandled error would stop the polling loop, so every failure is logged and
-  // swallowed instead. The user simply gets no reply, and can press Connect again.
+  // A failed update must not reach the caller as an error: the user simply gets no
+  // reply, and can press Connect again. The failure is logged here.
   bot.catch((err) => {
     console.error('[bot] update failed:', err.error);
   });
