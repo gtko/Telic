@@ -1259,54 +1259,113 @@ export async function dropWorkspaceMemberships(
   workspaceId: number,
   userId: string,
 ): Promise<void> {
-  const teams = await db
-    .select({ id: team.id })
-    .from(team)
-    .innerJoin(teamMember, eq(teamMember.teamId, team.id))
-    .where(and(eq(team.workspaceId, workspaceId), eq(teamMember.userId, userId)))
-    .orderBy(team.id);
-  const [owner] = await db
-    .select({ userId: workspaceManager.userId })
-    .from(workspaceManager)
-    .where(and(eq(workspaceManager.workspaceId, workspaceId), eq(workspaceManager.role, 'owner')));
-  const statements: BatchStatement[] = [];
-  for (const { id: teamId } of teams) {
-    if (owner && owner.userId !== userId) {
-      statements.push(...handOverSoleOwnershipStatements(db, teamId, userId, owner.userId));
+  // The plan is read, then written by one batch that ends with checks of what it must
+  // leave behind (an owner everywhere the person was the only one). If somebody changed
+  // an ownership between the read and the write, a check fails, the batch is rolled
+  // back and the plan is read again.
+  for (let attempt = 0; ; attempt++) {
+    const teams = await db
+      .select({ id: team.id })
+      .from(team)
+      .innerJoin(teamMember, eq(teamMember.teamId, team.id))
+      .where(and(eq(team.workspaceId, workspaceId), eq(teamMember.userId, userId)))
+      .orderBy(team.id);
+    const [owner] = await db
+      .select({ userId: workspaceManager.userId })
+      .from(workspaceManager)
+      .where(
+        and(eq(workspaceManager.workspaceId, workspaceId), eq(workspaceManager.role, 'owner')),
+      );
+    const writes: BatchStatement[] = [];
+    const checks: BatchStatement[] = [];
+    for (const { id: teamId } of teams) {
+      if (owner && owner.userId !== userId) {
+        const plan = await planHandOver(db, teamId, userId, owner.userId);
+        writes.push(...plan.writes);
+        checks.push(...plan.checks);
+      }
+      writes.push(...dropTeamMembershipStatements(db, teamId, userId));
     }
-    statements.push(...dropTeamMembershipStatements(db, teamId, userId));
+    try {
+      await batchAll(db, [...writes, ...checks]);
+      return;
+    } catch (err) {
+      if (!isGuardViolation(err)) throw err;
+      if (attempt >= 2) throw new HttpError(409, 'The workspace changed meanwhile, try again');
+    }
   }
-  await batchAll(db, statements);
 }
 
-// Makes the successor the owner of what the person owns alone in the team: the team
+// What makes the successor the owner of what the person owns alone in the team: the team
 // itself and any of its projects. A project membership stands on a team one, so the
-// successor joins the team first. Each statement decides from the state when it runs
-// (the person is still the only owner), and they must run before the person's own rows
-// are dropped.
-function handOverSoleOwnershipStatements(
+// successor joins the team first. `writes` run before the person's own rows are
+// dropped; `checks` run after, and fail the batch when the plan went stale.
+async function planHandOver(
   db: Db,
   teamId: number,
   userId: string,
   successorId: string,
-): BatchStatement[] {
-  const ownsTeamAlone = sql`(${ownerCount(teamId)} = 1 and exists (select 1 from ${teamMember}
-    where ${teamMember.teamId} = ${teamId} and ${teamMember.userId} = ${userId}
-    and ${teamMember.role} = 'owner'))`;
-  return [
-    db.run(sql`insert into ${teamMember} (team_id, user_id, role)
-      select ${teamId}, ${successorId}, 'member'
-      where ${ownsTeamAlone} or exists (select 1 ${soleOwnedProjectsFrom(teamId, userId)})
-      on conflict do nothing`) as unknown as BatchStatement,
+): Promise<{ writes: BatchStatement[]; checks: BatchStatement[] }> {
+  const owners = await db
+    .select({ userId: teamMember.userId })
+    .from(teamMember)
+    .where(and(eq(teamMember.teamId, teamId), eq(teamMember.role, 'owner')));
+  const ownsTeamAlone = owners.length === 1 && owners[0]!.userId === userId;
+  const soleProjects = await db.all<{ id: number }>(
+    sql`select ${project.id} as id ${soleOwnedProjectsFrom(teamId, userId)}`,
+  );
+  if (!ownsTeamAlone && soleProjects.length === 0) return { writes: [], checks: [] };
+
+  const writes: BatchStatement[] = [
     db
-      .update(teamMember)
-      .set({ role: 'owner' })
-      .where(and(eq(teamMember.teamId, teamId), eq(teamMember.userId, successorId), ownsTeamAlone)),
-    // Not a SCIM row any more: the next sync must not take the ownership back.
-    db.run(sql`insert into ${projectMember} (project_id, user_id, role, role_id, source)
-      select ${project.id}, ${successorId}, 'owner', null, 'invite'
-      ${soleOwnedProjectsFrom(teamId, userId)}
-      on conflict (project_id, user_id) do update
-      set role = 'owner', role_id = null, source = 'invite'`) as unknown as BatchStatement,
+      .insert(teamMember)
+      .values({ teamId, userId: successorId, role: ownsTeamAlone ? 'owner' : 'member' })
+      .onConflictDoNothing(),
   ];
+  const checks: BatchStatement[] = [];
+  if (ownsTeamAlone) {
+    writes.push(
+      db
+        .update(teamMember)
+        .set({ role: 'owner' })
+        .where(and(eq(teamMember.teamId, teamId), eq(teamMember.userId, successorId))),
+    );
+    checks.push(
+      abortBatchWhen(
+        db,
+        sql`not exists (select 1 from ${teamMember} where ${teamMember.teamId} = ${teamId}
+          and ${teamMember.role} = 'owner')`,
+      ),
+    );
+  }
+  if (soleProjects.length > 0) {
+    // Not a SCIM row any more: the next sync must not take the ownership back.
+    writes.push(
+      db
+        .insert(projectMember)
+        .values(
+          soleProjects.map(({ id }) => ({
+            projectId: id,
+            userId: successorId,
+            role: 'owner',
+            roleId: null,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [projectMember.projectId, projectMember.userId],
+          set: { role: 'owner', roleId: null, source: 'invite' },
+        }),
+    );
+    checks.push(
+      abortBatchWhen(
+        db,
+        sql`exists (select 1 from ${project} where ${inArray(
+          project.id,
+          soleProjects.map(({ id }) => id),
+        )} and not exists (select 1 from ${projectMember} where ${projectMember.projectId} = ${project.id}
+          and ${projectMember.role} = 'owner'))`,
+      ),
+    );
+  }
+  return { writes, checks };
 }

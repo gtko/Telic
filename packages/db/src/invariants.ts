@@ -13,9 +13,13 @@ import type { BatchStatement } from './helpers';
 // holds (a SQL boolean expression), and does nothing otherwise. SQLite's json() raises
 // "malformed JSON" on a non-JSON text, which is the only way to abort from plain SQL.
 export function abortBatchWhen(db: Db, violation: SQL): BatchStatement {
-  return db.run(
-    sql`select json(case when ${violation} then 'guard violated' else 'null' end)`,
-  ) as unknown as BatchStatement;
+  // A one-row select is a query builder drizzle can batch (db.run's raw statement cannot
+  // be put in a batch: it has no prepared statement to bind).
+  return db
+    .select({
+      guard: sql`json(case when ${violation} then 'guard violated' else 'null' end)`,
+    })
+    .from(sql`(select 1) as guard_row`) as unknown as BatchStatement;
 }
 
 function messages(err: unknown): string {
