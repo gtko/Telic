@@ -256,7 +256,7 @@ export async function copyProject(
   const source = await getProjectById(db, sourceProjectId);
   if (!source) throw new HttpError(404, 'Project not found');
   const ownerTeam = await targetTeam(db, ownerId, teamId);
-  // What a new project starts with, set instance-wide in god mode. Read before the
+  // What a new project starts with, set instance-wide in god mode. Read before
   // any write starts.
   const defaults = await getProjectDefaults(db);
   // Agents, integration credentials and roles belong to the team, so what references

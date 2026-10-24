@@ -534,7 +534,7 @@ export async function createProject(
   teamId: number,
 ): Promise<ProjectRow> {
   const ownerTeam = await targetTeam(db, ownerId, teamId);
-  // What a new project starts with, set instance-wide in god mode. Read before the
+  // What a new project starts with, set instance-wide in god mode. Read before
   // any write starts.
   const defaults = await getProjectDefaults(db);
   const defaultAgents = ownerTeam.defaultAgentIds.length
