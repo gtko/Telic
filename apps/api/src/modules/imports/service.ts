@@ -1,12 +1,13 @@
 import {
-  db,
   chatAttachment,
+  chunk,
   issue,
   issueImport,
   label,
   projectColumn,
   projectMember,
   user,
+  type Db,
 } from '@repo/db';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { HttpError, iso, num } from '#shared/lib';
@@ -63,20 +64,20 @@ function mapRow({ issue_import: row, chat_attachment: file }: JoinedRow): IssueI
   };
 }
 
-function selectJoined() {
+function selectJoined(db: Db) {
   return db
     .select()
     .from(issueImport)
     .innerJoin(chatAttachment, eq(chatAttachment.id, issueImport.attachmentId));
 }
 
-export async function getImport(publicId: string): Promise<IssueImportRow | null> {
-  const rows = await selectJoined().where(eq(issueImport.publicId, publicId));
+export async function getImport(db: Db, publicId: string): Promise<IssueImportRow | null> {
+  const rows = await selectJoined(db).where(eq(issueImport.publicId, publicId));
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
-async function requireImport(publicId: string): Promise<JoinedRow> {
-  const rows = await selectJoined().where(eq(issueImport.publicId, publicId));
+async function requireImport(db: Db, publicId: string): Promise<JoinedRow> {
+  const rows = await selectJoined(db).where(eq(issueImport.publicId, publicId));
   if (!rows[0]) throw new HttpError(404, 'Import not found');
   return rows[0];
 }
@@ -85,6 +86,8 @@ async function requireImport(publicId: string): Promise<JoinedRow> {
 // an uploaded chat attachment. Every named column must exist in the file. The
 // draft is born 'mapped' — the review card only exists once a mapping does.
 export async function createMappedImport(
+  db: Db,
+  bucket: R2Bucket,
   projectId: number,
   attachmentPublicId: string,
   input: unknown,
@@ -98,7 +101,7 @@ export async function createMappedImport(
     throw new HttpError(404, 'Attachment not found');
   }
   const mapping = validateMapping(input);
-  const parsed = await readStoredFile(attachment.s3Key, attachment.filename);
+  const parsed = await readStoredFile(bucket, attachment.s3Key, attachment.filename);
   for (const field of Object.values(mapping)) {
     if (!parsed.headers.some((header) => header.toLowerCase() === field.toLowerCase())) {
       throw new HttpError(400, `Column "${field}" is not in the file`);
@@ -112,22 +115,34 @@ export async function createMappedImport(
 }
 
 // The table of the draft's file, for the preview the review route attaches.
-export async function readImportTable(publicId: string): Promise<ParsedSheet> {
-  const row = await requireImport(publicId);
-  return readStoredFile(row.chat_attachment.s3Key, row.chat_attachment.filename);
+export async function readImportTable(
+  db: Db,
+  bucket: R2Bucket,
+  publicId: string,
+): Promise<ParsedSheet> {
+  const row = await requireImport(db, publicId);
+  return readStoredFile(bucket, row.chat_attachment.s3Key, row.chat_attachment.filename);
 }
 
 // Which of the file's titles the project already holds, archived issues included:
 // their title is taken just as much. Only the file's own titles are asked for — a
 // project's issue list has no bound, and `issue_project_title_idx` answers this
 // shape of query without reading it.
-export async function existingTitles(projectId: number, keys: string[]): Promise<Set<string>> {
-  if (keys.length === 0) return new Set();
-  const rows = await db
-    .select({ title: issue.title })
-    .from(issue)
-    .where(and(eq(issue.projectId, projectId), inArray(sql`lower(btrim(${issue.title}))`, keys)));
-  return new Set(rows.map((row) => titleKey(row.title)));
+export async function existingTitles(
+  db: Db,
+  projectId: number,
+  keys: string[],
+): Promise<Set<string>> {
+  const taken = new Set<string>();
+  // D1 binds at most 100 parameters per statement: the keys go in chunks.
+  for (const part of chunk(keys, 80)) {
+    const rows = await db
+      .select({ title: issue.title })
+      .from(issue)
+      .where(and(eq(issue.projectId, projectId), inArray(sql`lower(trim(${issue.title}))`, part)));
+    for (const row of rows) taken.add(titleKey(row.title));
+  }
+  return taken;
 }
 
 export interface ConfirmResult {
@@ -141,11 +156,13 @@ export interface ConfirmResult {
 // its own is reported and skipped; a failure of the whole run marks the import
 // failed and rethrows.
 export async function confirmImport(
+  db: Db,
+  bucket: R2Bucket,
   publicId: string,
   project: ProjectRow,
   actorUserId: string,
 ): Promise<ConfirmResult> {
-  const row = await requireImport(publicId);
+  const row = await requireImport(db, publicId);
   if (row.issue_import.status !== 'mapped' || !row.issue_import.mapping) {
     throw new HttpError(409, 'This import has no mapping to confirm');
   }
@@ -160,11 +177,11 @@ export async function confirmImport(
 
   const mapping = row.issue_import.mapping as ImportMapping;
   const [parsed, ctx] = await Promise.all([
-    readStoredFile(row.chat_attachment.s3Key, row.chat_attachment.filename),
-    mappingContext(project.id),
+    readStoredFile(bucket, row.chat_attachment.s3Key, row.chat_attachment.filename),
+    mappingContext(db, project.id),
   ]);
   const applied = applyMapping(parsed, mapping, ctx);
-  const taken = await existingTitles(project.id, titleKeys(parsed, mapping));
+  const taken = await existingTitles(db, project.id, titleKeys(parsed, mapping));
   if (!ctx.defaultColumnId)
     throw new HttpError(400, 'The project has no workflow column to create issues in');
 
@@ -182,6 +199,7 @@ export async function confirmImport(
         continue;
       }
       const created = await createIssue(
+        db,
         project,
         { ...item.draft, columnId: ctx.defaultColumnId },
         actorUserId,
@@ -192,21 +210,27 @@ export async function confirmImport(
       });
     }
   } catch (err) {
-    await setStatus(publicId, 'failed', err instanceof Error ? err.message : String(err));
+    await setStatus(db, publicId, 'failed', err instanceof Error ? err.message : String(err));
     throw err;
   }
   return result;
 }
 
-export async function cancelImport(publicId: string): Promise<void> {
-  const row = await requireImport(publicId);
+export async function cancelImport(db: Db, publicId: string): Promise<void> {
+  const row = await requireImport(db, publicId);
   if (row.issue_import.status !== 'mapped') {
     throw new HttpError(409, 'Only an import waiting for review can be canceled');
   }
-  await setStatus(publicId, 'canceled');
+  // The status test rides on the UPDATE: a confirm that claimed the draft in between wins.
+  const canceled = await db
+    .update(issueImport)
+    .set({ status: 'canceled', updatedAt: new Date() })
+    .where(and(eq(issueImport.publicId, publicId), eq(issueImport.status, 'mapped')))
+    .returning({ id: issueImport.id });
+  if (!canceled[0]) throw new HttpError(409, 'Only an import waiting for review can be canceled');
 }
 
-export async function getImportProjectId(publicId: string): Promise<number | null> {
+export async function getImportProjectId(db: Db, publicId: string): Promise<number | null> {
   const rows = await db
     .select({ projectId: issueImport.projectId })
     .from(issueImport)
@@ -215,6 +239,7 @@ export async function getImportProjectId(publicId: string): Promise<number | nul
 }
 
 async function setStatus(
+  db: Db,
   publicId: string,
   status: IssueImportStatus,
   errorText?: string,
@@ -225,12 +250,16 @@ async function setStatus(
     .where(eq(issueImport.publicId, publicId));
 }
 
-async function readStoredFile(s3Key: string, filename: string): Promise<ParsedSheet> {
-  return parseImportFile(await readAttachmentBytes(s3Key), filename);
+async function readStoredFile(
+  bucket: R2Bucket,
+  s3Key: string,
+  filename: string,
+): Promise<ParsedSheet> {
+  return parseImportFile(await readAttachmentBytes(bucket, s3Key), filename);
 }
 
 // The labels, members, and first workflow column a mapping resolves values against.
-async function mappingContext(projectId: number) {
+async function mappingContext(db: Db, projectId: number) {
   const [labels, members, columns] = await Promise.all([
     db.select({ id: label.id, name: label.name }).from(label).where(eq(label.projectId, projectId)),
     db

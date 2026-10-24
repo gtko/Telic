@@ -13,3 +13,16 @@ export const dbContext = new Elysia({ name: 'db-context' }).resolve(
     return { db };
   },
 );
+
+// The R2 bucket of the request (binding `BUCKET`), put on the context by the same app
+// derive as `db`. Only the routes that store or read file bytes use it.
+export const bucketContext = new Elysia({ name: 'bucket-context' }).resolve(
+  { as: 'scoped' },
+  (context): { bucket: R2Bucket } => {
+    const bucket = (context as unknown as { bucket?: R2Bucket }).bucket;
+    if (!bucket) {
+      throw new Error('bucket-context: no bucket on the request (the app derive is missing)');
+    }
+    return { bucket };
+  },
+);

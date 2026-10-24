@@ -1,8 +1,8 @@
 import { Elysia } from 'elysia';
 import { authContext } from '#shared/auth-context';
+import { bucketContext, dbContext } from '#shared/db-context';
 import { guards, entityGuard } from '#shared/guards';
 import { HttpError } from '#shared/lib';
-import { getObject } from '@repo/storage';
 import { mcpTool } from '#mcp/generate';
 import { accessErrors, commonErrors, errors } from '#shared/responses';
 import { requireUser } from '#shared/access';
@@ -65,10 +65,12 @@ export const chatAttachmentRoutes = new Elysia({
   detail: { tags: ['Chat attachments'] },
 })
   .use(authContext)
+  .use(dbContext)
+  .use(bucketContext)
   .use(guards)
   .macro({
-    chatAttachment: entityGuard('ai_agents', 'Attachment not found', (p) =>
-      getChatAttachmentProjectId(p.publicId),
+    chatAttachment: entityGuard('ai_agents', 'Attachment not found', (p, { db }) =>
+      getChatAttachmentProjectId(db, p.publicId),
     ),
   })
 
@@ -76,7 +78,7 @@ export const chatAttachmentRoutes = new Elysia({
   // multipart, so the chat composer and an MCP client call the same route.
   .post(
     '/projects/:projectKey/chat-attachments',
-    async ({ body, set, project, user }) => {
+    async ({ db, bucket, body, set, project, user }) => {
       const bytes = Buffer.from(body.contentBase64, 'base64');
       if (bytes.length === 0) {
         throw new HttpError(400, 'contentBase64 is empty or not valid base64');
@@ -85,7 +87,7 @@ export const chatAttachmentRoutes = new Elysia({
       const extension = filename.toLowerCase().split('.').pop() ?? '';
       let contentType =
         body.contentType || EXTENSION_TYPES[extension] || 'application/octet-stream';
-      await assertAttachmentUploadAllowed(project.id, bytes.length, contentType);
+      await assertAttachmentUploadAllowed(db, project.id, bytes.length, contentType);
 
       // A PDF is stored as the Markdown it converts to: the original is
       // discarded, so the row, the download link, and the agent all see text.
@@ -94,15 +96,15 @@ export const chatAttachmentRoutes = new Elysia({
         content = Buffer.from(await pdfToMarkdown(bytes), 'utf8');
         filename = filename.replace(/\.pdf$/i, '') + '.md';
         contentType = 'text/markdown';
-        await assertAttachmentUploadAllowed(project.id, content.length, contentType);
+        await assertAttachmentUploadAllowed(db, project.id, content.length, contentType);
       }
 
       const key = attachmentObjectKey(project.id, 'chat', null, filename);
-      await storeAttachmentObject(key, content, contentType);
+      await storeAttachmentObject(bucket, key, content, contentType);
 
       let row;
       try {
-        row = await createChatAttachment({
+        row = await createChatAttachment(db, {
           projectId: project.id,
           uploadedByUserId: requireUser(user).id,
           s3Key: key,
@@ -111,7 +113,7 @@ export const chatAttachmentRoutes = new Elysia({
           sizeBytes: content.length,
         });
       } catch (error) {
-        await deleteAttachmentObject(key);
+        await deleteAttachmentObject(bucket, key);
         throw error;
       }
       set.status = 201;
@@ -138,10 +140,10 @@ export const chatAttachmentRoutes = new Elysia({
   // text file.
   .get(
     '/chat-attachments/:publicId',
-    async ({ params }) => {
-      const row = await getChatAttachmentByPublicId(params.publicId);
+    async ({ db, bucket, params }) => {
+      const row = await getChatAttachmentByPublicId(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
-      return { ...chatAttachmentDto(row), ...(await readChatAttachmentContent(row)) };
+      return { ...chatAttachmentDto(row), ...(await readChatAttachmentContent(bucket, row)) };
     },
     {
       params: publicIdParams,
@@ -167,8 +169,8 @@ export const chatAttachmentRoutes = new Elysia({
   // unguessable uuid.
   .get(
     '/chat-attachments/:publicId/raw',
-    async ({ params, query, request }) => {
-      const row = await getChatAttachmentByPublicId(params.publicId);
+    async ({ db, bucket, params, query, request }) => {
+      const row = await getChatAttachmentByPublicId(db, params.publicId);
       if (!row) throw new HttpError(404, 'Attachment not found');
 
       // The etag is a digest of the key rather than the key itself: this route is
@@ -178,12 +180,10 @@ export const chatAttachmentRoutes = new Elysia({
         return new Response(null, { status: 304, headers: { ETag: etag } });
       }
 
-      let obj;
-      try {
-        obj = await getObject(row.s3Key);
-      } catch (err) {
+      const obj = await bucket.get(row.s3Key).catch((err) => {
         throw new HttpError(404, err instanceof Error ? err.message : 'Object not found');
-      }
+      });
+      if (!obj) throw new HttpError(404, 'Object not found');
 
       // The bytes and their content type are attacker-controlled, and this route
       // is public and same-origin as the planner UI, so serving an HTML or SVG
@@ -191,7 +191,7 @@ export const chatAttachmentRoutes = new Elysia({
       // stops MIME sniffing, and inline rendering is allowed only for a strict
       // media allowlist (raster images, video, audio). Everything else — html,
       // svg, xml, scripts — is forced to download and cannot execute.
-      const ct = row.contentType || obj.contentType;
+      const ct = row.contentType || obj.httpMetadata?.contentType || 'application/octet-stream';
       const inlineSafe = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|video\/|audio\/)/i.test(ct);
       const inline = inlineSafe && query.download == null;
       const headers: Record<string, string> = {
@@ -201,7 +201,7 @@ export const chatAttachmentRoutes = new Elysia({
         'Cache-Control': 'no-cache',
         ETag: etag,
       };
-      if (obj.contentLength != null) headers['Content-Length'] = String(obj.contentLength);
+      headers['Content-Length'] = String(obj.size);
       if (!inline) headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
       return new Response(obj.body, { headers });
     },

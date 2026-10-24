@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { authContext } from '#shared/auth-context';
+import { bucketContext, dbContext } from '#shared/db-context';
 import { guards, entityGuard } from '#shared/guards';
 import { HttpError } from '#shared/lib';
 import { accessErrors, commonErrors, errors } from '#shared/responses';
@@ -32,23 +33,25 @@ export const importRoutes = new Elysia({
   detail: { tags: ['Imports'] },
 })
   .use(authContext)
+  .use(dbContext)
+  .use(bucketContext)
   .use(guards)
   .macro({
-    importFile: entityGuard('work_items', 'Import not found', (p) =>
-      getImportProjectId(p.importId),
+    importFile: entityGuard('work_items', 'Import not found', (p, { db }) =>
+      getImportProjectId(db, p.importId),
     ),
   })
 
   .get(
     '/imports/:importId',
-    async ({ params }) => {
-      const row = importDto(await getImport(params.importId));
+    async ({ db, bucket, params }) => {
+      const row = importDto(await getImport(db, params.importId));
       // A file that stopped parsing (deleted object, bad content) leaves the preview
       // off rather than failing the read.
-      const parsed = await readImportTable(params.importId).catch(() => undefined);
+      const parsed = await readImportTable(db, bucket, params.importId).catch(() => undefined);
       if (!parsed) return row;
       const mapping = (row.mapping ?? {}) as Partial<Record<ImportField, string>>;
-      const taken = await existingTitles(row.projectId, titleKeys(parsed, mapping));
+      const taken = await existingTitles(db, row.projectId, titleKeys(parsed, mapping));
       const preview = { ...previewTable(parsed, mapping, taken), totalRows: parsed.totalRows };
       return { ...row, preview };
     },
@@ -65,12 +68,12 @@ export const importRoutes = new Elysia({
   // create anything through it.
   .post(
     '/imports/:importId/confirm',
-    async ({ params, projectId, user }) => {
+    async ({ db, bucket, params, projectId, user }) => {
       // The entity guard resolved the owning project's id; the confirm flow needs
       // the full project for sequence keys and validation.
-      const project = await getProjectById(projectId);
+      const project = await getProjectById(db, projectId);
       if (!project) throw new HttpError(404, 'Import not found');
-      return confirmImport(params.importId, project, requireUser(user).id);
+      return confirmImport(db, bucket, params.importId, project, requireUser(user).id);
     },
     {
       params: importIdParams,
@@ -82,8 +85,8 @@ export const importRoutes = new Elysia({
 
   .post(
     '/imports/:importId/cancel',
-    async ({ params }) => {
-      await cancelImport(params.importId);
+    async ({ db, params }) => {
+      await cancelImport(db, params.importId);
       return noContent();
     },
     {
