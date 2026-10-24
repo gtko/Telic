@@ -1,4 +1,4 @@
-import { db, user, getStorageSettings, MB } from '@repo/db';
+import { user, getStorageSettings, MB, type Db } from '@repo/db';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { HttpError } from '#shared/lib';
@@ -27,7 +27,7 @@ function avatarIdFromImage(image: string | null | undefined): string | null {
   return match ? match[1] : null;
 }
 
-async function setUserImage(userId: string, image: string | null): Promise<void> {
+async function setUserImage(db: Db, userId: string, image: string | null): Promise<void> {
   await db.update(user).set({ image }).where(eq(user.id, userId));
 }
 
@@ -45,13 +45,14 @@ async function deletePreviousAvatar(image: string | null | undefined): Promise<v
 // The size limit is an instance setting (see modules/settings/service.ts), read per
 // call so a change in god mode takes effect without a restart.
 export async function replaceAvatar(
+  db: Db,
   userId: string,
   currentImage: string | null | undefined,
   file: unknown,
 ): Promise<string> {
   if (!(file instanceof File)) throw new HttpError(400, 'No file uploaded (form field "file")');
   if (file.size === 0) throw new HttpError(400, 'Uploaded file is empty');
-  const { maxAvatarMb } = await getStorageSettings();
+  const { maxAvatarMb } = await getStorageSettings(db);
   if (file.size > maxAvatarMb * MB) {
     throw new HttpError(413, `Image exceeds the ${maxAvatarMb} MB limit`);
   }
@@ -73,16 +74,17 @@ export async function replaceAvatar(
   const url = avatarUrl(id);
   // Point the account at the new object first, then drop the old one (the session
   // user still carries the previous image); a failed cleanup only orphans bytes.
-  await setUserImage(userId, url);
+  await setUserImage(db, userId, url);
   await deletePreviousAvatar(currentImage);
   return url;
 }
 
 export async function clearAvatar(
+  db: Db,
   userId: string,
   currentImage: string | null | undefined,
 ): Promise<void> {
-  await setUserImage(userId, null);
+  await setUserImage(db, userId, null);
   await deletePreviousAvatar(currentImage);
 }
 

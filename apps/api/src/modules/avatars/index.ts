@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { noContent } from '#shared/http';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { requireUser } from '#shared/access';
 import { errors } from '#shared/responses';
 import { AvatarResponse, avatarParams, uploadAvatarBody } from './model';
@@ -8,12 +9,13 @@ import { clearAvatar, readAvatar, replaceAvatar } from './service';
 
 export const avatarRoutes = new Elysia({ name: 'avatars', detail: { tags: ['Avatars'] } })
   .use(authContext)
+  .use(dbContext)
 
   .post(
     '/me/avatar',
-    async ({ user: sessionUser, body }) => {
+    async ({ db, user: sessionUser, body }) => {
       const current = requireUser(sessionUser);
-      const image = await replaceAvatar(current.id, sessionUser?.image, body.file);
+      const image = await replaceAvatar(db, current.id, sessionUser?.image, body.file);
       return { image };
     },
     {
@@ -25,9 +27,9 @@ export const avatarRoutes = new Elysia({ name: 'avatars', detail: { tags: ['Avat
 
   .delete(
     '/me/avatar',
-    async ({ user: sessionUser }) => {
+    async ({ db, user: sessionUser }) => {
       const current = requireUser(sessionUser);
-      await clearAvatar(current.id, sessionUser?.image);
+      await clearAvatar(db, current.id, sessionUser?.image);
       return noContent();
     },
     {

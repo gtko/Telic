@@ -1,5 +1,6 @@
 import { Elysia, type DocumentDecoration } from 'elysia';
 import { workspaceScim as isScimPerWorkspace } from '@repo/auth';
+import type { Db } from '@repo/db';
 import { authContext } from './auth-context';
 import {
   requireProjectAccess,
@@ -41,6 +42,10 @@ type EntityGuardCtx = {
   request: Request;
 };
 
+// What a project lookup of an entity receives: the request context, whose `db` comes from
+// the route's dbContext (the macro is declared after it).
+type EntityLookupCtx = EntityGuardCtx & { db: Db };
+
 // The permission a route requires, as an OpenAPI extension on its detail. Elysia
 // deletes a macro's own key from the route once it expands the macro, so this is
 // where the MCP tool table reads what a route requires (see generate.ts) rather than
@@ -75,13 +80,20 @@ function permissionDetail(permission: Permission) {
 export function entityGuard(
   resource: PermissionResource,
   notFound: string,
-  resolveProjectId: (params: Record<string, string>) => Promise<number | null>,
+  resolveProjectId: (
+    params: Record<string, string>,
+    context: EntityLookupCtx,
+  ) => Promise<number | null>,
   feature?: ProjectFeature,
 ) {
   return (action: PermissionAction) => ({
     ...permissionDetail([resource, action]),
-    async resolve({ params, user, request }: EntityGuardCtx) {
-      const projectId = await resolveProjectId(params as Record<string, string>);
+    async resolve(context: EntityGuardCtx) {
+      const { params, user, request } = context;
+      const projectId = await resolveProjectId(
+        params as Record<string, string>,
+        context as EntityLookupCtx,
+      );
       if (projectId == null) throw new HttpError(404, notFound);
       await assertPermission(projectId, user, resource, action);
       if (feature) await assertProjectFeature(projectId, feature);

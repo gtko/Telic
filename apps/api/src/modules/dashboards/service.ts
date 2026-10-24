@@ -1,4 +1,4 @@
-import { db, projectDashboard } from '@repo/db';
+import { type Db, projectDashboard } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { iso, num } from '#shared/lib';
 
@@ -28,7 +28,7 @@ function mapDashboard(row: typeof projectDashboard.$inferSelect): DashboardRow {
   };
 }
 
-export async function listDashboards(projectId: number): Promise<DashboardRow[]> {
+export async function listDashboards(db: Db, projectId: number): Promise<DashboardRow[]> {
   const rows = await db
     .select()
     .from(projectDashboard)
@@ -39,12 +39,15 @@ export async function listDashboards(projectId: number): Promise<DashboardRow[]>
 
 // New dashboards go to the end of the tab row (max position + 1). layout is stored
 // verbatim in the jsonb column.
-export async function createDashboard(input: {
-  projectId: number;
-  name: string;
-  icon?: string | null;
-  layout?: unknown;
-}): Promise<DashboardRow> {
+export async function createDashboard(
+  db: Db,
+  input: {
+    projectId: number;
+    name: string;
+    icon?: string | null;
+    layout?: unknown;
+  },
+): Promise<DashboardRow> {
   const [{ pos }] = await db
     .select({ pos: sql<number>`COALESCE(MAX(${projectDashboard.position}) + 1, 0)` })
     .from(projectDashboard)
@@ -62,7 +65,7 @@ export async function createDashboard(input: {
   return mapDashboard(row);
 }
 
-export async function getDashboard(id: number): Promise<DashboardRow | null> {
+export async function getDashboard(db: Db, id: number): Promise<DashboardRow | null> {
   const rows = await db.select().from(projectDashboard).where(eq(projectDashboard.id, id));
   return rows[0] ? mapDashboard(rows[0]) : null;
 }
@@ -70,6 +73,7 @@ export async function getDashboard(id: number): Promise<DashboardRow | null> {
 // Updates only the provided fields. layout is replaced wholesale (not merged),
 // since the UI always sends the full blob.
 export async function updateDashboard(
+  db: Db,
   id: number,
   patch: { name?: string; icon?: string | null; layout?: unknown },
 ): Promise<DashboardRow | null> {
@@ -77,7 +81,7 @@ export async function updateDashboard(
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.icon !== undefined) set.icon = patch.icon;
   if (patch.layout !== undefined) set.layout = patch.layout;
-  if (Object.keys(set).length === 0) return getDashboard(id);
+  if (Object.keys(set).length === 0) return getDashboard(db, id);
   const [row] = await db
     .update(projectDashboard)
     .set(set)
@@ -86,23 +90,25 @@ export async function updateDashboard(
   return row ? mapDashboard(row) : null;
 }
 
-export async function deleteDashboard(id: number): Promise<void> {
+export async function deleteDashboard(db: Db, id: number): Promise<void> {
   await db.delete(projectDashboard).where(eq(projectDashboard.id, id));
 }
 
-// Sets each dashboard's position to its index in orderedIds, in one transaction,
-// so the tab order the UI sends is stored exactly. Ids not on the project are ignored.
+// Sets each dashboard's position to its index in orderedIds, in one D1 batch, so the tab
+// order the UI sends is stored exactly. Ids not on the project are ignored.
 export async function reorderDashboards(
+  db: Db,
   projectId: number,
   orderedIds: number[],
 ): Promise<DashboardRow[]> {
-  await db.transaction(async (tx) => {
-    for (const [position, id] of orderedIds.entries()) {
-      await tx
+  if (orderedIds.length > 0) {
+    const updates = orderedIds.map((id, position) =>
+      db
         .update(projectDashboard)
         .set({ position })
-        .where(and(eq(projectDashboard.id, id), eq(projectDashboard.projectId, projectId)));
-    }
-  });
-  return listDashboards(projectId);
+        .where(and(eq(projectDashboard.id, id), eq(projectDashboard.projectId, projectId))),
+    );
+    await db.batch(updates as [(typeof updates)[number], ...(typeof updates)[number][]]);
+  }
+  return listDashboards(db, projectId);
 }

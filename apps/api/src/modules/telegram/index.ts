@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { authContext } from '#shared/auth-context';
+import { dbContext } from '#shared/db-context';
 import { requireUser } from '#shared/access';
 import { HttpError } from '#shared/lib';
 import { errors } from '#shared/responses';
@@ -18,13 +19,14 @@ import { getTelegramLink, startTelegramLink, unlinkTelegram } from './service';
 
 export const telegramRoutes = new Elysia({ name: 'telegram', detail: { tags: ['Telegram'] } })
   .use(authContext)
+  .use(dbContext)
 
   .get(
     '/telegram/account',
-    async ({ user }) => {
+    async ({ db, user }) => {
       const me = requireUser(user);
-      const config = await getInstanceBotConfig();
-      const link = await getTelegramLink(me.id);
+      const config = await getInstanceBotConfig(db);
+      const link = await getTelegramLink(db, me.id);
       return {
         botUsername: isInstanceBotUsable(config) ? config.botUsername : null,
         link: link && {
@@ -46,13 +48,13 @@ export const telegramRoutes = new Elysia({ name: 'telegram', detail: { tags: ['T
 
   .post(
     '/telegram/account/link',
-    async ({ user }) => {
+    async ({ db, user }) => {
       const me = requireUser(user);
-      const config = await getInstanceBotConfig();
+      const config = await getInstanceBotConfig(db);
       if (!isInstanceBotUsable(config)) {
         throw new HttpError(400, 'Telegram is not configured on this instance');
       }
-      const { code, expiresAt } = await startTelegramLink(me.id);
+      const { code, expiresAt } = await startTelegramLink(db, me.id);
       return { url: `https://t.me/${config.botUsername}?start=${code}`, expiresAt };
     },
     {
@@ -67,9 +69,9 @@ export const telegramRoutes = new Elysia({ name: 'telegram', detail: { tags: ['T
 
   .delete(
     '/telegram/account',
-    async ({ user }) => {
+    async ({ db, user }) => {
       const me = requireUser(user);
-      await unlinkTelegram(me.id);
+      await unlinkTelegram(db, me.id);
       return noContent();
     },
     {
