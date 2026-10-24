@@ -1,3 +1,4 @@
+import { agentRuntime, runQueueOf } from '#modules/agents/core/runtime/bindings';
 import { Elysia, t, type DocumentDecoration } from 'elysia';
 import { listIssueAgentRuns, getIssueAgentRunTrace } from './agent-runs';
 import { mcpTool } from '#mcp/generate';
@@ -319,9 +320,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   })
   .post(
     '/projects/:projectKey/issues',
-    async ({ db, project, body, user, set }) => {
+    async ({ db, env, project, body, user, set }) => {
       set.status = 201;
-      return createIssue(db, project, body, requireUser(user).id);
+      return createIssue(db, project, body, requireUser(user).id, runQueueOf(env));
     },
     {
       body: createIssueBody,
@@ -616,11 +617,13 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // a column (position).
   .patch(
     '/issues/:issueId',
-    async ({ db, params, body, user, projectId }) => {
+    async ({ db, env, params, body, user, projectId }) => {
       const actorUserId = requireUser(user).id;
       const issueId = params.issueId;
       const { labelIds, ...patch } = body;
-      const issue = await updateIssue(db, issueId, patch, actorUserId);
+      const issue = await updateIssue(db, issueId, patch, actorUserId, {
+        queue: runQueueOf(env),
+      });
       if (!issue) throw new HttpError(404, 'Issue not found');
       if (labelIds) {
         await setIssueLabels(db, projectId, issueId, labelIds, actorUserId);
@@ -926,7 +929,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // body.valueEnd.
   .put(
     '/issues/:issueId/fields/:fieldId',
-    async ({ db, params, body, user, projectId }) => {
+    async ({ db, env, params, body, user, projectId }) => {
       await setIssueFieldValue(
         db,
         projectId,
@@ -934,6 +937,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         params.fieldId,
         body,
         requireUser(user).id,
+        runQueueOf(env),
       );
       return { ok: true };
     },
@@ -1204,9 +1208,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
 
   .get(
     '/issues/:issueId/agent-runs/:runId/trace',
-    async ({ db, params, user, query, projectId }) => {
+    async ({ env, auth, params, user, query, projectId }) => {
       const trace = await getIssueAgentRunTrace(
-        db,
+        agentRuntime(env, auth),
         projectId,
         params.issueId,
         params.runId,
@@ -1506,14 +1510,18 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // agent's bot user).
   .post(
     '/issues/:issueId/comments',
-    async ({ db, params, body, user, set }) => {
+    async ({ db, env, params, body, user, set }) => {
       set.status = 201;
-      return createComment(db, {
-        issueId: params.issueId,
-        actorUserId: requireUser(user).id,
-        body: body.body,
-        replyToId: body.replyToId,
-      });
+      return createComment(
+        db,
+        {
+          issueId: params.issueId,
+          actorUserId: requireUser(user).id,
+          body: body.body,
+          replyToId: body.replyToId,
+        },
+        runQueueOf(env),
+      );
     },
     {
       body: createCommentBody,
@@ -1536,8 +1544,15 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the comment guard asserts; another member's only a project owner can change.
   .patch(
     '/comments/:commentId',
-    async ({ db, params, body, user, projectId }) =>
-      updateComment(db, params.commentId, body.body, requireUser(user).id, projectId),
+    async ({ db, env, params, body, user, projectId }) =>
+      updateComment(
+        db,
+        params.commentId,
+        body.body,
+        requireUser(user).id,
+        projectId,
+        runQueueOf(env),
+      ),
     {
       body: updateCommentBody,
       params: commentParams,

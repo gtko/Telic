@@ -1,3 +1,4 @@
+import { agentRuntime } from '#modules/agents/core/runtime/bindings';
 import { dbContext } from '#shared/db-context';
 import type { Db } from '@repo/db';
 import { Elysia, t } from 'elysia';
@@ -462,9 +463,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .delete(
     '/teams/:teamId/projects/:projectId',
-    async ({ db, membership, params }) => {
+    async ({ db, env, auth, membership, params }) => {
       await requireTeamProject(db, membership.teamId, params.projectId);
-      await deleteProject(db, params.projectId);
+      await deleteProject(agentRuntime(env, auth), params.projectId);
       return noContent();
     },
     {

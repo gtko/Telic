@@ -157,8 +157,8 @@ async function assertTriggerable(db: Db, agentId: number, actorUserId: string): 
 }
 
 // Refuses a cron that fires more often than the workspace's floor allows.
-async function assertScheduleInterval(teamId: number, cron: string): Promise<void> {
-  const { minScheduleIntervalSeconds } = await getTeamLimits(teamId);
+async function assertScheduleInterval(db: Db, teamId: number, cron: string): Promise<void> {
+  const { minScheduleIntervalSeconds } = await getTeamLimits(db, teamId);
   if (minScheduleIntervalSeconds === 0) return;
   if (minCronIntervalSeconds(cron) < minScheduleIntervalSeconds) {
     const minutes = Math.ceil(minScheduleIntervalSeconds / 60);
@@ -213,7 +213,7 @@ export async function scheduleTriggerFields(
     if (input.prompt !== undefined) out.prompt = requiredText(input.prompt, 'Task');
     if (input.cron !== undefined) {
       const cron = input.cron.trim();
-      await assertScheduleInterval(project.teamId, cron);
+      await assertScheduleInterval(db, project.teamId, cron);
       out.cron = cron;
       out.nextRunAt = nextCronRun(cron);
     }

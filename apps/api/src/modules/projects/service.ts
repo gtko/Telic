@@ -43,6 +43,7 @@ import { projectAccess, type AccessVia } from '#shared/workspace-roles';
 import { toMemberContext, type MemberRole } from '#modules/members/service';
 import { workspaceGrants } from '#modules/workspaces/service';
 import { assertSeatFree } from '#modules/teams/service';
+import type { AgentRuntime } from '#modules/agents/core/runtime/bindings';
 import { deleteThreadsWhere } from '#modules/agents/core/runtime/memory';
 import { getProjectDefaults } from '#modules/settings/service';
 import { getDefaultRoleId } from '#modules/roles/service';
@@ -819,8 +820,9 @@ export async function setSubtaskAutomationSettings(
 // issues and their columns are deleted by the same cascade, so it is satisfied. The
 // conversation threads of the project's agents are deleted first, since they live
 // outside those cascades.
-export async function deleteProject(db: Db, projectId: number): Promise<void> {
-  await deleteThreadsWhere(db, { projectId });
+export async function deleteProject(rt: AgentRuntime, projectId: number): Promise<void> {
+  const { db } = rt;
+  await deleteThreadsWhere(rt, { projectId });
   // A team membership the SCIM reconciliation granted stands on the project
   // memberships it granted with it, and no group change follows the delete to re-check
   // it, so the members are read while they still exist and re-checked afterwards.

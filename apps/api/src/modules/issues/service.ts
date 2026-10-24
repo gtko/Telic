@@ -72,6 +72,7 @@ import { getInitiativeProjectId } from '#modules/initiatives/service';
 import { cycleStatus, getCycleRef, type CycleStatus } from '#modules/cycles/service';
 import { getMembership } from '#modules/members/service';
 import { enqueueAgentRun } from '#modules/agents/core/run-queue';
+import type { RunQueueLike } from '#modules/agents/core/runtime/bindings';
 import { queueStatusRuns } from '#modules/agents/schedules/issue-runs';
 import { applySubtaskAutomation } from './automation';
 import { assertWipLimit, columnAutoAssignee, wipLimitBreach } from '#modules/columns/service';
@@ -905,6 +906,7 @@ export async function createIssue(
   project: ProjectRow,
   input: NewIssueInput,
   actorUserId?: string | null,
+  queue?: RunQueueLike | null,
 ): Promise<IssueRow> {
   await assertAssignments(db, project.id, input);
   await assertInitiative(db, project.id, input.initiativeId);
@@ -971,7 +973,7 @@ export async function createIssue(
   await emitIssueEvent(db, 'issue.created', created, actorUserId);
   // An issue created already delegated to an agent enqueues a run, the same as
   // delegating one later does.
-  await enqueueDelegateRun(db, created, actorUserId);
+  await enqueueDelegateRun(db, created, actorUserId, queue);
   await queueStatusRuns(db, [issueId], input.columnId, actorUserId);
   // An issue created already assigned to a member notifies them, the same as
   // assigning one later does.
@@ -1076,7 +1078,7 @@ export async function updateIssue(
   id: number,
   patch: IssuePatch,
   actor?: ActivityActor,
-  opts?: { onlyIfColumnId?: number; skipIfColumnFull?: boolean },
+  opts?: { onlyIfColumnId?: number; skipIfColumnFull?: boolean; queue?: RunQueueLike | null },
 ): Promise<IssueRow | null> {
   const before = await loadSnapshot(db, id);
   if (!before) return null;
@@ -1152,7 +1154,7 @@ export async function updateIssue(
       if (before.assigneeUserId !== after.assigneeUserId)
         await emitIssueEvent(db, 'issue.assigned', after, actor);
       if (before.delegateUserId !== after.delegateUserId)
-        await enqueueDelegateRun(db, after, actor);
+        await enqueueDelegateRun(db, after, actor, opts?.queue);
       if (before.columnId !== after.columnId) {
         await emitIssueEvent(db, 'issue.state_changed', after, actor);
         await queueStatusRuns(db, [id], after.columnId, actorId(actor));
@@ -1167,19 +1169,28 @@ export async function updateIssue(
 // can act on the issue. Skipped when the agent delegated to itself (an agent setting
 // itself off). The run is executed later — by the poller or by the agent's runner —
 // so the write is never blocked on it.
-async function enqueueDelegateRun(db: Db, after: IssueRow, actor?: ActivityActor): Promise<void> {
+async function enqueueDelegateRun(
+  db: Db,
+  after: IssueRow,
+  actor?: ActivityActor,
+  queue?: RunQueueLike | null,
+): Promise<void> {
   const delegate = after.delegateUserId;
   if (!delegate || delegate === actorId(actor)) return;
   const agent = await getAssignTriggerAgent(db, after.projectId, delegate, actorId(actor));
   if (!agent) return;
-  await enqueueAgentRun(db, {
-    agentId: agent.id,
-    projectId: after.projectId,
-    issueId: after.id,
-    sourceActivityId: null,
-    prompt: `Work item ${after.identifier}: "${after.title}" has been delegated to you. Review it and take the appropriate next step.`,
-    delaySeconds: agent.delegationDelaySec,
-  });
+  await enqueueAgentRun(
+    db,
+    {
+      agentId: agent.id,
+      projectId: after.projectId,
+      issueId: after.id,
+      sourceActivityId: null,
+      prompt: `Work item ${after.identifier}: "${after.title}" has been delegated to you. Review it and take the appropriate next step.`,
+      delaySeconds: agent.delegationDelaySec,
+    },
+    queue,
+  );
 }
 
 // Deletes an issue and everything attached to it. Field options/values, labels,
@@ -1555,21 +1566,26 @@ async function enqueueFieldRun(
   field: CustomFieldRow,
   userId: string,
   actorUserId: string | null | undefined,
+  queue?: RunQueueLike | null,
 ): Promise<void> {
   if (userId === actorUserId) return;
   const agent = await getFieldTriggerAgent(db, projectId, userId, field.id, actorUserId ?? null);
   if (!agent) return;
   const row = await getIssue(db, issueId);
   if (!row) return;
-  await enqueueAgentRun(db, {
-    agentId: agent.id,
-    projectId,
-    issueId,
-    sourceActivityId: null,
-    trigger: 'field',
-    prompt: `Work item ${row.identifier}: "${row.title}" now has you as its "${field.name}". Review it and take the appropriate next step.`,
-    delaySeconds: agent.delaySec,
-  });
+  await enqueueAgentRun(
+    db,
+    {
+      agentId: agent.id,
+      projectId,
+      issueId,
+      sourceActivityId: null,
+      trigger: 'field',
+      prompt: `Work item ${row.identifier}: "${row.title}" now has you as its "${field.name}". Review it and take the appropriate next step.`,
+      delaySeconds: agent.delaySec,
+    },
+    queue,
+  );
 }
 
 // Tells the person put into a member field about it and subscribes them to the issue,
@@ -1627,6 +1643,7 @@ export async function setIssueFieldValue(
     optionIds?: number[];
   },
   actorUserId?: string | null,
+  queue?: RunQueueLike | null,
 ): Promise<void> {
   const field = await getCustomFieldById(db, projectId, fieldId);
   if (!field) throw new HttpError(404, 'Custom field not found');
@@ -1752,7 +1769,7 @@ export async function setIssueFieldValue(
   );
 
   if (memberUserId && memberUserId !== previousMemberUserId) {
-    await enqueueFieldRun(db, projectId, issueId, field, memberUserId, actorUserId);
+    await enqueueFieldRun(db, projectId, issueId, field, memberUserId, actorUserId, queue);
     await notifyFieldMember(db, projectId, issueId, memberUserId, entry?.id ?? null, actorUserId);
   }
 

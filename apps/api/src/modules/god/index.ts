@@ -1,3 +1,4 @@
+import { agentRuntime } from '#modules/agents/core/runtime/bindings';
 import type { Db } from '@repo/db';
 import { dbContext } from '#shared/db-context';
 import { Elysia, t } from 'elysia';
@@ -652,7 +653,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .delete(
     '/god/users/:userId',
-    async ({ db, params, query }) => {
+    async ({ db, env, auth, params, query }) => {
       const target = await getInstanceUser(db, params.userId);
       if (!target) throw new HttpError(404, 'User not found');
       // An instance owner is not removable here: the role is what grants god mode,
@@ -677,7 +678,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         );
       }
       if (query.withProjects) {
-        for (const p of sole) await deleteProject(db, p.projectId);
+        for (const p of sole) await deleteProject(agentRuntime(env, auth), p.projectId);
       }
       await deleteInstanceUser(db, params.userId);
       return noContent();

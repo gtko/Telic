@@ -83,7 +83,7 @@ async function processRun(rt: AgentRuntime, run: ClaimedRun): Promise<void> {
   const { db } = rt;
   const teamId = await getProjectTeamId(db, run.projectId);
   const workspaceId = await teamWorkspaceId(teamId, db);
-  const { maxConcurrentRuns, maxRunSeconds } = await getLimits(workspaceId);
+  const { maxConcurrentRuns, maxRunSeconds } = await getLimits(db, workspaceId);
   if (
     maxConcurrentRuns > 0 &&
     (await countRunsAhead(db, workspaceId, run.id)) >= maxConcurrentRuns

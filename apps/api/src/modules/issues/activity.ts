@@ -20,6 +20,7 @@ import { emitCommentEvent } from './webhook-payload';
 import { addedMentionHandles, parseMentionHandles, resolveMentionHandles } from '#shared/mentions';
 import { isAgentUser, listMentionTriggerAgents } from '#modules/agents/core/service';
 import { enqueueAgentRun } from '#modules/agents/core/run-queue';
+import type { RunQueueLike } from '#modules/agents/core/runtime/bindings';
 import {
   notifyComment,
   notifyEditedCommentMentions,
@@ -340,6 +341,7 @@ export async function createComment(
     // The comment being replied to. It has to be a comment on the same issue.
     replyToId?: number | null;
   },
+  queue?: RunQueueLike | null,
 ): Promise<FeedItemRow> {
   const actorUserId = input.actorUserId ?? null;
   const actorName = await userName(db, actorUserId);
@@ -378,7 +380,7 @@ export async function createComment(
       projectId,
       parseMentionHandles(comment.body ?? ''),
     );
-    await enqueueMentionRuns(db, projectId, comment, mentioned.agentUserIds);
+    await enqueueMentionRuns(db, projectId, comment, mentioned.agentUserIds, queue);
     await notifyComment(db, projectId, comment, mentioned);
   }
 
@@ -419,6 +421,7 @@ export async function updateComment(
   body: string,
   actorUserId: string | null,
   projectId: number,
+  queue?: RunQueueLike | null,
 ): Promise<FeedItemRow> {
   const [before] = await db
     .select()
@@ -447,6 +450,7 @@ export async function updateComment(
         projectId,
         { ...comment, replyToId: null },
         mentioned.agentUserIds,
+        queue,
       );
     await notifyEditedCommentMentions(db, projectId, comment, mentioned);
   }
@@ -485,6 +489,7 @@ async function enqueueMentionRuns(
   projectId: number,
   comment: FeedItemRow,
   mentionedAgentUserIds: string[],
+  queue?: RunQueueLike | null,
 ): Promise<void> {
   if (mentionedAgentUserIds.length === 0 && comment.replyToId == null) return;
   // A comment an agent wrote starts no run of its own, which stops agent-to-agent
@@ -505,13 +510,17 @@ async function enqueueMentionRuns(
     comment.actorUserId,
   );
   for (const agent of agents) {
-    await enqueueAgentRun(db, {
-      agentId: agent.id,
-      projectId,
-      issueId: comment.issueId,
-      sourceActivityId: comment.id,
-      prompt: comment.body ?? '',
-    });
+    await enqueueAgentRun(
+      db,
+      {
+        agentId: agent.id,
+        projectId,
+        issueId: comment.issueId,
+        sourceActivityId: comment.id,
+        prompt: comment.body ?? '',
+      },
+      queue,
+    );
   }
 }
 
