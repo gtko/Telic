@@ -1,4 +1,4 @@
-import { db, projectMember, user, aiAgent } from '@repo/db';
+import { projectMember, user, aiAgent, type Db } from '@repo/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 // Mentions in a comment, an issue description or a markdown custom field. A mention
@@ -53,6 +53,7 @@ export interface MentionedUsers {
 // handle reads as plain text here. A member and an agent cannot share a handle — the
 // two are kept apart at the point either is named.
 export async function resolveMentionHandles(
+  db: Db,
   projectId: number,
   handles: string[],
 ): Promise<MentionedUsers> {

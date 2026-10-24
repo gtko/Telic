@@ -1,5 +1,4 @@
 import {
-  db,
   project,
   projectMember,
   scimGroup,
@@ -9,6 +8,7 @@ import {
   teamMember,
   teamWorkspaceId,
   user,
+  type Db,
 } from '@repo/db';
 import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { workspacesWithOwnScim } from '@repo/auth';
@@ -29,9 +29,9 @@ interface Desired {
   roleId: number | null;
 }
 
-export async function reconcileProjects(projectIds: number[]): Promise<void> {
+export async function reconcileProjects(db: Db, projectIds: number[]): Promise<void> {
   for (const projectId of new Set(projectIds)) {
-    await reconcileProject(projectId);
+    await reconcileProject(db, projectId);
   }
 }
 
@@ -52,6 +52,7 @@ async function grantingMembers(workspaceId: number) {
 // through two mappings resolves to the strongest: 'owner' beats 'member', and among
 // equals the lowest mapping id wins, so the result does not depend on row order.
 async function desiredMembers(
+  db: Db,
   projectId: number,
   workspaceId: number,
 ): Promise<Map<string, Desired>> {
@@ -87,14 +88,14 @@ async function desiredMembers(
   return desired;
 }
 
-async function reconcileProject(projectId: number): Promise<void> {
+async function reconcileProject(db: Db, projectId: number): Promise<void> {
   const [owner] = await db
     .select({ teamId: project.teamId })
     .from(project)
     .where(eq(project.id, projectId));
   if (!owner) return;
   const workspaceId = await teamWorkspaceId(owner.teamId, db);
-  const desired = await desiredMembers(projectId, workspaceId);
+  const desired = await desiredMembers(db, projectId, workspaceId);
   const existing = await db
     .select({
       userId: projectMember.userId,
@@ -109,7 +110,8 @@ async function reconcileProject(projectId: number): Promise<void> {
   // A seat ceiling stops the provider from adding people the workspace has no room for.
   // Those already in it keep their membership and still join the project.
   const { maxSeats } = await getLimits(workspaceId);
-  const seats = maxSeats > 0 ? new Set(await listSeatHolderIds(workspaceId)) : new Set<string>();
+  const seats =
+    maxSeats > 0 ? new Set(await listSeatHolderIds(db, workspaceId)) : new Set<string>();
   // Tracked as rows change so the last-owner guard below stays correct without
   // re-counting after every write.
   let owners = existing.filter((row) => row.role === 'owner').length;
@@ -142,7 +144,7 @@ async function reconcileProject(projectId: number): Promise<void> {
     if (have.source !== 'scim') continue;
     if (have.role === want.role && have.roleId === want.roleId) continue;
     if (have.role === 'owner' && want.role !== 'owner' && owners <= 1) continue;
-    await setMembership(projectId, userId, want.role, want.roleId);
+    await setMembership(db, projectId, userId, want.role, want.roleId);
     if (have.role === 'owner' && want.role !== 'owner') owners -= 1;
     if (have.role !== 'owner' && want.role === 'owner') owners += 1;
   }
@@ -152,8 +154,8 @@ async function reconcileProject(projectId: number): Promise<void> {
     // A project without an owner has nobody who can manage its members, so the
     // last one stays even when the group no longer grants it.
     if (row.role === 'owner' && owners <= 1) continue;
-    await removeMember(projectId, row.userId);
-    await dropUnusedTeamMembership(owner.teamId, row.userId);
+    await removeMember(db, projectId, row.userId);
+    await dropUnusedTeamMembership(db, owner.teamId, row.userId);
     if (row.role === 'owner') owners -= 1;
   }
 }
@@ -162,7 +164,11 @@ async function reconcileProject(projectId: number): Promise<void> {
 // that team does. Only a row the reconciliation owns: one somebody set up by hand is
 // left alone, as their project membership is, and so is a row whose rank was raised
 // afterwards — a team is left with owners and managers it did not have to re-appoint.
-export async function dropUnusedTeamMembership(teamId: number, userId: string): Promise<void> {
+export async function dropUnusedTeamMembership(
+  db: Db,
+  teamId: number,
+  userId: string,
+): Promise<void> {
   const remaining = await db
     .select({ projectId: projectMember.projectId })
     .from(projectMember)
@@ -184,7 +190,7 @@ export async function dropUnusedTeamMembership(teamId: number, userId: string): 
 
 // The projects a group currently grants membership in. Read before and after a
 // change so reconciliation covers the projects it was removed from as well.
-export async function mappedProjectIds(groupId: string): Promise<number[]> {
+export async function mappedProjectIds(db: Db, groupId: string): Promise<number[]> {
   const rows = await db
     .select({ projectId: scimGroupMapping.projectId })
     .from(scimGroupMapping)

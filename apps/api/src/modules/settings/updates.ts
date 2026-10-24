@@ -1,3 +1,4 @@
+import type { Db } from '@repo/db';
 import pkg from '../../../../../package.json';
 
 // Whether a newer release is published, plus the notes to show. The repository's
@@ -153,7 +154,7 @@ let feed: FeedRead | null = null;
 
 // Null when the feed has never been read, so the caller answers from the local
 // history alone instead of reporting a check that did not happen.
-async function publishedReleases(force = false): Promise<FeedRead | null> {
+async function publishedReleases(db: Db, force = false): Promise<FeedRead | null> {
   // The suite must not depend on github.com being reachable, and the same
   // NODE_ENV already gates the db reset helper.
   if (process.env.NODE_ENV === 'test') return null;
@@ -178,8 +179,8 @@ export function mergeHistory(published: Release[], local: Release[]): Release[] 
 // the releases page the screen links to.
 const HISTORY_LIMIT = 10;
 
-export async function getUpdateStatus(force = false): Promise<UpdateStatus> {
-  const checked = await publishedReleases(force);
+export async function getUpdateStatus(db: Db, force = false): Promise<UpdateStatus> {
+  const checked = await publishedReleases(db, force);
   const published = checked?.releases ?? [];
   const currentVersion = getAppVersion();
   return {
@@ -196,9 +197,9 @@ export async function getUpdateStatus(force = false): Promise<UpdateStatus> {
 // — it gets the running release alone rather than the whole history. The feed's notes
 // are preferred over the changelog section of the same version: the changelog is
 // generated from commit subjects, the release page is written for a reader.
-export async function releasesSince(seenVersion: string | null): Promise<Release[]> {
+export async function releasesSince(db: Db, seenVersion: string | null): Promise<Release[]> {
   const current = getAppVersion();
-  const history = mergeHistory((await publishedReleases())?.releases ?? [], await localHistory());
+  const history = mergeHistory((await publishedReleases(db))?.releases ?? [], await localHistory());
   return history.filter((r) => {
     if (compareVersions(r.version, current) > 0) return false;
     return seenVersion ? compareVersions(r.version, seenVersion) > 0 : r.version === current;

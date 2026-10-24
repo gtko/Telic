@@ -1,3 +1,4 @@
+import { dbContext } from '#shared/db-context';
 import { Elysia, t } from 'elysia';
 import { getScimSettings, rotateScimToken, setScimSettings } from '@repo/auth';
 import { requireUser } from '#shared/access';
@@ -51,10 +52,11 @@ import {
 // workspace (setWorkspaceScim in @repo/auth): its owner sets it up, and the identity
 // provider decides who has access to the workspace. The instance's is set up in god mode.
 export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: ['Workspaces'] } })
+  .use(dbContext)
   .use(authContext)
   .use(guards)
 
-  .get('/workspaces', ({ user }) => listWorkspaces(requireUser(user).id), {
+  .get('/workspaces', ({ db, user }) => listWorkspaces(db, requireUser(db, user).id), {
     response: { 200: WorkspaceListResponse, ...errors(401) },
     detail: {
       summary: 'List workspaces',
@@ -64,7 +66,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .get(
     '/workspaces/:workspaceId',
-    ({ standing }) => getWorkspace(standing.workspaceId, standing.role),
+    ({ db, standing }) => getWorkspace(db, standing.workspaceId, standing.role),
     {
       workspaceManager: true,
       params: workspaceParams,
@@ -75,9 +77,9 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .patch(
     '/workspaces/:workspaceId',
-    async ({ standing, body }) => {
-      await updateWorkspace(standing.workspaceId, standing.role, body);
-      return getWorkspace(standing.workspaceId, standing.role);
+    async ({ db, standing, body }) => {
+      await updateWorkspace(db, standing.workspaceId, standing.role, body);
+      return getWorkspace(db, standing.workspaceId, standing.role);
     },
     {
       workspaceManager: true,
@@ -95,8 +97,8 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .delete(
     '/workspaces/:workspaceId',
-    async ({ standing }) => {
-      await deleteWorkspace(standing.workspaceId, standing.userId);
+    async ({ db, standing }) => {
+      await deleteWorkspace(db, standing.workspaceId, standing.userId);
       return noContent();
     },
     {
@@ -112,16 +114,20 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
     },
   )
 
-  .get('/workspaces/:workspaceId/managers', ({ standing }) => listManagers(standing.workspaceId), {
-    workspaceManager: true,
-    params: workspaceParams,
-    response: { 200: WorkspaceManagerListResponse, ...errors(401, 404) },
-    detail: { summary: 'List workspace managers', description: 'The owner, then the admins.' },
-  })
+  .get(
+    '/workspaces/:workspaceId/managers',
+    ({ db, standing }) => listManagers(db, standing.workspaceId),
+    {
+      workspaceManager: true,
+      params: workspaceParams,
+      response: { 200: WorkspaceManagerListResponse, ...errors(401, 404) },
+      detail: { summary: 'List workspace managers', description: 'The owner, then the admins.' },
+    },
+  )
 
   .get(
     '/workspaces/:workspaceId/managers/candidates',
-    ({ standing, query }) => listManagerCandidates(standing.workspaceId, query.search),
+    ({ db, standing, query }) => listManagerCandidates(db, standing.workspaceId, query.search),
     {
       workspaceManager: true,
       params: workspaceParams,
@@ -137,10 +143,10 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .post(
     '/workspaces/:workspaceId/managers',
-    async ({ standing, body, set }) => {
-      await addAdmin(standing.workspaceId, body.userId);
+    async ({ db, standing, body, set }) => {
+      await addAdmin(db, standing.workspaceId, body.userId);
       set.status = 201;
-      return listManagers(standing.workspaceId);
+      return listManagers(db, standing.workspaceId);
     },
     {
       workspaceOwner: true,
@@ -156,8 +162,8 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .delete(
     '/workspaces/:workspaceId/managers/:userId',
-    async ({ standing, params }) => {
-      await removeAdmin(standing.workspaceId, params.userId);
+    async ({ db, standing, params }) => {
+      await removeAdmin(db, standing.workspaceId, params.userId);
       return noContent();
     },
     {
@@ -192,7 +198,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .patch(
     '/workspaces/:workspaceId/scim',
-    async ({ standing, body }) => {
+    async ({ db, standing, body }) => {
       const current = await getScimSettings(standing.workspaceId);
       // Enabling it without a token would leave the endpoint answering 401 to
       // everything, which reads as a broken integration rather than a missing step.
@@ -201,7 +207,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
       }
       const settings = await setScimSettings(standing.workspaceId, body);
       if (settings.enabled !== current.enabled)
-        await reconcileWorkspaceGrants(standing.workspaceId);
+        await reconcileWorkspaceGrants(db, standing.workspaceId);
       return { ...settings, baseUrl: SCIM_BASE_URL };
     },
     {
@@ -234,7 +240,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .get(
     '/workspaces/:workspaceId/scim/groups',
-    ({ standing }) => listProvisionedGroups(standing.workspaceId),
+    ({ db, standing }) => listProvisionedGroups(db, standing.workspaceId),
     {
       workspaceScim: true,
       params: workspaceParams,
@@ -250,8 +256,8 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .put(
     '/workspaces/:workspaceId/scim/groups/:groupId/mappings',
-    ({ standing, params, body }) =>
-      setGroupMappings(standing.workspaceId, params.groupId, body.mappings),
+    ({ db, standing, params, body }) =>
+      setGroupMappings(db, standing.workspaceId, params.groupId, body.mappings),
     {
       workspaceScim: true,
       params: scimGroupParams,
@@ -268,7 +274,7 @@ export const workspaceRoutes = new Elysia({ name: 'workspaces', detail: { tags: 
 
   .get(
     '/workspaces/:workspaceId/scim/projects',
-    ({ standing }) => listMappableProjects(standing.workspaceId),
+    ({ db, standing }) => listMappableProjects(db, standing.workspaceId),
     {
       workspaceScim: true,
       params: workspaceParams,

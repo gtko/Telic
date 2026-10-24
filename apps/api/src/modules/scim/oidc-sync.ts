@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { db, account } from '@repo/db';
+import { account, type Db } from '@repo/db';
 import { auth, OIDC_PROVIDER_ID } from '@repo/auth';
 import { groupDisplayNames } from './resource';
 import { syncEmbeddedGroups } from './service';
@@ -35,7 +35,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
 // effort throughout: a decode failure, a missing claim, or a DB error is logged and
 // swallowed rather than surfaced, since none of it should turn a successful sign-in
 // into a failed one.
-export async function syncOidcGroupsAfterCallback(response: Response): Promise<void> {
+export async function syncOidcGroupsAfterCallback(db: Db, response: Response): Promise<void> {
   try {
     const cookie = response.headers
       .getSetCookie()
@@ -57,7 +57,7 @@ export async function syncOidcGroupsAfterCallback(response: Response): Promise<v
 
     const claims = decodeJwtPayload(idToken);
     const names = groupDisplayNames(claims?.groups);
-    await syncEmbeddedGroups(null, session.user.id, names);
+    await syncEmbeddedGroups(db, null, session.user.id, names);
   } catch (error) {
     console.error('[scim] OIDC group sync failed:', error);
   }

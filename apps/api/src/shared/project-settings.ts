@@ -1,4 +1,4 @@
-import { db, projectSetting } from '@repo/db';
+import { projectSetting, type Db } from '@repo/db';
 import { and, eq, sql } from 'drizzle-orm';
 
 // Instance settings (app_setting) are read through getSetting/setSetting in
@@ -8,7 +8,11 @@ import { and, eq, sql } from 'drizzle-orm';
 // project. Typed accessors per key live in the feature that owns the key (e.g.
 // auto-archive in modules/projects/service.ts).
 
-export async function getProjectSetting<T>(projectId: number, key: string): Promise<T | null> {
+export async function getProjectSetting<T>(
+  db: Db,
+  projectId: number,
+  key: string,
+): Promise<T | null> {
   const rows = await db
     .select({ value: projectSetting.value })
     .from(projectSetting)
@@ -17,6 +21,7 @@ export async function getProjectSetting<T>(projectId: number, key: string): Prom
 }
 
 export async function setProjectSetting(
+  db: Db,
   projectId: number,
   key: string,
   value: unknown,
