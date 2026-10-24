@@ -54,7 +54,7 @@ export function decryptSecret(enc: EncryptedSecret): string {
   return plaintext.toString('utf8');
 }
 
-// HMAC-SHA256 over `${timestamp}.${body}`, formatted as the X-Itsaplan-Signature header
+// HMAC-SHA256 over `${timestamp}.${body}`, formatted as the X-Telic-Signature header
 // value (`t=<ts>,v1=<hex>`). It signs every request this instance sends to a URL someone
 // configured: a webhook delivery and an agent invocation. The timestamp lets the
 // receiver reject replays; the receiver recomputes the HMAC over the exact bytes it

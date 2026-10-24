@@ -17,9 +17,9 @@ a queue binding (a local run) the cron runs the job inline.
 
 - Reads `webhook_delivery` for due `pending` rows, claims a batch with a lease,
   posts each to its webhook URL, records the outcome.
-- Signs every request: `X-Itsaplan-Signature: t=<ts>,v1=<hmac-sha256>` over
-  `${ts}.${body}` with the webhook's `secret`. Plus `X-Itsaplan-Event`,
-  `X-Itsaplan-Delivery`, `X-Itsaplan-Event-Id` (stable across retries).
+- Signs every request: `X-Telic-Signature: t=<ts>,v1=<hmac-sha256>` over
+  `${ts}.${body}` with the webhook's `secret`. Plus `X-Telic-Event`,
+  `X-Telic-Delivery`, `X-Telic-Event-Id` (stable across retries).
 - Retries transient failures (timeout, 429, 5xx) with equal-jitter exponential
   backoff up to `WEBHOOK_MAX_ATTEMPTS`; permanent 4xx fail immediately. After
   `WEBHOOK_DISABLE_THRESHOLD` consecutive failures the webhook is auto-disabled.
@@ -65,7 +65,7 @@ wake-up message.
   queries, limits and mapping.
 - `cross-reference.ts` — pure text matching for a source's own "KEY-123"-style
   issue identifier: no `@repo/db`, no network, unit-tested directly. What
-  the Rewrite phase resolves into itsaplan's own issue ids.
+  the Rewrite phase resolves into Telic's own issue ids.
 - `import-store.ts` — all `@repo/db` access for imports: claiming due jobs,
   reading/writing a job's phase/cursor/status, the `import_record`
   source-id-to-local-id upsert, and creating the local rows (states, labels,

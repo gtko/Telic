@@ -267,7 +267,7 @@ export async function assertPublicHttpUrl(raw: string, policy?: UrlPolicy): Prom
 // The runtime sends no User-Agent of its own, and GitHub answers 403 with an HTML body
 // to a request that carries none. The Node-based fetch this replaced always sent one,
 // so callers never had to.
-const DEFAULT_USER_AGENT = 'itsaplan/1';
+const DEFAULT_USER_AGENT = 'telic/1';
 
 export interface PinnedRequestInit extends UrlPolicy {
   method?: string;

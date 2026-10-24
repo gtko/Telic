@@ -940,7 +940,7 @@ export function createAuth(env: AuthEnv, db: Db) {
       // then used to sign in (signIn.passkey). Adds the `passkey` table.
       passkey({
         rpID: cfg.passkeyRpID,
-        rpName: env.PASSKEY_RP_NAME ?? "It's a Plan",
+        rpName: env.PASSKEY_RP_NAME ?? 'Telic',
         // Expected origin(s) of the WebAuthn ceremony — the frontend origins.
         origin: trustedOrigins,
       }),
@@ -1048,7 +1048,7 @@ export function createAuth(env: AuthEnv, db: Db) {
 
     advanced: {
       // Share the session cookie across subdomains when COOKIE_DOMAIN is the parent
-      // domain (e.g. ".itsaplan.dev" for app.itsaplan.dev + api.itsaplan.dev). Without
+      // domain (e.g. ".example.com" for app.example.com + api.example.com). Without
       // it the cookie is host-only for the api origin, so the SSR web app on another
       // subdomain cannot read the session. Leave COOKIE_DOMAIN unset on localhost
       // (single host), where "lax" host-only cookies already work across ports.

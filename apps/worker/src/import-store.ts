@@ -434,7 +434,7 @@ export async function listImportRecords(
 }
 
 // The next chunk of this job's snapshot that has not been materialized yet,
-// keyset-paginated on import_record's own id — itsaplan's own position in the
+// keyset-paginated on import_record's own id — Telic's own position in the
 // snapshot list, not the source's pagination cursor (see the notes file). A
 // retried tick naturally skips rows a crashed earlier attempt already created,
 // since those no longer match "local id still null".
