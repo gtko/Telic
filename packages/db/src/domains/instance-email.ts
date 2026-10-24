@@ -4,6 +4,7 @@ import {
   type ResendConfig,
   type SmtpConfig,
 } from '@repo/mailer';
+import type { Db } from '../client';
 import { readSecret } from '../secrets';
 
 // The instance mail provider, stored encrypted in app_secret under 'auth.email'.
@@ -44,8 +45,8 @@ export function defaultInstanceEmailConfig(): InstanceEmailConfig {
 }
 
 // The stored config, or null when nothing has been saved.
-export async function getInstanceEmailConfig(): Promise<InstanceEmailConfig | null> {
-  const stored = await readSecret<InstanceEmailConfig>(INSTANCE_EMAIL_SECRET_KEY);
+export async function getInstanceEmailConfig(db: Db): Promise<InstanceEmailConfig | null> {
+  const stored = await readSecret<InstanceEmailConfig>(db, INSTANCE_EMAIL_SECRET_KEY);
   if (!stored) return null;
   // Merge over the default so a config written before a field was added stays valid.
   return { ...defaultInstanceEmailConfig(), ...stored };
@@ -54,15 +55,15 @@ export async function getInstanceEmailConfig(): Promise<InstanceEmailConfig | nu
 // Whether outbound mail can be sent right now. Everything that mails the user
 // (password reset, address confirmation, sign-in links) is unavailable without it,
 // so both the god settings and the public sign-in screens ask this first.
-export async function hasConfiguredEmailProvider(): Promise<boolean> {
-  const config = await getInstanceEmailConfig();
+export async function hasConfiguredEmailProvider(db: Db): Promise<boolean> {
+  const config = await getInstanceEmailConfig(db);
   return config ? hasEmailProvider(config) : false;
 }
 
 // The instance provider a project may send its notifications through, or null when
 // projects are not allowed to use it or it is not configured.
-export async function getProjectEmailConfig(): Promise<InstanceEmailConfig | null> {
-  const config = await getInstanceEmailConfig();
+export async function getProjectEmailConfig(db: Db): Promise<InstanceEmailConfig | null> {
+  const config = await getInstanceEmailConfig(db);
   if (!config || !config.allowProjects) return null;
   return hasEmailProvider(config) ? config : null;
 }

@@ -15,7 +15,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-import { user } from './auth-stub';
+import { user } from './auth';
 import { project, teamRole, workspace } from './app';
 
 // An account as one identity provider sees it. For the instance's provider `active`

@@ -1,4 +1,4 @@
-export { db, type DbExecutor } from './client';
+export { createDb, type Db, type DbExecutor } from './client';
 export * from './schema';
 export * from './permissions';
 export { getSetting, getOrCreateSetting, setSetting } from './settings';
@@ -35,6 +35,5 @@ export {
   projectStoredBytes,
   projectTeamId,
   workspaceStoredBytes,
-  lockAttachmentStorage,
   type StorageSettings,
 } from './domains/storage';

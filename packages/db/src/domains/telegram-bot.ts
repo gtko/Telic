@@ -1,3 +1,4 @@
+import type { Db } from '../client';
 import { readSecret } from '../secrets';
 
 // The instance Telegram bot, stored encrypted in app_secret under 'telegram.bot'.
@@ -16,8 +17,8 @@ export interface InstanceBotConfig {
   botUsername: string;
 }
 
-export async function getInstanceBotConfig(): Promise<InstanceBotConfig> {
-  const stored = await readSecret<InstanceBotConfig>(TELEGRAM_BOT_SECRET_KEY);
+export async function getInstanceBotConfig(db: Db): Promise<InstanceBotConfig> {
+  const stored = await readSecret<InstanceBotConfig>(db, TELEGRAM_BOT_SECRET_KEY);
   // Merge over the default so a config written before a field was added stays valid.
   return { enabled: false, botToken: '', botUsername: '', ...stored };
 }

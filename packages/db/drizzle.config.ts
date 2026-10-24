@@ -1,7 +1,8 @@
 import { defineConfig } from 'drizzle-kit';
 
-// SPIKE S3 (ODY-296): sqlite dialect for Cloudflare D1. Migrations go to drizzle-d1/,
-// applied to D1 by wrangler (see wrangler.jsonc). The pg schema and drizzle/ are untouched.
+// One dialect: sqlite, for Cloudflare D1. Migrations go to drizzle-d1/ and are applied by
+// `wrangler d1 migrations apply` (see wrangler.jsonc). The Postgres-era migrations live in
+// legacy-pg/ and are never run: they only document the data the migration script has to move.
 export default defineConfig({
   schema: './src/schema/index.ts',
   out: './drizzle-d1',

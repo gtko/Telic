@@ -8,7 +8,7 @@
     "./extensions": "./src/extensions.ts"
   },
   "scripts": {
-    "auth:generate": "dotenv -e ../../.env -- bunx auth@1.7.11 generate --config ./src/index.ts --output ../db/src/schema/auth.ts --yes",
+    "auth:generate": "bun --filter=@repo/db run auth:generate",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },

@@ -14,7 +14,7 @@ import {
   unique,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { user } from './auth-stub';
+import { user } from './auth';
 
 // Global key-value settings for the instance, not scoped to a project. The value is
 // a jsonb blob owned by whatever feature reads the key, so one table backs many

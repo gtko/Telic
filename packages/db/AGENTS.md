@@ -1,13 +1,14 @@
 # @repo/db
 
-Drizzle ORM + `postgres-js` over PostgreSQL. Single source of truth for the DB schema.
+Drizzle ORM over Cloudflare D1 (SQLite). Single source of truth for the DB schema.
+See `PORTING_NOTES.md` for what the Postgres to D1 move changed and what is still open (ODY-296).
 See root `AGENTS.md` for monorepo-wide rules.
 
 ## Structure
 
 - `src/client.ts` — the `db` instance (one `postgres()` connection, `prepare: false`).
 - `src/schema/auth.ts` — **generated** by better-auth CLI. Do NOT edit by hand;
-  regenerate with `bun run auth:generate` (from the auth package / root).
+  regenerate with `bun run auth:generate` in this package (config: `auth.cli.ts`, sqlite).
 - `src/schema/app.ts` — hand-written application tables. Add domain tables here.
 - `src/schema/index.ts` — re-exports every table; `drizzle.config.ts` points at it.
 - `src/permissions.ts` — the permission matrix stored in `team_role.permissions`: the

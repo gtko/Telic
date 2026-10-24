@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { decryptSecret } from '@repo/crypto';
 import type { ResendConfig, SmtpConfig } from '@repo/mailer';
-import { db } from '../client';
+import type { Db } from '../client';
 import { teamNotificationSetting } from '../schema/app';
 
 // A team's notification provider credentials, stored encrypted as one JSON blob in
@@ -60,7 +60,10 @@ export function emailSource(config: {
 }
 
 // The stored config, or null when the team has none yet.
-export async function readNotificationConfig(teamId: number): Promise<NotificationConfig | null> {
+export async function readNotificationConfig(
+  db: Db,
+  teamId: number,
+): Promise<NotificationConfig | null> {
   const rows = await db
     .select({
       ciphertext: teamNotificationSetting.ciphertext,
@@ -79,6 +82,6 @@ export async function readNotificationConfig(teamId: number): Promise<Notificati
 }
 
 // The full decrypted config, for the sender that actually delivers a notification.
-export async function getDeliveryConfig(teamId: number): Promise<NotificationConfig> {
-  return (await readNotificationConfig(teamId)) ?? defaultNotificationConfig();
+export async function getDeliveryConfig(db: Db, teamId: number): Promise<NotificationConfig> {
+  return (await readNotificationConfig(db, teamId)) ?? defaultNotificationConfig();
 }

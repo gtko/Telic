@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import { db, type DbExecutor } from '../client';
+import type { Db, DbExecutor } from '../client';
 import { getSetting } from '../settings';
 import {
   chatAttachment,
@@ -69,8 +69,8 @@ export function defaultStorageSettings(): StorageSettings {
   };
 }
 
-export async function getStorageSettings(): Promise<StorageSettings> {
-  const stored = await getSetting<Partial<StorageSettings>>(STORAGE_SETTING_KEY);
+export async function getStorageSettings(db: Db): Promise<StorageSettings> {
+  const stored = await getSetting<Partial<StorageSettings>>(db, STORAGE_SETTING_KEY);
   // Merge over the default so a value written before a field was added stays valid.
   return { ...defaultStorageSettings(), ...(stored ?? {}) };
 }
@@ -89,31 +89,13 @@ function num(value: unknown): number {
   return Number(value ?? 0);
 }
 
-const ATTACHMENT_QUOTA_LOCK_NAMESPACE = 1_145_390_932;
-
-// Serializes a project's quota check against a concurrent one — two uploads (or
-// an upload and an import) racing the same read-then-insert could otherwise
-// both pass the check and land over quota together. Held for the rest of the
-// caller's transaction (pg_advisory_xact_lock), so it must be called inside one.
-export async function lockAttachmentStorage(
-  executor: DbExecutor,
-  projectId: number,
-): Promise<void> {
-  await executor.execute(
-    sql`select pg_advisory_xact_lock(${ATTACHMENT_QUOTA_LOCK_NAMESPACE}, ${projectId})`,
-  );
-}
-
 // Total attachment bytes a project has stored, across every kind that counts
 // against its quota (issue, chat, document, initiative attachments) — what a new
 // upload's size is checked against before it is allowed, and what a worker
-// importing issue attachments checks against too. Runs against either the plain
-// db or a transaction: a caller commonly checks capacity and inserts in the same
-// transaction, so both must observe the same snapshot.
-export async function projectStoredBytes(
-  projectId: number,
-  executor: DbExecutor = db,
-): Promise<number> {
+// importing issue attachments checks against too. D1 has no row or advisory lock to
+// serialize a check against a concurrent insert, so the check stays advisory until the
+// upload path enforces the quota in the insert itself.
+export async function projectStoredBytes(executor: DbExecutor, projectId: number): Promise<number> {
   const issues = await executor
     .select({ total: sql<string>`coalesce(sum(${issueAttachment.sizeBytes}), 0)` })
     .from(issueAttachment)
@@ -144,8 +126,8 @@ export async function projectStoredBytes(
 // The project's team, read through the same executor a quota check runs on — a
 // copy checks the quota of a project its own transaction has not committed yet.
 export async function projectTeamId(
+  executor: DbExecutor,
   projectId: number,
-  executor: DbExecutor = db,
 ): Promise<number | null> {
   const [owner] = await executor
     .select({ teamId: project.teamId })
@@ -157,8 +139,8 @@ export async function projectTeamId(
 // The same total as projectStoredBytes, summed across every project of one workspace —
 // what a workspace-wide storage ceiling is checked against.
 export async function workspaceStoredBytes(
+  executor: DbExecutor,
   workspaceId: number,
-  executor: DbExecutor = db,
 ): Promise<number> {
   const issues = await executor
     .select({ total: sql<string>`coalesce(sum(${issueAttachment.sizeBytes}), 0)` })
