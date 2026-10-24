@@ -127,8 +127,6 @@
     "ownerRemoved": "移除了负责人 {name}",
     "assigneeSet": "指派给 {name}",
     "assigneeRemoved": "移除了负责人 {name}",
-    "delegateSet": "委派给 {name}",
-    "delegateRemoved": "移除了执行代理 {name}",
     "targetDateSet": "将目标日期设为 {date}",
     "targetDateRemoved": "移除了目标日期",
     "startDateSet": "将开始日期设为 {date}",

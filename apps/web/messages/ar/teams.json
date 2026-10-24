@@ -108,8 +108,7 @@
     "roles": {
       "owner": "مالك",
       "manager": "مدير",
-      "member": "عضو",
-      "agent": "وكيل ذكاء اصطناعي"
+      "member": "عضو"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "الدور ده لسه مستخدم. اختار الدور اللي هينتقلوا ليه.",
     "usageLoading": "بنشوف مين على الدور ده…",
     "usageMembers": "الأعضاء",
-    "usageAgents": "الوكلاء",
     "usageInvites": "دعوات في الانتظار",
     "usageGroups": "المجموعات المزوَّدة",
     "moveTo": "النقل إلى",

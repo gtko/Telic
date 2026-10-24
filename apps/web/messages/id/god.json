@@ -7,12 +7,6 @@
   "users": {
     "empty": "Tidak ada akun yang cocok dengan filter ini.",
     "searchPlaceholder": "Cari berdasarkan nama atau email",
-    "kind": "Jenis akun",
-    "kinds": {
-      "human": "Manusia",
-      "agent": "Bot AI",
-      "all": "Semua akun"
-    },
     "columns": {
       "account": "Akun",
       "role": "Peran",
@@ -25,7 +19,6 @@
     "registered": "bergabung {date}",
     "roleGod": "God",
     "roleUser": "Pengguna",
-    "agent": "Agen",
     "noProviders": "tidak ada",
     "neverSeen": "tidak pernah",
     "verified": "Terverifikasi",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "Pemilik instans selalu aktif.",
-      "agent": "Akun agen mengikuti agennya.",
       "scim": "Penyedia identitas Anda (SCIM) menentukan akun mana yang aktif."
     },
     "deactivateTitle": "Nonaktifkan {email}?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Pemilik instance",
     "user": "Pengguna",
-    "aiAgent": "Agen AI",
     "emailVerified": "Email terverifikasi",
     "unconfirmedTitle": "Alamat email belum dikonfirmasi",
     "unconfirmedHint": "Konfirmasikan di sini jika tautan tidak pernah sampai ke mereka.",
@@ -87,7 +78,6 @@
       "project": "Proyek",
       "members": "Anggota",
       "issues": "Issue",
-      "agents": "Agen",
       "lastActivity": "Aktivitas terakhir",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Inisiatif",
       "members": "Anggota",
       "dashboards": "Dasbor",
-      "views": "Tampilan",
-      "agents": "Agen AI",
-      "skills": "Keahlian",
-      "tools": "Alat"
+      "views": "Tampilan"
     },
     "members": "Anggota",
     "noMembersTitle": "Tidak ada anggota",
@@ -129,7 +116,6 @@
       "projects": "Proyek",
       "members": "Anggota",
       "issues": "Issue",
-      "agents": "Agen",
       "mcp": "MCP"
     },
     "mcpEnabled": "Diaktifkan",
@@ -146,9 +132,6 @@
       "projects": "Proyek",
       "issues": "Issue",
       "members": "Anggota",
-      "agents": "Agen AI",
-      "skills": "Keahlian",
-      "tools": "Alat",
       "roles": "Peran proyek"
     },
     "projects": "Proyek",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Pemilik",
       "manager": "Manajer",
-      "member": "Anggota",
-      "agent": "Agen"
+      "member": "Anggota"
     },
     "joined": "bergabung {date}"
   },

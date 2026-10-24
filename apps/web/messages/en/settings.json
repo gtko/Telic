@@ -214,8 +214,7 @@
     "memberScope": "Who it holds",
     "memberScopes": {
       "all": "Anyone",
-      "humans": "People only",
-      "agents": "Agents only"
+      "humans": "People only"
     },
     "mainInfo": "Main info",
     "mainInfoTooltip": "Shows in the issue body, not Properties",

@@ -17,7 +17,7 @@ import { allowedImageStyle } from '@/utils/imageStyle';
 // Fails closed: a DOM that DOMPurify reports unsupported falls back to sanitize-html,
 // never to the unsanitized input.
 
-// Content whose links lead away from the current view (release notes, agent chat)
+// Content whose links lead away from the current view (release notes)
 // asks for newTabLinks, so following one does not replace what the reader was on.
 export interface HtmlOptions {
   newTabLinks?: boolean;

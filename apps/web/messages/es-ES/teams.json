@@ -108,8 +108,7 @@
     "roles": {
       "owner": "Propietario",
       "manager": "Administrador",
-      "member": "Miembro",
-      "agent": "Agente de IA"
+      "member": "Miembro"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "Este rol todavía está en uso. Elige el rol al que se mueve todo lo que está en él.",
     "usageLoading": "Comprobando qué está en este rol…",
     "usageMembers": "Miembros",
-    "usageAgents": "Agentes",
     "usageInvites": "Invitaciones pendientes",
     "usageGroups": "Grupos preparados",
     "moveTo": "Mover a",

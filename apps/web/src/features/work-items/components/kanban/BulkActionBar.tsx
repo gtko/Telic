@@ -48,7 +48,7 @@ export function BulkActionBar({ project }: { project: ProjectDetail }) {
   const subtasks = subtaskCount(project.issues, ids);
   const canEdit = can('work_items', 'edit');
   const canDelete = can('work_items', 'delete');
-  const members = project.assignees.filter((a) => a.kind === 'member');
+  const members = project.assignees;
   const disabled = bulk.pending;
 
   return (

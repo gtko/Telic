@@ -214,8 +214,7 @@
     "memberScope": "可選擇的成員範圍",
     "memberScopes": {
       "all": "任何人",
-      "humans": "僅成員",
-      "agents": "僅代理"
+      "humans": "僅成員"
     },
     "mainInfo": "主要資訊",
     "mainInfoTooltip": "顯示在工作項目正文中，而不是「屬性」區域",

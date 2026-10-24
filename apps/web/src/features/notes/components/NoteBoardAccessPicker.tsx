@@ -82,12 +82,7 @@ export default function NoteBoardAccessPicker({
   }
 
   const groups =
-    mode === 'restricted'
-      ? [
-          { heading: t('members'), items: people.filter((c) => c.kind === 'member').map(toItem) },
-          { heading: t('agents'), items: people.filter((c) => c.kind === 'agent').map(toItem) },
-        ]
-      : [];
+    mode === 'restricted' ? [{ heading: t('members'), items: people.map(toItem) }] : [];
 
   const Icon = VISIBILITY_ICON[visibility];
 

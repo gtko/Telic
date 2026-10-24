@@ -214,8 +214,7 @@
     "memberScope": "선택 대상",
     "memberScopes": {
       "all": "모두",
-      "humans": "사용자만",
-      "agents": "AI 에이전트만"
+      "humans": "사용자만"
     },
     "mainInfo": "주요 정보",
     "mainInfoTooltip": "속성이 아닌 이슈 본문에 표시됩니다",

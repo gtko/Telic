@@ -65,11 +65,6 @@ export function useActivityText() {
         return {
           line: rich(from ? 'assigneeChanged' : 'assigneeSet', { name: to }),
         };
-      case 'delegate':
-        if (!to) return { line: rich('delegateRemoved', { name: from ?? '' }) };
-        return {
-          line: rich(from ? 'delegateChanged' : 'delegateSet', { name: to }),
-        };
       case 'priority':
         return to
           ? { line: rich('prioritySet', { priority: priorityLabel(to) }) }
@@ -162,10 +157,6 @@ export function useActivityText() {
         return { line: line('commentEdited') };
       case 'comment_deleted':
         return { line: line('commentDeleted') };
-      case 'agent_started':
-        return { line: line('agentStarted') };
-      case 'agent_finished':
-        return { line: line(subject === 'failed' ? 'agentFailed' : 'agentFinished') };
       case 'git_pr':
       case 'github_pr': {
         // The from side is "owner/repo#42", the to side the pull request's URL.

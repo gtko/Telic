@@ -31,9 +31,6 @@ const STATS = [
   { key: 'projects', count: (team: InstanceTeam) => team.projectCount },
   { key: 'issues', count: (team: InstanceTeam) => team.issueCount },
   { key: 'members', count: (team: InstanceTeam) => team.memberCount },
-  { key: 'agents', count: (team: InstanceTeam) => team.agentCount },
-  { key: 'skills', count: (team: InstanceTeam) => team.skillCount },
-  { key: 'tools', count: (team: InstanceTeam) => team.toolCount },
   { key: 'roles', count: (team: InstanceTeam) => team.roleCount },
 ] as const;
 

@@ -214,8 +214,7 @@
     "memberScope": "Siapa yang dapat dipilih",
     "memberScopes": {
       "all": "Siapa saja",
-      "humans": "Hanya pengguna manusia",
-      "agents": "Hanya agen"
+      "humans": "Hanya pengguna manusia"
     },
     "mainInfo": "Info utama",
     "mainInfoTooltip": "Ditampilkan di badan issue, bukan di Properti",

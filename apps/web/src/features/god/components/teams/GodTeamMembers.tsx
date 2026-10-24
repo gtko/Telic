@@ -1,6 +1,5 @@
 'use client';
 
-import { Bot } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { formatShortDate } from '@/utils/dates';
 import { useSearchTerm } from '@/hooks/useSearchTerm';
@@ -12,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useInstanceTeamMembersQuery } from '../../services/god.service';
 
-// Everyone in the team, people and agents alike, a page at a time. The rank is the
+// Everyone in the team, a page at a time. The rank is the
 // fixed team one, so there is no permission matrix to unfold behind the row.
 export default function GodTeamMembers({ teamId }: { teamId: number }) {
   const t = useTranslations('god.teamPanel');
@@ -65,7 +64,6 @@ export default function GodTeamMembers({ teamId }: { teamId: number }) {
                   variant={m.role === 'owner' ? 'default' : 'secondary'}
                   className="gap-1 px-1.5 py-0 text-[10px] font-medium"
                 >
-                  {m.isAgent && <Bot className="size-3" />}
                   {t(`roles.${m.role}`)}
                 </Badge>
                 <span className="hidden text-xs text-muted-foreground sm:inline">

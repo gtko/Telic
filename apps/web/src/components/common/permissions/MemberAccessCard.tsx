@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Bot } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { PermissionCatalog, Permissions } from '@/lib/api/endpoints/roles';
 import Avatar from '@/components/common/Avatar';
@@ -24,7 +23,6 @@ export default function MemberAccessCard({
     email: string;
     username: string | null;
     image: string | null;
-    isAgent: boolean;
     role: 'owner' | 'member';
     roleName: string | null;
     description: string;
@@ -41,13 +39,7 @@ export default function MemberAccessCard({
   const isOwner = member.role === 'owner';
   const displayName = member.name || member.email;
 
-  // Under the name: the address for a person, the handle for an agent, whose address
-  // is internal to the instance. Nothing when the name line already carries it.
-  function secondaryLine(): string | null {
-    if (member.isAgent) return member.username ? `@${member.username}` : null;
-    return member.name ? member.email : null;
-  }
-  const secondary = secondaryLine();
+  const secondary = member.name ? member.email : null;
 
   return (
     <AccessCard
@@ -66,12 +58,6 @@ export default function MemberAccessCard({
           <Avatar name={displayName} image={member.image} className="size-8 shrink-0 text-[11px]" />
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
-              {member.isAgent && (
-                <Bot
-                  className="size-3.5 shrink-0 text-muted-foreground"
-                  aria-label={tCommon('agent')}
-                />
-              )}
               <span className="truncate text-sm">{displayName}</span>
             </span>
             {secondary && (

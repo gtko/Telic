@@ -67,15 +67,13 @@
       "status": "状态",
       "priority": "优先级",
       "type": "类型",
-      "assignee": "负责人",
-      "delegate": "执行代理"
+      "assignee": "负责人"
     },
     "caption": {
       "status": "按状态",
       "priority": "按优先级",
       "type": "按类型",
-      "assignee": "按负责人",
-      "delegate": "按执行代理"
+      "assignee": "按负责人"
     }
   },
   "recentIssues": {

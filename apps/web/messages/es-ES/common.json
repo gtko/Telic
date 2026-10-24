@@ -161,7 +161,6 @@
     "download": "Guardar gráfico",
     "downloadFailed": "No se ha podido guardar el gráfico"
   },
-  "agent": "Agente",
   "pager": {
     "previous": "Página anterior",
     "next": "Página siguiente",

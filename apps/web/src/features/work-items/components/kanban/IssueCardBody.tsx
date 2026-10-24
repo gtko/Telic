@@ -17,7 +17,6 @@ import type { DisplayProperty, PropertyKey } from '@/utils/viewSettings';
 import {
   AssigneeAvatar,
   DateBadge,
-  DelegateAvatar,
   LabelBadge,
   PriorityBadge,
 } from '@/features/issue/components/shared/IssueBadges';
@@ -46,8 +45,6 @@ export function IssueCardBody({
   const type = issue.typeId != null ? maps.typeById.get(issue.typeId) : undefined;
   const assignee =
     issue.assigneeUserId != null ? maps.assigneeById.get(issue.assigneeUserId) : undefined;
-  const delegate =
-    issue.delegateUserId != null ? maps.assigneeById.get(issue.delegateUserId) : undefined;
   const initiative = issue.initiative ?? undefined;
   const cycle = issue.cycle ?? undefined;
   const column = maps.columnById.get(issue.columnId);
@@ -61,11 +58,7 @@ export function IssueCardBody({
     (has('estimatePoints') && issue.estimatePoints != null) ||
     (has('estimateTime') && issue.estimateMinutes != null) ||
     (has('labels') && issue.labelIds.length > 0);
-  const footerShown =
-    has('created') ||
-    has('updated') ||
-    (has('assignee') && assignee) ||
-    (has('delegate') && delegate);
+  const footerShown = has('created') || has('updated') || (has('assignee') && assignee);
 
   return (
     <>
@@ -197,16 +190,7 @@ export function IssueCardBody({
             {has('created') && has('updated') && ' · '}
             {has('updated') && t('updatedOn', { date: formatShortDate(issue.updatedAt) })}
           </span>
-          {/* Negative spacing so a delegate and an assignee shown together
-              overlap; the ring in the card color keeps them separated. */}
           <div className="flex items-center -space-x-1.5">
-            {has('delegate') && delegate && (
-              <DelegateAvatar
-                name={delegate.name}
-                image={delegate.image}
-                className="ring-2 ring-[var(--kanban-card)]"
-              />
-            )}
             {has('assignee') && assignee && (
               <AssigneeAvatar
                 name={assignee.name}

@@ -214,8 +214,7 @@
     "memberScope": "可选择的对象",
     "memberScopes": {
       "all": "任何人",
-      "humans": "仅成员",
-      "agents": "仅代理"
+      "humans": "仅成员"
     },
     "mainInfo": "主要信息",
     "mainInfoTooltip": "显示在工作项正文中，而不是“属性”区域",

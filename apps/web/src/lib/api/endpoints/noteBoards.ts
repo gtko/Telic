@@ -78,7 +78,6 @@ export interface NoteBoardAccessCandidate {
   userId: string;
   name: string;
   image: string | null;
-  kind: 'member' | 'agent';
   canAccess: boolean;
 }
 

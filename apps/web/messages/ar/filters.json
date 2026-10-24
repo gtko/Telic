@@ -31,7 +31,6 @@
     "status": "الحالة",
     "statusType": "نوع الحالة",
     "assignee": "المسؤول",
-    "delegate": "المفوَّض",
     "priority": "الأولوية",
     "type": "النوع",
     "initiative": "المبادرة",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "بلا مسؤول",
-    "delegate": "بلا مفوَّض",
     "type": "بلا نوع",
     "initiative": "بلا مبادرة",
     "cycle": "بلا دورة",

@@ -138,7 +138,7 @@ export default function MarkdownEditor({
       // Renders ![](url) markdown inline.
       ResizableImage,
       // Renders an @username in the text as a mention chip, and offers the project's
-      // members and agents while one is typed.
+      // members while one is typed.
       Mention.configure({
         items: () => mentionCandidatesRef.current,
         self: () => selfHandleRef.current,

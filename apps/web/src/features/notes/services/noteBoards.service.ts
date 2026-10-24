@@ -43,7 +43,7 @@ export function useNoteBoardQuery(projectKey: string | null, boardId: number | n
   });
 }
 
-// Who a restricted board can be shared with: the project's members and agents,
+// Who a restricted board can be shared with: the project's members,
 // each with whether their role can read notes at all. Only the access picker needs
 // it, so it is a query of its own rather than part of the board payload.
 export function useNoteBoardAccessCandidates(projectKey: string | null) {

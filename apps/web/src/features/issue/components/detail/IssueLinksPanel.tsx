@@ -137,7 +137,6 @@ export default function IssueLinksPanel({
             typeId: issue.typeId,
             initiativeId: issue.initiative?.id ?? null,
             assigneeUserId: issue.assigneeUserId,
-            delegateUserId: null,
             priority: issue.priority,
           }}
           // The crumb names the relation from the new issue's end, the way the

@@ -108,8 +108,7 @@
     "roles": {
       "owner": "Pemilik",
       "manager": "Manajer",
-      "member": "Anggota",
-      "agent": "Agen AI"
+      "member": "Anggota"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "Peran ini masih digunakan. Pilih peran tujuan untuk memindahkan semua yang menggunakannya.",
     "usageLoading": "Memeriksa apa saja yang menggunakan peran ini…",
     "usageMembers": "Anggota",
-    "usageAgents": "Agen",
     "usageInvites": "Undangan tertunda",
     "usageGroups": "Grup hasil provisioning",
     "moveTo": "Pindahkan ke",

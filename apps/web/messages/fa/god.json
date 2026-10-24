@@ -7,12 +7,6 @@
   "users": {
     "empty": "هیچ حسابی با این فیلترها مطابقت ندارد.",
     "searchPlaceholder": "جستجو بر اساس نام یا ایمیل",
-    "kind": "نوع حساب",
-    "kinds": {
-      "human": "انسان‌ها",
-      "agent": "ربات‌های هوش مصنوعی",
-      "all": "همه حساب‌ها"
-    },
     "columns": {
       "account": "حساب",
       "role": "نقش",
@@ -25,7 +19,6 @@
     "registered": "عضو شده در {date}",
     "roleGod": "خدا",
     "roleUser": "کاربر",
-    "agent": "ایجنت",
     "noProviders": "هیچ‌کدام",
     "neverSeen": "هرگز",
     "verified": "تأییدشده",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "مالک سامانه همیشه فعال است.",
-      "agent": "حساب ایجنت تابع ایجنت آن است.",
       "scim": "ارائه‌دهنده هویت شما (SCIM) تعیین می‌کند کدام حساب‌ها فعال باشند."
     },
     "deactivateTitle": "غیرفعال کردن {email}؟",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "مالک سامانه",
     "user": "کاربر",
-    "aiAgent": "ایجنت هوش مصنوعی",
     "emailVerified": "ایمیل تأییدشده",
     "unconfirmedTitle": "آدرس ایمیل تأیید نشده است",
     "unconfirmedHint": "وقتی لینک به دستشان نرسید، اینجا تأییدش کنید.",
@@ -87,7 +78,6 @@
       "project": "پروژه",
       "members": "اعضا",
       "issues": "تسک‌ها",
-      "agents": "ایجنت‌ها",
       "lastActivity": "آخرین فعالیت",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "ابتکارها",
       "members": "اعضا",
       "dashboards": "داشبوردها",
-      "views": "نماها",
-      "agents": "ایجنت‌های هوش مصنوعی",
-      "skills": "مهارت‌ها",
-      "tools": "ابزارها"
+      "views": "نماها"
     },
     "members": "اعضا",
     "noMembersTitle": "بدون عضو",
@@ -129,7 +116,6 @@
       "projects": "پروژه‌ها",
       "members": "اعضا",
       "issues": "تسک‌ها",
-      "agents": "ایجنت‌ها",
       "mcp": "MCP"
     },
     "mcpEnabled": "فعال",
@@ -146,9 +132,6 @@
       "projects": "پروژه‌ها",
       "issues": "تسک‌ها",
       "members": "اعضا",
-      "agents": "ایجنت‌های هوش مصنوعی",
-      "skills": "مهارت‌ها",
-      "tools": "ابزارها",
       "roles": "نقش‌های پروژه"
     },
     "projects": "پروژه‌ها",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "مالک",
       "manager": "مدیر",
-      "member": "عضو",
-      "agent": "ایجنت"
+      "member": "عضو"
     },
     "joined": "عضو شده در {date}"
   },

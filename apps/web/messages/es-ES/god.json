@@ -7,12 +7,6 @@
   "users": {
     "empty": "Ninguna cuenta coincide con estos filtros.",
     "searchPlaceholder": "Buscar por nombre o correo",
-    "kind": "Clase de cuenta",
-    "kinds": {
-      "human": "Personas",
-      "agent": "Bots de IA",
-      "all": "Todas las cuentas"
-    },
     "columns": {
       "account": "Cuenta",
       "role": "Rol",
@@ -25,7 +19,6 @@
     "registered": "se unió el {date}",
     "roleGod": "Dios",
     "roleUser": "Usuario",
-    "agent": "Agente",
     "noProviders": "ninguno",
     "neverSeen": "nunca",
     "verified": "Verificado",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "El propietario de la instancia siempre está activo.",
-      "agent": "La cuenta de un agente sigue a su agente.",
       "scim": "Tu proveedor de identidad (SCIM) decide qué cuentas están activas."
     },
     "deactivateTitle": "¿Desactivar {email}?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Propietario de la instancia",
     "user": "Usuario",
-    "aiAgent": "Agente de IA",
     "emailVerified": "Correo verificado",
     "unconfirmedTitle": "La dirección de correo no está confirmada",
     "unconfirmedHint": "Confírmala aquí cuando el enlace nunca le llegó.",
@@ -87,7 +78,6 @@
       "project": "Proyecto",
       "members": "Miembros",
       "issues": "Tickets",
-      "agents": "Agentes",
       "lastActivity": "Última actividad",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Iniciativas",
       "members": "Miembros",
       "dashboards": "Paneles",
-      "views": "Vistas",
-      "agents": "Agentes de IA",
-      "skills": "Habilidades",
-      "tools": "Herramientas"
+      "views": "Vistas"
     },
     "members": "Miembros",
     "noMembersTitle": "Sin miembros",
@@ -129,7 +116,6 @@
       "projects": "Proyectos",
       "members": "Miembros",
       "issues": "Tickets",
-      "agents": "Agentes",
       "mcp": "MCP"
     },
     "mcpEnabled": "Activado",
@@ -146,9 +132,6 @@
       "projects": "Proyectos",
       "issues": "Tickets",
       "members": "Miembros",
-      "agents": "Agentes de IA",
-      "skills": "Habilidades",
-      "tools": "Herramientas",
       "roles": "Roles de proyecto"
     },
     "projects": "Proyectos",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Propietario",
       "manager": "Administrador",
-      "member": "Miembro",
-      "agent": "Agente"
+      "member": "Miembro"
     },
     "joined": "Se unió {date}"
   },

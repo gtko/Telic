@@ -12,12 +12,9 @@
     "subtitle": "Les projets appartiennent désormais à une équipe, et une équipe partage une seule liste de rôles, de compétences, d'agents et d'identifiants d'intégration.",
     "teamsHeading": "Les équipes et leurs projets",
     "renamedRoles": "Rôles renommés",
-    "renamedSkills": "Compétences renommées",
-    "renamedAgents": "Identifiants d'agents renommés",
     "renamedCredentials": "Identifiants d'intégration renommés",
     "mergedHeading": "Fusionnés et déplacés",
     "mergedRoles": "{count, plural, one {# rôle par défaut en double est devenu un seul} other {# rôles par défaut en double sont devenus un seul}}",
-    "mergedTools": "{count, plural, one {# outil configuré en double est devenu un seul} other {# outils configurés en double sont devenus un seul}}",
     "movedInvites": "{count, plural, one {# invitation en attente a été déplacée vers l'équipe} other {# invitations en attente ont été déplacées vers l'équipe}}",
     "notificationsHeading": "Fournisseurs de notifications",
     "notificationsBody": "Une équipe conserve une seule configuration de fournisseur de notifications : celle enregistrée en dernier a été gardée. Saisissez à nouveau les paramètres pour : {projects}."

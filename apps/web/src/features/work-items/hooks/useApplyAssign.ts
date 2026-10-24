@@ -6,8 +6,7 @@ import { useSetFieldValue, useUpdateIssue } from '@/services/issues.service';
 // Applies what a drop into a group assigns, shared by the boards and the row
 // layouts: the built-in fields and the new position in one patch, then a write per
 // member custom field the grouping levels name. A field the issue already holds is
-// left alone — rewriting the same value would log another activity entry and start
-// another run of an agent that reacts to the field.
+// left alone — rewriting the same value would log another activity entry.
 export function useApplyAssign(project: ProjectDetail) {
   const updateIssue = useUpdateIssue(project.project.ref);
   const setFieldValue = useSetFieldValue(project.project.ref);

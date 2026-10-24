@@ -108,8 +108,7 @@
     "roles": {
       "owner": "소유자",
       "manager": "관리자",
-      "member": "멤버",
-      "agent": "AI 에이전트"
+      "member": "멤버"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "이 역할은 현재 사용 중입니다. 이 역할을 사용하는 항목을 이동할 다른 역할을 선택하세요.",
     "usageLoading": "이 역할을 사용하는 항목을 확인하는 중…",
     "usageMembers": "멤버",
-    "usageAgents": "AI 에이전트",
     "usageInvites": "대기 중인 초대",
     "usageGroups": "프로비저닝된 그룹",
     "moveTo": "이동할 역할",

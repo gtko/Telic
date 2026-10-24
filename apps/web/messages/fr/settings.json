@@ -214,8 +214,7 @@
     "memberScope": "Qui il peut contenir",
     "memberScopes": {
       "all": "Tout le monde",
-      "humans": "Personnes uniquement",
-      "agents": "Agents uniquement"
+      "humans": "Personnes uniquement"
     },
     "mainInfo": "Informations principales",
     "mainInfoTooltip": "S'affiche dans le corps du ticket, pas dans Propriétés",

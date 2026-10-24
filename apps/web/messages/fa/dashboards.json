@@ -67,15 +67,13 @@
       "status": "وضعیت",
       "priority": "اولویت",
       "type": "نوع",
-      "assignee": "مسئول",
-      "delegate": "واگذارشده"
+      "assignee": "مسئول"
     },
     "caption": {
       "status": "بر اساس وضعیت",
       "priority": "بر اساس اولویت",
       "type": "بر اساس نوع",
-      "assignee": "بر اساس مسئول",
-      "delegate": "بر اساس واگذارشده"
+      "assignee": "بر اساس مسئول"
     }
   },
   "recentIssues": {

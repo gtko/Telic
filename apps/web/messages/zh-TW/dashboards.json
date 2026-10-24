@@ -67,15 +67,13 @@
       "status": "狀態",
       "priority": "優先順序",
       "type": "類型",
-      "assignee": "負責人",
-      "delegate": "執行代理"
+      "assignee": "負責人"
     },
     "caption": {
       "status": "按狀態",
       "priority": "按優先順序",
       "type": "按類型",
-      "assignee": "按負責人",
-      "delegate": "按執行代理"
+      "assignee": "按負責人"
     }
   },
   "recentIssues": {

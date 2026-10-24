@@ -52,9 +52,6 @@ export default function GodProjectsTable({
             {t('columns.issues')}
           </TableHead>
           <TableHead className="text-xs font-medium text-muted-foreground">
-            {t('columns.agents')}
-          </TableHead>
-          <TableHead className="text-xs font-medium text-muted-foreground">
             {t('columns.lastActivity')}
           </TableHead>
           <TableHead className="text-xs font-medium text-muted-foreground">
@@ -108,13 +105,6 @@ export default function GodProjectsTable({
                   </span>
                 )}
               </div>
-            </TableCell>
-
-            <TableCell
-              className="px-3 py-3 align-top text-sm tabular-nums"
-              title={String(p.agentCount)}
-            >
-              {compactCount(p.agentCount)}
             </TableCell>
 
             <TableCell className="px-3 py-3 align-top text-xs text-muted-foreground">

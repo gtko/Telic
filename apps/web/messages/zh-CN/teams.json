@@ -108,8 +108,7 @@
     "roles": {
       "owner": "所有者",
       "manager": "管理者",
-      "member": "成员",
-      "agent": "AI 代理"
+      "member": "成员"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "此角色仍在使用中。请选择要把角色上的所有成员迁移到的角色。",
     "usageLoading": "正在检查此角色上有谁…",
     "usageMembers": "成员",
-    "usageAgents": "代理",
     "usageInvites": "待处理邀请",
     "usageGroups": "已置备的组",
     "moveTo": "迁移到",

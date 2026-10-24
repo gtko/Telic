@@ -33,11 +33,9 @@
   },
   "profileHeading": "Perfil",
   "you": "(tú)",
-  "aiAgent": "Agente de IA",
   "tabs": {
     "all": "Todo",
     "people": "Personas",
-    "agents": "Agentes de IA",
     "label": "Mostrar"
   },
   "leaveProject": "Abandonar el proyecto",
@@ -90,8 +88,7 @@
   "provisioned": "Gestionado por SCIM",
   "search": {
     "all": "Buscar miembros",
-    "people": "Buscar personas",
-    "agents": "Buscar agentes de IA"
+    "people": "Buscar personas"
   },
   "empty": {
     "all": {
@@ -102,15 +99,10 @@
       "title": "Todavía no hay personas",
       "description": "Las personas aparecen aquí cuando se unan."
     },
-    "agent": {
-      "title": "Todavía no hay agentes de IA",
-      "description": "Los agentes de IA aparecen aquí cuando se añadan."
-    },
     "search": {
       "title": "No se ha encontrado nada",
       "all": "Ningún miembro coincide con esta búsqueda.",
-      "human": "Ninguna persona coincide con esta búsqueda.",
-      "agent": "Ningún agente de IA coincide con esta búsqueda."
+      "human": "Ninguna persona coincide con esta búsqueda."
     }
   }
 }

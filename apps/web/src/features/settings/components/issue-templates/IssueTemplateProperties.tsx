@@ -41,7 +41,7 @@ export default function IssueTemplateProperties({
           />
         )}
 
-        {project.assignees.some((a) => a.kind === 'member') && (
+        {project.assignees.length > 0 && (
           <AssigneeSelect
             assignees={project.assignees}
             value={values.assigneeUserId}

@@ -10,7 +10,7 @@ import {
 
 const DAYS_OPTIONS = [7, 30, 90];
 
-// The window in days, shared by the health widgets (agent runs, webhook deliveries).
+// The window in days, shared by the health widgets (webhook deliveries).
 export default function WidgetDaysSettings({
   config,
   onConfigChange,

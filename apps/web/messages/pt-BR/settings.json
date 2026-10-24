@@ -214,8 +214,7 @@
     "memberScope": "Quem contém",
     "memberScopes": {
       "all": "Qualquer um",
-      "humans": "Apenas pessoas",
-      "agents": "Apenas agentes"
+      "humans": "Apenas pessoas"
     },
     "mainInfo": "Informação principal",
     "mainInfoTooltip": "Mostra no corpo da issue, não em Propriedades",

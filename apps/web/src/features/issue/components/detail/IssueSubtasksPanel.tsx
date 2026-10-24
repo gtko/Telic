@@ -192,7 +192,6 @@ export default function IssueSubtasksPanel({
             typeId: issue.typeId,
             initiativeId: issue.initiative?.id ?? null,
             assigneeUserId: issue.assigneeUserId,
-            delegateUserId: null,
             priority: issue.priority,
           }}
           crumb={t('subtaskOf', { issue: issue.identifier })}

@@ -4,14 +4,12 @@ import type { Assignee } from '@/lib/api/endpoints/projects';
 import { type MentionCandidate } from '@/lib/tiptap-mention';
 
 export function offersMention(a: Assignee): boolean {
-  return !!a.username && a.kind !== 'agent';
+  return !!a.username;
 }
 
 export function mentionCandidatesFrom(assignees: Assignee[]): MentionCandidate[] {
   return assignees.flatMap((a) =>
-    offersMention(a)
-      ? [{ userId: a.userId, name: a.name, username: a.username!, kind: a.kind }]
-      : [],
+    offersMention(a) ? [{ userId: a.userId, name: a.name, username: a.username! }] : [],
   );
 }
 

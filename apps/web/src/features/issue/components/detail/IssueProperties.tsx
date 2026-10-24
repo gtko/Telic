@@ -78,7 +78,7 @@ export default function IssueProperties({
   groupsOpen: { isOpen: (key: string) => boolean; toggle: (key: string) => void };
 }) {
   const t = useTranslations('issue.fields');
-  const hasMembers = project.assignees.some((a) => a.kind === 'member');
+  const hasMembers = project.assignees.length > 0;
   // The calendars grey out days that would put one date on the wrong side of the
   // other: the start no later than the due date, the due date no earlier than the
   // start. Equal dates are allowed.
@@ -139,9 +139,7 @@ export default function IssueProperties({
             <IssueWatchers
               issueId={issue.id}
               watchers={watchers}
-              members={project.assignees.filter(
-                (assignee) => assignee.kind === 'member' && assignee.canReadWorkItems,
-              )}
+              members={project.assignees.filter((assignee) => assignee.canReadWorkItems)}
               canManage={!readOnly}
             />
           </IssuePropertyRow>

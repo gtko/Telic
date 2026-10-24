@@ -214,8 +214,7 @@
     "memberScope": "Kapsam",
     "memberScopes": {
       "all": "Herkes",
-      "humans": "Yalnızca kişiler",
-      "agents": "Yalnızca ajanlar"
+      "humans": "Yalnızca kişiler"
     },
     "mainInfo": "Ana bilgi",
     "mainInfoTooltip": "Özellikler panelinde değil, iş gövdesinde gösterilir",

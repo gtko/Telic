@@ -67,15 +67,13 @@
       "status": "Статус",
       "priority": "Приоритет",
       "type": "Тип",
-      "assignee": "Исполнитель",
-      "delegate": "Делегат"
+      "assignee": "Исполнитель"
     },
     "caption": {
       "status": "По статусу",
       "priority": "По приоритету",
       "type": "По типу",
-      "assignee": "По исполнителю",
-      "delegate": "По делегату"
+      "assignee": "По исполнителю"
     }
   },
   "recentIssues": {

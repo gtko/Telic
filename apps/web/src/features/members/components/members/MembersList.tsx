@@ -19,9 +19,8 @@ import ListPager from '@/components/common/ListPager';
 import { usePaging } from '@/hooks/usePaging';
 import MemberRow from './MemberRow';
 
-// The project's members, newest membership first, a page at a time. People and AI
-// agents share one list and are told apart by the tabs, so neither is pushed off the
-// first page by the other; the search runs on the server, within the open tab. The
+// The project's members, newest membership first, a page at a time. The search
+// runs on the server, within the open tab. The
 // last owner is protected — the API rejects removing them and the row's action is
 // disabled too.
 export default function MembersList({

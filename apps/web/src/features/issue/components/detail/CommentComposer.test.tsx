@@ -27,10 +27,6 @@ function assignee(over: Partial<Assignee>): Assignee {
     email: '',
     username: null,
     image: null,
-    kind: 'member',
-    agentKind: null,
-    restrictedToUserId: null,
-    respondsToMention: null,
     canReadWorkItems: true,
     ...over,
   };
@@ -79,7 +75,7 @@ afterEach(async () => {
 });
 
 describe('CommentComposer', () => {
-  it('leaves an agent that does not answer mentions out of the @ menu', async () => {
+  it('leaves a member without a handle out of the @ menu', async () => {
     const { default: CommentComposer } = await import('./CommentComposer');
     await act(async () => {
       root.render(
@@ -89,8 +85,8 @@ describe('CommentComposer', () => {
               issueId={1}
               assignees={[
                 assignee({ username: 'ana' }),
-                assignee({ username: 'triage', kind: 'agent', respondsToMention: true }),
-                assignee({ username: 'cleanup', kind: 'agent', respondsToMention: false }),
+                assignee({ username: 'bob' }),
+                assignee({ username: null }),
               ]}
               authorName="Ana"
               authorImage={null}
@@ -113,6 +109,6 @@ describe('CommentComposer', () => {
     const offered = [...document.querySelectorAll('li button span')]
       .map((span) => span.textContent!)
       .filter((text) => text.startsWith('@'));
-    assert.deepEqual(offered, ['@ana', '@triage']);
+    assert.deepEqual(offered, ['@ana', '@bob']);
   });
 });

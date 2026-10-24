@@ -35,11 +35,7 @@ export default function IssueDetail({
   useIssueTitle(issueId, 'panel');
 
   return (
-    <div
-      // Above the floating chat button (z-40), which sits in the corner the panel's
-      // last-comment bubble uses.
-      className="pointer-events-none fixed inset-0 z-50 flex"
-    >
+    <div className="pointer-events-none fixed inset-0 z-50 flex">
       {/* No padding at the top: the sticky header carries it, so it can sit flush
           against the panel edge with nothing showing above it. */}
       <div

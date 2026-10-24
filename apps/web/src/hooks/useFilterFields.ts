@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import type { CustomField, MemberScope } from '@/lib/api/endpoints/customFields';
+import type { CustomField } from '@/lib/api/endpoints/customFields';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import type { InitiativeRef } from '@/lib/api/endpoints/issues';
 import type { InitiativeOption } from '@/lib/api/endpoints/initiatives';
@@ -30,12 +30,11 @@ import {
   type FieldSpec,
 } from '@/utils/filterFields';
 import { customFieldKey, isFieldEnabled, type GroupField } from '@/utils/viewSettings';
-import { memberCandidates } from '@/utils/memberFields';
 import { usePriorityLabel } from '@/hooks/usePriorityLabel';
 import { byKey } from '@/utils/messageKey';
 
 // Maps a custom field type to a filter field kind. select/multi_select are set
-// fields over their options, member is a set over the project's people and agents;
+// fields over their options, member is a set over the project's people;
 // the scalar types map to their editors.
 function customFieldKind(field: CustomField): FieldKind {
   switch (field.fieldType) {
@@ -91,14 +90,10 @@ function cycleOptions(project: ProjectDetail): FieldOption[] {
   ];
 }
 
-// The people and agents a member field of this scope holds, plus the unset value.
-function memberFieldOptions(
-  project: ProjectDetail,
-  scope: MemberScope,
-  unsetLabel: string,
-): FieldOption[] {
+// The people a member field holds, plus the unset value.
+function memberFieldOptions(project: ProjectDetail, unsetLabel: string): FieldOption[] {
   return [
-    ...memberCandidates(project.assignees, scope).map((a) => ({ value: a.userId, label: a.name })),
+    ...project.assignees.map((a) => ({ value: a.userId, label: a.name })),
     { value: null, label: unsetLabel },
   ];
 }
@@ -167,21 +162,8 @@ export function useFilterFields(projectKey?: string) {
         label: t('fields.assignee'),
         kind: 'set',
         options: [
-          ...project.assignees
-            .filter((a) => a.kind === 'member')
-            .map((a) => ({ value: a.userId, label: a.name })),
+          ...project.assignees.map((a) => ({ value: a.userId, label: a.name })),
           { value: null, label: t('unset.assignee') },
-        ],
-      },
-      {
-        field: 'delegate',
-        label: t('fields.delegate'),
-        kind: 'set',
-        options: [
-          ...project.assignees
-            .filter((a) => a.kind === 'agent')
-            .map((a) => ({ value: a.userId, label: a.name })),
-          { value: null, label: t('unset.delegate') },
         ],
       },
       {
@@ -244,7 +226,7 @@ export function useFilterFields(projectKey?: string) {
       const kind = customFieldKind(f);
       let options: FieldOption[] | undefined;
       if (f.fieldType === 'member') {
-        options = memberFieldOptions(project, f.memberScope ?? 'all', t('unset.member'));
+        options = memberFieldOptions(project, t('unset.member'));
       } else if (kind === 'set') {
         options = f.options.map((o) => ({ value: o.id, label: o.value, color: o.color }));
       }

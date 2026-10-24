@@ -161,7 +161,6 @@
     "download": "保存图表",
     "downloadFailed": "图表保存失败"
   },
-  "agent": "代理",
   "pager": {
     "previous": "上一页",
     "next": "下一页",

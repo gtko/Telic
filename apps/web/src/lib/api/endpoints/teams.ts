@@ -21,8 +21,7 @@ export interface Team {
   // Whether the team is reachable over MCP at all, set in its MCP section. Off closes
   // its own resources and every project it owns.
   mcpEnabled: boolean;
-  // The caller's rank in the team. The API also answers an agent's own key, which reads
-  // 'agent' there; an agent never opens this app, so a person's rank is what arrives.
+  // The caller's rank in the team.
   role: TeamRole;
   // 'workspace' when the caller is not in the team and reaches it through their role in
   // its workspace; source and joinedAt are then the team's defaults.
@@ -130,11 +129,9 @@ export interface TeamProjectMember {
   userId: string;
   name: string;
   email: string;
-  // The handle they are mentioned by, @username. An agent's bot user carries the
-  // agent's handle.
+  // The handle they are mentioned by, @username.
   username: string | null;
   image: string | null;
-  isAgent: boolean;
   role: MemberRole;
   roleId: number | null;
   roleName: string | null;
@@ -183,8 +180,7 @@ export const listTeamProjects = (teamId: number, params: TeamProjectListParams) 
     `/teams/${teamId}/projects${pageQuery(params, { search: params.search })}`,
   );
 
-// Every project the reader has in the team, for the agent's project picker and the
-// MCP switches.
+// Every project the reader has in the team, for the MCP switches.
 export const listTeamProjectOptions = (teamId: number) =>
   request<TeamProjectOption[]>(`/teams/${teamId}/projects/options`);
 

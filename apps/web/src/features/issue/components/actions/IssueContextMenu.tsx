@@ -136,7 +136,7 @@ export default function IssueContextMenu({
   const currentColumn = project.columns.find((c) => c.id === issue.columnId);
   const currentPriority =
     PRIORITY_FIELDS.find((p) => p.value === (issue.priority ?? '')) ?? PRIORITY_FIELDS[0];
-  const members = project.assignees.filter((a) => a.kind === 'member');
+  const members = project.assignees;
   const initiatives = initiativesQuery.data ?? [];
 
   return (

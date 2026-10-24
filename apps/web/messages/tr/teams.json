@@ -108,8 +108,7 @@
     "roles": {
       "owner": "Sahip",
       "manager": "Yönetici",
-      "member": "Üye",
-      "agent": "Yapay zekâ ajanı"
+      "member": "Üye"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "Bu rol hala kullanımda. Bu roldeki her şeyin taşınacağı yeni rolü seçin.",
     "usageLoading": "Bu roldeki varlıklar denetleniyor…",
     "usageMembers": "Üyeler",
-    "usageAgents": "Ajanlar",
     "usageInvites": "Bekleyen davetler",
     "usageGroups": "Sağlanan gruplar (SCIM)",
     "moveTo": "Şuraya taşı:",

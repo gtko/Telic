@@ -214,8 +214,7 @@
     "memberScope": "مين ممكن يتحدد فيه",
     "memberScopes": {
       "all": "أي حد",
-      "humans": "الناس بس",
-      "agents": "الوكلاء بس"
+      "humans": "الناس بس"
     },
     "mainInfo": "المعلومات الرئيسية",
     "mainInfoTooltip": "يظهر في متن المهمة، لا في الخصائص",

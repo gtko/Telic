@@ -12,12 +12,9 @@
     "subtitle": "Projects belong to a team now, and a team shares one list of roles, skills, agents and integration credentials.",
     "teamsHeading": "Teams and their projects",
     "renamedRoles": "Renamed roles",
-    "renamedSkills": "Renamed skills",
-    "renamedAgents": "Renamed agent handles",
     "renamedCredentials": "Relabelled integration credentials",
     "mergedHeading": "Merged and moved",
     "mergedRoles": "{count, plural, one {# duplicate default role became one} other {# duplicate default roles became one}}",
-    "mergedTools": "{count, plural, one {# duplicate configured tool became one} other {# duplicate configured tools became one}}",
     "movedInvites": "{count, plural, one {# pending invite moved to the team} other {# pending invites moved to the team}}",
     "notificationsHeading": "Notification providers",
     "notificationsBody": "A team keeps one notification provider configuration, so the one saved last was kept. Re-enter the settings for: {projects}."

@@ -161,7 +161,6 @@
     "download": "Enregistrer le graphique",
     "downloadFailed": "Le graphique n'a pas pu être enregistré"
   },
-  "agent": "Agent",
   "pager": {
     "previous": "Page précédente",
     "next": "Page suivante",

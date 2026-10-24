@@ -31,7 +31,6 @@
     "status": "Estado",
     "statusType": "Tipo de estado",
     "assignee": "Asignatario",
-    "delegate": "Delegado",
     "priority": "Prioridad",
     "type": "Tipo",
     "initiative": "Iniciativa",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "Sin asignar",
-    "delegate": "Sin delegado",
     "type": "Sin tipo",
     "initiative": "Sin iniciativa",
     "cycle": "Sin ciclo",

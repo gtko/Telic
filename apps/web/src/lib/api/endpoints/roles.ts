@@ -50,7 +50,6 @@ export interface RoleListParams extends PageParams {
 // before the role can be deleted.
 export interface RoleUsage {
   members: number;
-  agents: number;
   invites: number;
   // The provisioned group mappings that grant this role.
   groups: number;

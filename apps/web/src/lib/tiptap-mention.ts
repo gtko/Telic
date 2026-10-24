@@ -9,12 +9,11 @@ import EditorMentionMenu, {
   type MentionMenuRef,
 } from '@/components/common/editor/EditorMentionMenu';
 
-// Who can be mentioned: a project member or an agent, addressed by their handle.
+// Who can be mentioned: a project member, addressed by their handle.
 export interface MentionCandidate {
   userId: string;
   name: string;
   username: string;
-  kind: 'member' | 'agent';
 }
 
 export type MentionOptions = {
@@ -43,7 +42,7 @@ function selfMentions(doc: ProseMirrorNode, self: string): DecorationSet {
   return DecorationSet.create(doc, decorations);
 }
 
-// A mention in the text is @handle — a member's username, or an agent's. Handles
+// A mention in the text is @handle — a member's username. Handles
 // hold letters, digits and . _ - and never end on . or -, so a mention that closes a
 // sentence keeps the punctuation out of it; the lookbehind keeps an email address
 // from reading as one. The api parses the stored markdown with the same rule.

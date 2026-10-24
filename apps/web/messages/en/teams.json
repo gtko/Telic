@@ -108,8 +108,7 @@
     "roles": {
       "owner": "Owner",
       "manager": "Manager",
-      "member": "Member",
-      "agent": "AI agent"
+      "member": "Member"
     }
   },
   "roles": {
@@ -126,7 +125,6 @@
     "deleteInUse": "This role is still in use. Pick the role everything on it is moved to.",
     "usageLoading": "Checking what is on this role…",
     "usageMembers": "Members",
-    "usageAgents": "Agents",
     "usageInvites": "Pending invites",
     "usageGroups": "Provisioned groups",
     "moveTo": "Move to",

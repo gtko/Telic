@@ -1,41 +1,27 @@
 import { CircleDashed } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { MemberScope } from '@/lib/api/endpoints/customFields';
 import type { Assignee } from '@/lib/api/endpoints/projects';
 import Avatar from '@/components/common/Avatar';
 import { Pill } from '@/components/common/fields/Pill';
 import PopoverPick from '@/components/common/fields/PopoverPick';
-import { memberCandidates } from '@/utils/memberFields';
 import { useCandidatePickItem } from '../../hooks/useCandidatePickItem';
 
-// The candidates the field's scope offers, listed with the people before the agents.
-function candidates(assignees: Assignee[], scope: MemberScope): Assignee[] {
-  const offered = memberCandidates(assignees, scope);
-  return [
-    ...offered.filter((a) => a.kind === 'member'),
-    ...offered.filter((a) => a.kind === 'agent'),
-  ];
-}
-
-// The person or agent a member custom field holds. Which of them the field offers is
-// its scope, chosen when the field was created. Shaped like AssigneeSelect and
-// DelegateSelect, which do the same for the built-in fields.
+// The person a member custom field holds. Shaped like AssigneeSelect, which does the
+// same for the built-in field.
 export default function MemberSelect({
   assignees,
-  scope,
   value,
   onChange,
   placeholder,
 }: {
   assignees: Assignee[];
-  scope: MemberScope;
   value: string | null;
   onChange: (userId: string | null) => void;
   placeholder?: string;
 }) {
   const t = useTranslations('issue.fieldSelects');
   const none = t('noMember');
-  const options = candidates(assignees, scope);
+  const options = assignees;
   const selected = options.find((a) => a.userId === value);
   const toItem = useCandidatePickItem(value, onChange);
 

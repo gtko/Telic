@@ -7,12 +7,6 @@
   "users": {
     "empty": "沒有符合篩選條件的帳號。",
     "searchPlaceholder": "按姓名或電子郵件搜尋",
-    "kind": "帳號類型",
-    "kinds": {
-      "human": "人員",
-      "agent": "AI 代理",
-      "all": "所有帳號"
-    },
     "columns": {
       "account": "帳號",
       "role": "角色",
@@ -25,7 +19,6 @@
     "registered": "註冊於 {date}",
     "roleGod": "執行個體管理員",
     "roleUser": "使用者",
-    "agent": "代理",
     "noProviders": "無",
     "neverSeen": "從未登入",
     "verified": "已驗證",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "執行個體所有者始終處於啟用狀態。",
-      "agent": "代理的帳號隨其代理而定。",
       "scim": "由你的身分提供者（SCIM）決定哪些帳號處於啟用狀態。"
     },
     "deactivateTitle": "停用 {email}？",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "執行個體管理員",
     "user": "使用者",
-    "aiAgent": "AI 代理",
     "emailVerified": "電子郵件已驗證",
     "unconfirmedTitle": "電子郵件未驗證",
     "unconfirmedHint": "確認驗證郵件未送達後可手動標記。",
@@ -87,7 +78,6 @@
       "project": "專案",
       "members": "成員",
       "issues": "工作項目",
-      "agents": "代理",
       "lastActivity": "最近活動",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "計畫",
       "members": "成員",
       "dashboards": "儀表板",
-      "views": "檢視",
-      "agents": "AI 代理",
-      "skills": "技能",
-      "tools": "工具"
+      "views": "檢視"
     },
     "members": "成員",
     "noMembersTitle": "暫無成員",
@@ -129,7 +116,6 @@
       "projects": "專案",
       "members": "成員",
       "issues": "工作項目",
-      "agents": "代理",
       "mcp": "MCP"
     },
     "mcpEnabled": "已啟用",
@@ -146,9 +132,6 @@
       "projects": "專案",
       "issues": "工作項目",
       "members": "成員",
-      "agents": "AI 代理",
-      "skills": "技能",
-      "tools": "工具",
       "roles": "專案角色"
     },
     "projects": "專案",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "所有者",
       "manager": "管理者",
-      "member": "成員",
-      "agent": "代理"
+      "member": "成員"
     },
     "joined": "加入於 {date}"
   },

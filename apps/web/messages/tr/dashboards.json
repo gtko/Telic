@@ -67,15 +67,13 @@
       "status": "Durum",
       "priority": "Öncelik",
       "type": "Tür",
-      "assignee": "Sorumlu",
-      "delegate": "Temsilci"
+      "assignee": "Sorumlu"
     },
     "caption": {
       "status": "Duruma göre",
       "priority": "Önceliğe göre",
       "type": "Türe göre",
-      "assignee": "Sorumluya göre",
-      "delegate": "Temsilciye göre"
+      "assignee": "Sorumluya göre"
     }
   },
   "recentIssues": {

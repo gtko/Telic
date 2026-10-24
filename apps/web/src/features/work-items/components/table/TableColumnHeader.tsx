@@ -36,7 +36,7 @@ export function TableColumnHeader({
       </span>
       {columns.map((c) => {
         // The assignee column shows avatars, so its header is a right-aligned icon
-        // rather than a label; the delegate column beside it stays blank.
+        // rather than a label.
         const isAssignee = c.kind === 'builtin' && c.col === 'assignee';
         const key = columnKey(c);
         return (
@@ -48,8 +48,6 @@ export function TableColumnHeader({
               <span className="truncate">{c.field.name}</span>
             ) : c.col === 'assignee' ? (
               <User className="size-3.5" />
-            ) : c.col === 'delegate' ? (
-              <span />
             ) : (
               <span className="truncate">{t(`columns.${c.col}`)}</span>
             )}

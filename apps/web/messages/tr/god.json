@@ -7,12 +7,6 @@
   "users": {
     "empty": "Bu filtrelerle eşleşen hesap bulunamadı.",
     "searchPlaceholder": "Ada veya e-postaya göre ara",
-    "kind": "Hesap türü",
-    "kinds": {
-      "human": "Kişiler",
-      "agent": "Yapay zekâ botları",
-      "all": "Tüm hesaplar"
-    },
     "columns": {
       "account": "Hesap",
       "role": "Rol",
@@ -25,7 +19,6 @@
     "registered": "{date} tarihinde katıldı",
     "roleGod": "Süper Yönetici",
     "roleUser": "Kullanıcı",
-    "agent": "Ajan",
     "noProviders": "yok",
     "neverSeen": "hiçbir zaman",
     "verified": "Doğrulandı",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "Örneklem sahibi her zaman aktiftir.",
-      "agent": "Bir ajanın hesabı bağlı olduğu ajanı takip eder.",
       "scim": "Hangi hesapların aktif olduğuna kimlik sağlayıcınız (SCIM) karar verir."
     },
     "deactivateTitle": "{email} devre dışı bırakılsın mı?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Örneklem sahibi",
     "user": "Kullanıcı",
-    "aiAgent": "Yapay zekâ ajanı",
     "emailVerified": "E-posta doğrulandı",
     "unconfirmedTitle": "E-posta adresi doğrulanmadı",
     "unconfirmedHint": "Onay bağlantısı kendilerine ulaşmadıysa buradan doğrulayabilirsiniz.",
@@ -87,7 +78,6 @@
       "project": "Proje",
       "members": "Üyeler",
       "issues": "İşler",
-      "agents": "Ajanlar",
       "lastActivity": "Son etkinlik",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Girişimler",
       "members": "Üyeler",
       "dashboards": "Panolar",
-      "views": "Görünümler",
-      "agents": "Yapay zekâ ajanları",
-      "skills": "Yetenekler",
-      "tools": "Araçlar"
+      "views": "Görünümler"
     },
     "members": "Üyeler",
     "noMembersTitle": "Üye yok",
@@ -129,7 +116,6 @@
       "projects": "Projeler",
       "members": "Üyeler",
       "issues": "İşler",
-      "agents": "Ajanlar",
       "mcp": "MCP"
     },
     "mcpEnabled": "Etkin",
@@ -146,9 +132,6 @@
       "projects": "Projeler",
       "issues": "İşler",
       "members": "Üyeler",
-      "agents": "Yapay zekâ ajanları",
-      "skills": "Yetenekler",
-      "tools": "Araçlar",
       "roles": "Proje rolleri"
     },
     "projects": "Projeler",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Sahip",
       "manager": "Yönetici",
-      "member": "Üye",
-      "agent": "Ajan"
+      "member": "Üye"
     },
     "joined": "{date} tarihinde katıldı"
   },

@@ -33,11 +33,9 @@
   },
   "profileHeading": "Profil",
   "you": "(siz)",
-  "aiAgent": "Yapay Zekâ Ajanı",
   "tabs": {
     "all": "Tümü",
     "people": "Kişiler",
-    "agents": "Yapay zekâ ajanları",
     "label": "Göster"
   },
   "leaveProject": "Projeden ayrıl",
@@ -90,8 +88,7 @@
   "provisioned": "SCIM tarafından yönetiliyor",
   "search": {
     "all": "Üyeleri ara",
-    "people": "Kişileri ara",
-    "agents": "Yapay zekâ ajanlarını ara"
+    "people": "Kişileri ara"
   },
   "empty": {
     "all": {
@@ -102,15 +99,10 @@
       "title": "Henüz kişi yok",
       "description": "Kişiler katıldıkça burada listelenir."
     },
-    "agent": {
-      "title": "Henüz yapay zekâ ajanı yok",
-      "description": "Yapay zekâ ajanları eklendikçe burada listelenir."
-    },
     "search": {
       "title": "Sonuç bulunamadı",
       "all": "Bu aramayla eşleşen üye bulunamadı.",
-      "human": "Bu aramayla eşleşen kişi bulunamadı.",
-      "agent": "Bu aramayla eşleşen yapay zekâ ajanı bulunamadı."
+      "human": "Bu aramayla eşleşen kişi bulunamadı."
     }
   }
 }

@@ -98,24 +98,3 @@ export function AssigneeAvatar({
     </Tooltip>
   );
 }
-
-// A delegate (AI agent) avatar. Same avatar as the agent gets on its comments,
-// so the same face identifies it everywhere.
-export function DelegateAvatar({
-  name,
-  image,
-  className,
-}: {
-  name: string;
-  image?: string | null;
-  className?: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Avatar name={name} image={image} className={className} />
-      </TooltipTrigger>
-      <TooltipContent>Delegated to {name}</TooltipContent>
-    </Tooltip>
-  );
-}

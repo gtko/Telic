@@ -67,15 +67,13 @@
       "status": "상태",
       "priority": "우선순위",
       "type": "유형",
-      "assignee": "담당자",
-      "delegate": "위임 대상"
+      "assignee": "담당자"
     },
     "caption": {
       "status": "상태별",
       "priority": "우선순위별",
       "type": "유형별",
-      "assignee": "담당자별",
-      "delegate": "위임 대상별"
+      "assignee": "담당자별"
     }
   },
   "recentIssues": {

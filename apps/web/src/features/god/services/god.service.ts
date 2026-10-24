@@ -17,7 +17,6 @@ import {
   type InstanceGoogleSettingsPatch,
   type InstanceOidcSettingsPatch,
   type InstanceTelegramSettingsPatch,
-  type InstanceUserKind,
   getInstanceAuthSettings,
   updateInstanceAuthSettings,
   getInstanceEmailSettings,
@@ -193,7 +192,6 @@ export function useUpdateInstanceStorageSettings() {
 
 export interface InstanceUserFilters extends PageParams {
   search: string;
-  kind: InstanceUserKind;
 }
 
 // One page of the user directory. The filters are part of the key, and the previous

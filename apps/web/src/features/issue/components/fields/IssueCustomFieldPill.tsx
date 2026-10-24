@@ -42,7 +42,6 @@ export default function IssueCustomFieldPill({
     return (
       <MemberSelect
         assignees={assignees}
-        scope={def.memberScope ?? 'all'}
         value={(value?.value as string | null) ?? null}
         placeholder={def.name}
         onChange={(userId) => onChange({ value: userId })}

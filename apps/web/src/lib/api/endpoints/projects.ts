@@ -71,13 +71,6 @@ export interface Assignee {
   // The handle they are mentioned by, @username. Null for a member who has none.
   username: string | null;
   image: string | null;
-  kind: 'member' | 'agent';
-  agentKind: 'external' | 'internal' | null;
-  // The user an 'owner'-scoped agent works for: delegating it to anyone else queues a
-  // run its runner never receives. Null for members and team-scoped agents.
-  restrictedToUserId: string | null;
-  // Whether @-mentioning this agent starts a run. Null for a person.
-  respondsToMention: boolean | null;
   // Whether this person may read issues and can therefore receive watcher
   // notifications without leaking work-item content.
   canReadWorkItems: boolean;
@@ -90,9 +83,8 @@ export interface ProjectViewer {
   role: MemberRole;
   // The caller's standing in the team that owns the project, null when they are not
   // a member of it. An owner or manager governs the project's settings alongside the
-  // project's own owner; 'agent' is a bot user reading its own board, which governs
-  // nothing.
-  teamRole: TeamRole | 'agent' | null;
+  // project's own owner.
+  teamRole: TeamRole | null;
   // 'workspace' when the caller is not a member of the project and reaches it through
   // their role in the workspace that holds it.
   via: AccessVia;

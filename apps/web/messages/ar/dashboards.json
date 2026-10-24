@@ -67,15 +67,13 @@
       "status": "الحالة",
       "priority": "الأولوية",
       "type": "النوع",
-      "assignee": "المسؤول",
-      "delegate": "المفوَّض"
+      "assignee": "المسؤول"
     },
     "caption": {
       "status": "حسب الحالة",
       "priority": "حسب الأولوية",
       "type": "حسب النوع",
-      "assignee": "حسب المسؤول",
-      "delegate": "حسب المفوَّض"
+      "assignee": "حسب المسؤول"
     }
   },
   "recentIssues": {

@@ -31,7 +31,6 @@
     "status": "Status",
     "statusType": "Tipe status",
     "assignee": "Penerima tugas",
-    "delegate": "Delegasi",
     "priority": "Prioritas",
     "type": "Tipe",
     "initiative": "Inisiatif",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "Tanpa penerima tugas",
-    "delegate": "Tanpa delegasi",
     "type": "Tanpa tipe",
     "initiative": "Tanpa inisiatif",
     "cycle": "Tanpa cycle",

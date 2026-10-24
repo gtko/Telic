@@ -67,15 +67,13 @@
       "status": "Статус",
       "priority": "Пріоритет",
       "type": "Тип",
-      "assignee": "Виконавець",
-      "delegate": "Делегат"
+      "assignee": "Виконавець"
     },
     "caption": {
       "status": "За статусом",
       "priority": "За пріоритетом",
       "type": "За типом",
-      "assignee": "За виконавцем",
-      "delegate": "За делегатом"
+      "assignee": "За виконавцем"
     }
   },
   "recentIssues": {

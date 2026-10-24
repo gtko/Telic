@@ -67,15 +67,13 @@
       "status": "Estado",
       "priority": "Prioridad",
       "type": "Tipo",
-      "assignee": "Asignatario",
-      "delegate": "Delegado"
+      "assignee": "Asignatario"
     },
     "caption": {
       "status": "Por estado",
       "priority": "Por prioridad",
       "type": "Por tipo",
-      "assignee": "Por asignado",
-      "delegate": "Por delegado"
+      "assignee": "Por asignado"
     }
   },
   "recentIssues": {

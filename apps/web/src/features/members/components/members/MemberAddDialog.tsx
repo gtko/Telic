@@ -21,7 +21,7 @@ import {
 } from '@/services/members.service';
 import { useTeamRoleOptionsQuery } from '@/services/roles.service';
 import MemberPicker, { type MemberOption } from './MemberPicker';
-import { OWNER_VALUE, chosenRole, ownerOffered } from '../../utils/addMemberRole';
+import { OWNER_VALUE, chosenRole } from '../../utils/addMemberRole';
 
 // The message for each refusal the API can answer with; any other error falls back
 // to 'refused'.
@@ -82,8 +82,7 @@ export default function MemberAddDialog({
   // Default to the team's default role until another option is picked. Empty until
   // the roles load, so a submit before that cannot fall back to Owner.
   const defaultRoleId = roles.find((r) => r.isDefault)?.id ?? roles[0]?.id;
-  const offerOwner = ownerOffered(canGrantOwner, target);
-  const role = chosenRole(roleValue, defaultRoleId, offerOwner);
+  const role = chosenRole(roleValue, defaultRoleId, canGrantOwner);
 
   const typed = query.trim().toLowerCase();
   // An address nobody in the team carries is offered as an invite — unless the
@@ -166,7 +165,7 @@ export default function MemberAddDialog({
                     {r.name}
                   </SelectItem>
                 ))}
-                {offerOwner && <SelectItem value={OWNER_VALUE}>{tCommon('owner')}</SelectItem>}
+                {canGrantOwner && <SelectItem value={OWNER_VALUE}>{tCommon('owner')}</SelectItem>}
               </SelectContent>
             </Select>
           </div>

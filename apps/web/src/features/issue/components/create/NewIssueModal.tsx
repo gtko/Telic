@@ -88,10 +88,7 @@ export default function NewIssueModal({
   const [assigneeUserId, setAssigneeUserId] = useState<string | null>(() => {
     if (defaults.assigneeUserId !== undefined) return defaults.assigneeUserId;
     const userId = session?.user.id;
-    return userId != null &&
-      project.assignees.some((a) => a.kind === 'member' && a.userId === userId)
-      ? userId
-      : null;
+    return userId != null && project.assignees.some((a) => a.userId === userId) ? userId : null;
   });
   const [priority, setPriority] = useState(defaults.priority ?? '');
   const [estimatePoints, setEstimatePoints] = useState<number | null>(null);
@@ -384,7 +381,7 @@ export default function NewIssueModal({
         >
           <StatusSelect columns={project.columns} value={columnId} onChange={setColumnId} />
 
-          {project.assignees.some((a) => a.kind === 'member') && (
+          {project.assignees.length > 0 && (
             <AssigneeSelect
               assignees={project.assignees}
               value={assigneeUserId}

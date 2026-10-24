@@ -96,7 +96,7 @@ export function useIssueCommands(
   const canEdit = can('work_items', 'edit');
   const canDelete = can('work_items', 'delete');
   const patch = (fields: IssuePatch) => updateIssue.mutate({ id: issue.id, patch: fields });
-  const members = project.assignees.filter((a) => a.kind === 'member');
+  const members = project.assignees;
   const actions = matchedActions(actionsQuery.data ?? [], project, issue);
   const currentColumn = project.columns.find((c) => c.id === issue.columnId);
 

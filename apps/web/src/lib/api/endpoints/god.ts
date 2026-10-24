@@ -153,12 +153,11 @@ export interface InstanceUser {
   image: string | null;
   emailVerified: boolean;
   role: string;
-  isAgent: boolean;
   providers: string[];
   projectCount: number;
   active: boolean;
   // Why god cannot switch `active`, or null when it can.
-  activeLock: 'owner' | 'agent' | 'scim' | null;
+  activeLock: 'owner' | 'scim' | null;
   lastSeenAt: string | null;
   createdAt: string;
 }
@@ -186,10 +185,6 @@ export interface InstanceUserDetail extends InstanceUser {
   projects: InstanceUserProject[];
 }
 
-// Which accounts the directory lists: real people, the bot users behind AI agents,
-// or both.
-export type InstanceUserKind = 'human' | 'agent' | 'all';
-
 // One project in the instance project directory, with what it holds counted across
 // its dependent tables. `lastActivityAt` is the most recent entry in its issue feed.
 export interface InstanceProject {
@@ -204,9 +199,6 @@ export interface InstanceProject {
   initiativeCount: number;
   dashboardCount: number;
   viewCount: number;
-  agentCount: number;
-  skillCount: number;
-  toolCount: number;
   lastActivityAt: string | null;
   createdAt: string;
 }
@@ -219,7 +211,6 @@ export interface InstanceProjectMember {
   email: string;
   username: string | null;
   image: string | null;
-  isAgent: boolean;
   role: MemberRole;
   roleId: number | null;
   roleName: string | null;
@@ -309,12 +300,10 @@ export const updateInstanceOidcSettings = (patch: InstanceOidcSettingsPatch) =>
   });
 
 // The instance user directory: one page of accounts, and one account with the
-// projects it can reach. Search, the kind filter and paging all run on the server.
-export const listInstanceUsers = (
-  params: PageParams & { search?: string; kind: InstanceUserKind },
-) =>
+// projects it can reach. Search and paging all run on the server.
+export const listInstanceUsers = (params: PageParams & { search?: string }) =>
   request<Page<InstanceUser>>(
-    `/god/users${pageQuery(params, { kind: params.kind, search: params.search })}`,
+    `/god/users${pageQuery(params, { kind: 'human', search: params.search })}`,
   );
 
 export const getInstanceUser = (userId: string) =>
@@ -352,9 +341,6 @@ export interface InstanceTeam {
   memberCount: number;
   projectCount: number;
   issueCount: number;
-  agentCount: number;
-  skillCount: number;
-  toolCount: number;
   roleCount: number;
   createdAt: string;
 }
@@ -371,14 +357,13 @@ export interface InstanceTeamProject {
 }
 
 // One member of a team. The role is the fixed team rank ('owner', 'manager',
-// 'member', 'agent'), not a project role.
+// 'member'), not a project role.
 export interface InstanceTeamMember {
   userId: string;
   name: string;
   email: string;
   image: string | null;
-  isAgent: boolean;
-  role: TeamRole | 'agent';
+  role: TeamRole;
   joinedAt: string;
 }
 
