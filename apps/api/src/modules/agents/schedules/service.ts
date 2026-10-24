@@ -62,7 +62,7 @@ const columns = {
     order by r.id desc limit 1
   )`,
   pendingRuns: sql<number>`(
-    select count(*)::int from ${agentRun} r
+    select count(*) from ${agentRun} r
     where r.schedule_id = ${agentSchedule.id}
       and r.status = 'pending' and r.started_at is null
   )`,
@@ -112,7 +112,7 @@ export async function listAgentSchedules(
       .limit(window.limit)
       .offset(window.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(agentSchedule)
       .where(eq(agentSchedule.projectId, projectId)),
   ]);
