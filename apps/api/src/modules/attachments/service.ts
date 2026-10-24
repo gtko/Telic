@@ -50,12 +50,16 @@ export async function createAttachment(
   const { sql: text, params } =
     stmt`INSERT INTO issue_attachment (public_id, issue_id, s3_key, filename, content_type, size_bytes)
     SELECT ${publicId}, ${input.issueId}, ${input.s3Key}, ${input.filename}, ${input.contentType}, ${input.sizeBytes}
-    WHERE ${quota}`;
-  const result = await d1Of(db)
+    WHERE ${quota}
+    RETURNING id`;
+  // meta.changes also counts the rows the revision triggers write, so RETURNING tells whether
+  // the insert happened.
+  const inserted = await d1Of(db)
     .prepare(text)
     .bind(...params)
-    .run();
-  if (result.meta.changes !== 1) throw await quotaExceeded(db, input.projectId, input.sizeBytes);
+    .all();
+  if (inserted.results.length !== 1)
+    throw await quotaExceeded(db, input.projectId, input.sizeBytes);
   const [row] = await db
     .select()
     .from(issueAttachment)
@@ -119,12 +123,13 @@ export async function replaceAttachmentContent(
       SET s3_key = ${input.s3Key}, filename = ${input.filename},
           content_type = ${input.contentType}, size_bytes = ${input.sizeBytes}
       WHERE id = ${current.attachment.id} AND s3_key = ${current.attachment.s3Key}
-        AND size_bytes = ${replacedBytes} AND ${quota}`;
-    const result = await d1Of(db)
+        AND size_bytes = ${replacedBytes} AND ${quota}
+      RETURNING id`;
+    const updated = await d1Of(db)
       .prepare(text)
       .bind(...params)
-      .run();
-    if (result.meta.changes === 1) {
+      .all();
+    if (updated.results.length === 1) {
       const [row] = await db
         .select()
         .from(issueAttachment)
