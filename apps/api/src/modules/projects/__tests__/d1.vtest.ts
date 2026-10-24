@@ -91,7 +91,7 @@ describe('deleteProject', () => {
       columnId: s.columnIds[0],
       title: 'gone',
     });
-    await deleteProject(t.db, s.projectId);
+    await deleteProject(t.rt, s.projectId);
     expect(await t.db.select().from(project).where(eq(project.id, s.projectId))).toHaveLength(0);
     expect(await t.db.select().from(issue).where(eq(issue.id, row.id))).toHaveLength(0);
     expect(
@@ -129,6 +129,7 @@ describe('copyProject', () => {
     const { s } = await source();
     const copy = await copyProject(
       t.db,
+      t.bucket,
       s.projectId,
       { key: 'COPY', name: 'Copy' },
       s.userId,
@@ -173,7 +174,7 @@ describe('copyProject', () => {
       updatedByUserId: s.userId,
     });
     await expect(
-      copyProject(t.db, s.projectId, { key: 'HALF', name: 'Half' }, s.userId, s.teamId, {
+      copyProject(t.db, t.bucket, s.projectId, { key: 'HALF', name: 'Half' }, s.userId, s.teamId, {
         documents: true,
       }),
     ).rejects.toMatchObject({ status: 400 });
@@ -202,7 +203,7 @@ describe('copyProject', () => {
         .insert(label)
         .values(rows.map((r, i) => ({ ...r, name: `${r.name}-${batch}-${i}` })));
     await expect(
-      copyProject(t.db, s.projectId, { key: 'BIG', name: 'Big' }, s.userId, s.teamId),
+      copyProject(t.db, t.bucket, s.projectId, { key: 'BIG', name: 'Big' }, s.userId, s.teamId),
     ).rejects.toMatchObject({ status: 413 });
     expect(
       await t.db
