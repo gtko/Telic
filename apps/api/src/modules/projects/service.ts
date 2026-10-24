@@ -1,3 +1,4 @@
+import { likeText } from '#modules/issues/sql-helpers';
 import {
   type Db,
   aiAgent,
@@ -17,14 +18,14 @@ import {
   projectSetting,
   team,
   teamMember,
-  type DbExecutor,
+  batchAll,
+  chunk,
 } from '@repo/db';
 import {
   and,
   desc,
   eq,
   getTableColumns,
-  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -48,7 +49,6 @@ import { getDefaultRoleId } from '#modules/roles/service';
 import { dropUnusedTeamMembership } from '#modules/scim/reconcile';
 import { projectRef, teamRef } from '#modules/teams/ref';
 import { deleteObjects } from '@repo/storage';
-import { lockAttachmentStorage } from '#modules/attachments/storage';
 
 // Data access for projects: the top-level container that groups its own columns,
 // issue types, labels, assignees, custom fields, issues, saved views, and
@@ -231,9 +231,9 @@ async function readProjects(
     preference(projectMember.isHidden, opts.hidden),
     term
       ? or(
-          ilike(project.key, `%${term}%`),
-          ilike(project.name, `%${term}%`),
-          ilike(project.description, `%${term}%`),
+          likeText(project.key, `%${term}%`),
+          likeText(project.name, `%${term}%`),
+          likeText(project.description, `%${term}%`),
         )
       : undefined,
   );
@@ -241,9 +241,9 @@ async function readProjects(
     .filter(([, grant]) => grant === 'owner' || grant.work_items.read)
     .map(([teamId]) => teamId);
   const latestActivity = db
-    .selectDistinctOn([issue.projectId], {
+    .select({
       projectId: issue.projectId,
-      createdAt: issueActivity.createdAt,
+      createdAt: sql<Date>`max(${issueActivity.createdAt})`.mapWith(issueActivity.createdAt),
     })
     .from(issueActivity)
     .innerJoin(issue, eq(issue.id, issueActivity.issueId))
@@ -260,14 +260,14 @@ async function readProjects(
             or(
               eq(projectMember.role, 'owner'),
               isNull(teamRole.permissions),
-              sql`${teamRole.permissions} -> 'work_items' -> 'read' = 'true'::jsonb`,
+              sql`json_extract(${teamRole.permissions}, '$.work_items.read') = 1`,
             ),
           ),
           readingTeams.length > 0 ? inArray(project.teamId, readingTeams) : undefined,
         ),
       ),
     )
-    .orderBy(issue.projectId, desc(issueActivity.createdAt))
+    .groupBy(issue.projectId)
     .as('latest_activity');
   const order: SQL[] = [];
   if (opts.favoritesFirst) order.push(sql`${projectMember.isFavorite} is true desc`);
@@ -295,7 +295,7 @@ async function readProjects(
     window ? query.limit(window.limit).offset(window.offset) : query,
     window
       ? db
-          .select({ count: sql<number>`count(*)::int` })
+          .select({ count: sql<number>`count(*)` })
           .from(project)
           .innerJoin(team, eq(team.id, project.teamId))
           .leftJoin(projectMember, callerMember)
@@ -425,12 +425,13 @@ export async function targetTeam(db: Db, userId: string, teamId: number): Promis
 
 // A project membership stands on a team one. The workspace owner runs every team of the
 // workspace without being in it, so a project they create there makes them a member.
-export async function joinTeamAsCreator(
-  tx: DbExecutor,
-  teamId: number,
-  userId: string,
-): Promise<void> {
-  await tx.insert(teamMember).values({ teamId, userId, role: 'member' }).onConflictDoNothing();
+export async function joinTeamAsCreator(db: Db, teamId: number, userId: string): Promise<void> {
+  await joinTeamAsCreatorStatement(db, teamId, userId);
+}
+
+// The same insert as a statement not yet run, for a caller's own `db.batch`.
+export function joinTeamAsCreatorStatement(db: Db, teamId: number, userId: string) {
+  return db.insert(teamMember).values({ teamId, userId, role: 'member' }).onConflictDoNothing();
 }
 
 // The team a project is created in, with what mapProject needs from it.
@@ -534,7 +535,7 @@ export async function createProject(
 ): Promise<ProjectRow> {
   const ownerTeam = await targetTeam(db, ownerId, teamId);
   // What a new project starts with, set instance-wide in god mode. Read before the
-  // transaction opens so the settings lookup is not part of it.
+  // any write starts.
   const defaults = await getProjectDefaults(db);
   const defaultAgents = ownerTeam.defaultAgentIds.length
     ? await db
@@ -545,8 +546,13 @@ export async function createProject(
         )
     : [];
   const defaultRoleId = defaultAgents.length ? await getDefaultRoleId(db, ownerTeam.id) : null;
-  return db.transaction(async (tx) => {
-    const [row] = await tx
+  // One atomic D1 batch. The project id the later statements need is read back by
+  // sub-select on the unique (team, key) the first insert just wrote.
+  const projectId = sql<number>`(select ${project.id} from ${project} where ${project.teamId} = ${ownerTeam.id} and ${project.key} = ${input.key} order by ${project.id} desc limit 1)`;
+  const types = ISSUE_TYPE_PRESETS[input.preset ?? 'general'] ?? ISSUE_TYPE_PRESETS.general;
+  const results = await batchAll(db, [
+    joinTeamAsCreatorStatement(db, ownerTeam.id, ownerId),
+    db
       .insert(project)
       .values({
         teamId: ownerTeam.id,
@@ -555,47 +561,46 @@ export async function createProject(
         description: input.description ?? '',
         mcpEnabled: defaults.mcpEnabled,
       })
-      .returning();
-    await joinTeamAsCreator(tx, ownerTeam.id, ownerId);
-    await tx.insert(projectMember).values({ projectId: row.id, userId: ownerId, role: 'owner' });
-    if (defaultAgents.length) {
-      await tx.insert(projectMember).values(
-        defaultAgents.map((agent) => ({
-          projectId: row.id,
+      .returning(),
+    db.insert(projectMember).values({ projectId, userId: ownerId, role: 'owner' }),
+    ...chunk(defaultAgents, 15).map((agents) =>
+      db.insert(projectMember).values(
+        agents.map((agent) => ({
+          projectId,
           userId: agent.userId,
           role: 'member',
           roleId: defaultRoleId,
         })),
-      );
-    }
-    for (const [position, column] of DEFAULT_COLUMNS.entries()) {
-      await tx.insert(projectColumn).values({
-        projectId: row.id,
+      ),
+    ),
+    ...DEFAULT_COLUMNS.map((column, position) =>
+      db.insert(projectColumn).values({
+        projectId,
         name: column.name,
         stateType: column.stateType,
         color: column.color,
         position,
-      });
-    }
-    const types = ISSUE_TYPE_PRESETS[input.preset ?? 'general'] ?? ISSUE_TYPE_PRESETS.general;
-    for (const [position, type] of types.entries()) {
-      await tx.insert(issueType).values({
-        projectId: row.id,
+      }),
+    ),
+    ...types.map((type, position) =>
+      db.insert(issueType).values({
+        projectId,
         name: type.name,
         color: type.color,
         isDefault: position === 0,
         position,
-      });
-    }
-    await tx
+      }),
+    ),
+    db
       .insert(projectSetting)
-      .values({ projectId: row.id, key: AUTO_ARCHIVE_KEY, value: DEFAULT_AUTO_ARCHIVE });
-    return mapProject({
-      ...row,
-      teamName: ownerTeam.name,
-      teamSlug: ownerTeam.slug,
-      teamMcpEnabled: ownerTeam.mcpEnabled,
-    });
+      .values({ projectId, key: AUTO_ARCHIVE_KEY, value: DEFAULT_AUTO_ARCHIVE }),
+  ]);
+  const [row] = results[1] as (typeof project.$inferSelect)[];
+  return mapProject({
+    ...row,
+    teamName: ownerTeam.name,
+    teamSlug: ownerTeam.slug,
+    teamMcpEnabled: ownerTeam.mcpEnabled,
   });
 }
 
@@ -824,34 +829,33 @@ export async function deleteProject(db: Db, projectId: number): Promise<void> {
     .from(projectMember)
     .innerJoin(project, eq(project.id, projectMember.projectId))
     .where(and(eq(projectMember.projectId, projectId), eq(projectMember.source, 'scim')));
-  const assetKeys = await db.transaction(async (tx) => {
-    // Serialize with the final upload quota check. A concurrent upload either
-    // commits before these reads or loses its FK race and cleans its S3 object.
-    await lockAttachmentStorage(tx, projectId);
-    const issueAssets = await tx
+  // The asset keys are read and the project deleted in one atomic batch, so a file added
+  // meanwhile either is listed here or loses its foreign key and cleans itself up.
+  const [issueAssets, chatAssets, documentAssets, initiativeAssets] = await db.batch([
+    db
       .select({ s3Key: issueAttachment.s3Key })
       .from(issueAttachment)
       .innerJoin(issue, eq(issue.id, issueAttachment.issueId))
-      .where(eq(issue.projectId, projectId));
-    const chatAssets = await tx
+      .where(eq(issue.projectId, projectId)),
+    db
       .select({ s3Key: chatAttachment.s3Key })
       .from(chatAttachment)
-      .where(eq(chatAttachment.projectId, projectId));
-    const documentAssets = await tx
+      .where(eq(chatAttachment.projectId, projectId)),
+    db
       .select({ s3Key: documentAsset.s3Key })
       .from(documentAsset)
       .innerJoin(projectDocument, eq(projectDocument.id, documentAsset.documentId))
-      .where(eq(projectDocument.projectId, projectId));
-    const initiativeAssets = await tx
+      .where(eq(projectDocument.projectId, projectId)),
+    db
       .select({ s3Key: initiativeAttachment.s3Key })
       .from(initiativeAttachment)
       .innerJoin(initiative, eq(initiative.id, initiativeAttachment.initiativeId))
-      .where(eq(initiative.projectId, projectId));
-    await tx.delete(project).where(eq(project.id, projectId));
-    return [...issueAssets, ...chatAssets, ...documentAssets, ...initiativeAssets].map(
-      (asset) => asset.s3Key,
-    );
-  });
+      .where(eq(initiative.projectId, projectId)),
+    db.delete(project).where(eq(project.id, projectId)),
+  ]);
+  const assetKeys = [...issueAssets, ...chatAssets, ...documentAssets, ...initiativeAssets].map(
+    (asset) => asset.s3Key,
+  );
   await deleteObjects(assetKeys);
   for (const { teamId, userId } of provisioned) {
     await dropUnusedTeamMembership(db, teamId, userId);
