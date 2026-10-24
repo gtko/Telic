@@ -1,3 +1,4 @@
+import { dbContext } from '#shared/db-context';
 import { Elysia, t } from 'elysia';
 import { mcpTool } from '#mcp/generate';
 import { noContent } from '#shared/http';
@@ -12,7 +13,7 @@ import {
   type AuthUser,
 } from '#shared/access';
 import { inviteValidSince } from '@repo/auth';
-import { hasConfiguredEmailProvider } from '@repo/db';
+import { hasConfiguredEmailProvider, type Db } from '@repo/db';
 import { HttpError } from '#shared/lib';
 import { accessErrors, commonErrors, errors } from '#shared/responses';
 import { getRole } from '#modules/roles/service';
@@ -53,9 +54,9 @@ import { enqueueInviteEmail, sendTeamInviteEmail } from './email';
 
 // Shared by accept and reject: an invite is actionable only by the account whose
 // email it names, and only while it is still pending.
-async function loadActionableInvite(token: string, user: AuthUser | undefined | null) {
+async function loadActionableInvite(db: Db, token: string, user: AuthUser | undefined | null) {
   const current = requireUser(user);
-  const invite = await getInviteRowByToken(token);
+  const invite = await getInviteRowByToken(db, token);
   if (!invite) throw new HttpError(404, 'Invite not found');
   if (invite.status !== 'pending') throw new HttpError(409, 'This invite is no longer pending');
   const since = await inviteValidSince();
@@ -76,7 +77,7 @@ async function assertStillGrantable(invite: {
   projectRole: string | null;
   invitedByUserId: string | null;
 }): Promise<void> {
-  if (!(await mayGrantInviteRanks(invite, invite.invitedByUserId))) {
+  if (!(await mayGrantInviteRanks(db, invite, invite.invitedByUserId))) {
     throw new HttpError(
       409,
       'Whoever sent this invite can no longer grant the rank it carries. Ask for a new one.',
@@ -101,6 +102,7 @@ async function mailOutcome(send: () => Promise<boolean>) {
 // A link hands out its invite's role to whoever holds it, so a viewer who could not grant
 // that role does not get the link either.
 async function hideLinksBeyondGrant(
+  db: Db,
   project: ProjectRow,
   viewer: AuthUser,
   invites: ListedInvite[],
@@ -110,10 +112,10 @@ async function hideLinksBeyondGrant(
     invites.map(async (invite) => {
       if (!invite.token || invite.roleId == null) return invite;
       if (!grantable.has(invite.roleId)) {
-        const role = await getRole(project.teamId, invite.roleId);
+        const role = await getRole(db, project.teamId, invite.roleId);
         grantable.set(
           invite.roleId,
-          !role || (await mayGrantPermissions(project, viewer, role.permissions)),
+          !role || (await mayGrantPermissions(db, project, viewer, role.permissions)),
         );
       }
       return grantable.get(invite.roleId) ? invite : { ...invite, token: null };
@@ -122,15 +124,16 @@ async function hideLinksBeyondGrant(
 }
 
 export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invites'] } })
+  .use(dbContext)
   .use(authContext)
   .use(guards)
 
   .get(
     '/me/invites',
-    async ({ user, query, set }) => {
+    async ({ db, user, query, set }) => {
       set.headers['cache-control'] = 'private, no-store';
       return paginate(query, (window) =>
-        listReceivedInvites(requireUser(user).email ?? '', window),
+        listReceivedInvites(db, requireUser(user).email ?? '', window),
       );
     },
     {
@@ -152,13 +155,14 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .post(
     '/projects/:projectKey/invites',
-    async ({ project, body, user, set }) => {
+    async ({ db, project, body, user, set }) => {
       // Ownership is not one of the ranks the member permission carries: an owner
       // bypasses the role matrix, so only a project owner or someone who runs the team
       // hands it out — an invite is the third way to make one, beside members/.
       const invitedBy = requireUser(user).id;
       if (
         !(await mayGrantInviteRanks(
+          db,
           {
             teamId: project.teamId,
             projectId: project.id,
@@ -178,11 +182,11 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       // owner invite ignores roleId (owners bypass roles).
       const roleId = body.role === 'member' ? (body.roleId ?? null) : null;
       if (roleId != null) {
-        const role = await getRole(project.teamId, roleId);
+        const role = await getRole(db, project.teamId, roleId);
         if (!role) throw new HttpError(400, "roleId does not belong to this project's team");
-        await assertGrantablePermissions(project, user, role.permissions);
+        await assertGrantablePermissions(db, project, user, role.permissions);
       }
-      const invite = await createInvite({
+      const invite = await createInvite(db, {
         teamId: project.teamId,
         projectId: project.id,
         email: body.email,
@@ -195,7 +199,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       });
       // Creating the invite link is the primary operation: a failed email must not
       // discard a valid link that can still be copied.
-      const email = await mailOutcome(() => enqueueInviteEmail(project, invite));
+      const email = await mailOutcome(() => enqueueInviteEmail(db, project, invite));
       set.status = 201;
       return { ...invite, ...email };
     },
@@ -217,8 +221,8 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .post(
     '/projects/:projectKey/invites/:inviteId/email',
-    async ({ project, params }) => {
-      const invite = await getInviteById(params.inviteId);
+    async ({ db, project, params }) => {
+      const invite = await getInviteById(db, params.inviteId);
       if (!invite || invite.projectKey !== project.key) {
         throw new HttpError(404, 'Invite not found');
       }
@@ -229,7 +233,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
         throw new HttpError(409, 'This invite has expired. Renew it to send a new link.');
       }
-      return { emailQueued: await enqueueInviteEmail(project, invite) };
+      return { emailQueued: await enqueueInviteEmail(db, project, invite) };
     },
     {
       params: inviteParams,
@@ -247,23 +251,23 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .post(
     '/projects/:projectKey/invites/:inviteId/renew',
-    async ({ project, params, user, set }) => {
+    async ({ db, project, params, user, set }) => {
       const renewedBy = requireUser(user).id;
-      const grant = await getInviteGrant(params.inviteId);
+      const grant = await getInviteGrant(db, params.inviteId);
       if (!grant || grant.projectId !== project.id) throw new HttpError(404, 'Invite not found');
       // Renewing hands the grant out again, so it is held to the same rules as creating it.
-      if (!(await mayGrantInviteRanks(grant, renewedBy))) {
+      if (!(await mayGrantInviteRanks(db, grant, renewedBy))) {
         throw new HttpError(
           403,
           'Only a project owner or a team owner or manager can invite an owner',
         );
       }
       if (grant.roleId != null) {
-        const role = await getRole(project.teamId, grant.roleId);
-        if (role) await assertGrantablePermissions(project, user, role.permissions);
+        const role = await getRole(db, project.teamId, grant.roleId);
+        if (role) await assertGrantablePermissions(db, project, user, role.permissions);
       }
-      const invite = await renewInvite(grant, renewedBy);
-      const email = await mailOutcome(() => enqueueInviteEmail(project, invite));
+      const invite = await renewInvite(db, grant, renewedBy);
+      const email = await mailOutcome(() => enqueueInviteEmail(db, project, invite));
       set.status = 201;
       return { ...invite, ...email };
     },
@@ -284,11 +288,11 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .get(
     '/projects/:projectKey/invites',
-    async ({ project, user }) => {
+    async ({ db, project, user }) => {
       const viewer = requireUser(user);
-      const mayInvite = await checkMemberAdmin(project, viewer, 'members_invite', 'create');
-      const invites = await listProjectInvites(project.id, mayInvite ? viewer.id : null);
-      return hideLinksBeyondGrant(project, viewer, invites);
+      const mayInvite = await checkMemberAdmin(db, project, viewer, 'members_invite', 'create');
+      const invites = await listProjectInvites(db, project.id, mayInvite ? viewer.id : null);
+      return hideLinksBeyondGrant(db, project, viewer, invites);
     },
     {
       memberAdmin: ['members_invite', 'read'],
@@ -305,8 +309,8 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .delete(
     '/projects/:projectKey/invites/:inviteId',
-    async ({ project, params }) => {
-      const removed = await deleteProjectInvite(project.id, params.inviteId);
+    async ({ db, project, params }) => {
+      const removed = await deleteProjectInvite(db, project.id, params.inviteId);
       if (!removed) throw new HttpError(404, 'Invite not found');
       return noContent();
     },
@@ -326,16 +330,17 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
   // projects through a membership added afterwards.
   .post(
     '/teams/:teamId/invites',
-    async ({ membership, body, set }) => {
+    async ({ db, membership, body, set }) => {
       if (
         !(await mayGrantInviteRanks(
+          db,
           { teamId: membership.teamId, projectId: null, teamRole: body.role, projectRole: null },
           membership.userId,
         ))
       ) {
         throw new HttpError(403, 'Only a team owner can invite an owner or a manager');
       }
-      const invite = await createInvite({
+      const invite = await createInvite(db, {
         teamId: membership.teamId,
         projectId: null,
         email: body.email,
@@ -345,7 +350,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
         invitedByUserId: membership.userId,
       });
       // As for a project invite: the link is the primary result and stays valid.
-      const email = await mailOutcome(() => sendTeamInviteEmail(membership.teamId, invite));
+      const email = await mailOutcome(() => sendTeamInviteEmail(db, membership.teamId, invite));
       set.status = 201;
       return { ...invite, ...email };
     },
@@ -367,8 +372,8 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .get(
     '/teams/:teamId/invites',
-    async ({ membership }) => {
-      return listTeamInvites(membership.teamId, membership.userId);
+    async ({ db, membership }) => {
+      return listTeamInvites(db, membership.teamId, membership.userId);
     },
     {
       teamManager: true,
@@ -387,12 +392,12 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
   // those too, as their project would.
   .post(
     '/teams/:teamId/invites/:inviteId/email',
-    async ({ membership, params }) => {
-      const grant = await getInviteGrant(params.inviteId);
+    async ({ db, membership, params }) => {
+      const grant = await getInviteGrant(db, params.inviteId);
       if (!grant || grant.teamId !== membership.teamId) {
         throw new HttpError(404, 'Invite not found');
       }
-      const invite = await getInviteById(params.inviteId);
+      const invite = await getInviteById(db, params.inviteId);
       if (!invite) throw new HttpError(404, 'Invite not found');
       if (invite.status !== 'pending') {
         throw new HttpError(409, 'This invite is no longer pending');
@@ -404,7 +409,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       // link; a provider that fails is an error, not that.
       if (!(await hasConfiguredEmailProvider())) return { emailQueued: false };
       if (grant.projectId == null) {
-        if (!(await sendTeamInviteEmail(membership.teamId, invite))) {
+        if (!(await sendTeamInviteEmail(db, membership.teamId, invite))) {
           throw new HttpError(502, 'The invite email could not be sent');
         }
         return { emailQueued: true };
@@ -412,6 +417,7 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
       if (invite.projectName == null) return { emailQueued: false };
       return {
         emailQueued: await enqueueInviteEmail(
+          db,
           { id: grant.projectId, name: invite.projectName },
           invite,
         ),
@@ -436,21 +442,21 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
   // those too, mailing them as their project would.
   .post(
     '/teams/:teamId/invites/:inviteId/renew',
-    async ({ membership, params, set }) => {
-      const grant = await getInviteGrant(params.inviteId);
+    async ({ db, membership, params, set }) => {
+      const grant = await getInviteGrant(db, params.inviteId);
       if (!grant || grant.teamId !== membership.teamId) {
         throw new HttpError(404, 'Invite not found');
       }
-      if (!(await mayGrantInviteRanks(grant, membership.userId))) {
+      if (!(await mayGrantInviteRanks(db, grant, membership.userId))) {
         throw new HttpError(403, 'Only a team owner can invite an owner or a manager');
       }
-      const invite = await renewInvite(grant, membership.userId);
+      const invite = await renewInvite(db, grant, membership.userId);
       const { projectId } = grant;
       const projectName = invite.projectName;
       const email = await mailOutcome(async () => {
-        if (projectId == null) return sendTeamInviteEmail(membership.teamId, invite);
+        if (projectId == null) return sendTeamInviteEmail(db, membership.teamId, invite);
         if (projectName == null) return false;
-        return enqueueInviteEmail({ id: projectId, name: projectName }, invite);
+        return enqueueInviteEmail(db, { id: projectId, name: projectName }, invite);
       });
       set.status = 201;
       return { ...invite, ...email };
@@ -471,8 +477,8 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .delete(
     '/teams/:teamId/invites/:inviteId',
-    async ({ membership, params }) => {
-      const removed = await deleteTeamInvite(membership.teamId, params.inviteId);
+    async ({ db, membership, params }) => {
+      const removed = await deleteTeamInvite(db, membership.teamId, params.inviteId);
       if (!removed) throw new HttpError(404, 'Invite not found');
       return noContent();
     },
@@ -491,8 +497,8 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
   // unguessable, so any authenticated caller holding one may read the invite.
   .get(
     '/invites/:token',
-    async ({ params }) => {
-      const invite = await getInviteByToken(params.token);
+    async ({ db, params }) => {
+      const invite = await getInviteByToken(db, params.token);
       if (!invite) throw new HttpError(404, 'Invite not found');
       return invite;
     },
@@ -509,10 +515,10 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .post(
     '/invites/:token/accept',
-    async ({ params, user }) => {
-      const { invite, current } = await loadActionableInvite(params.token, user);
+    async ({ db, params, user }) => {
+      const { invite, current } = await loadActionableInvite(db, params.token, user);
       await assertStillGrantable(invite);
-      return acceptInvite(invite, current.id);
+      return acceptInvite(db, invite, current.id);
     },
     {
       params: tokenParams,
@@ -529,9 +535,9 @@ export const inviteRoutes = new Elysia({ name: 'invites', detail: { tags: ['Invi
 
   .post(
     '/invites/:token/reject',
-    async ({ params, user }) => {
-      const { invite } = await loadActionableInvite(params.token, user);
-      await rejectInvite(invite.id);
+    async ({ db, params, user }) => {
+      const { invite } = await loadActionableInvite(db, params.token, user);
+      await rejectInvite(db, invite.id);
       return noContent();
     },
     {

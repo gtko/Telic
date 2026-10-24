@@ -1,4 +1,4 @@
-import { db, appSetting, userPreference } from '@repo/db';
+import { appSetting, userPreference, type Db } from '@repo/db';
 import { eq, sql } from 'drizzle-orm';
 import type { AuthUser } from '#shared/access';
 import { getAppVersion, releasesSince, type Release } from './updates';
@@ -47,7 +47,7 @@ export interface WhatsNew {
   migration: TeamsMigrationReport | null;
 }
 
-async function readSetting<T>(key: string): Promise<T | null> {
+async function readSetting<T>(db: Db, key: string): Promise<T | null> {
   const [row] = await db
     .select({ value: appSetting.value })
     .from(appSetting)
@@ -55,14 +55,14 @@ async function readSetting<T>(key: string): Promise<T | null> {
   return row ? (row.value as T) : null;
 }
 
-export async function getWhatsNew(user: AuthUser): Promise<WhatsNew> {
+export async function getWhatsNew(db: Db, user: AuthUser): Promise<WhatsNew> {
   const version = getAppVersion();
   const [preference] = await db
     .select({ seenVersion: userPreference.seenVersion })
     .from(userPreference)
     .where(eq(userPreference.userId, user.id));
   const admin = user.role === 'god';
-  const releases = await releasesSince(preference?.seenVersion ?? null);
+  const releases = await releasesSince(db, preference?.seenVersion ?? null);
   const [backup, applied] = admin
     ? await Promise.all([
         readSetting<BackupInfo>(BACKUP_KEY),
@@ -86,7 +86,7 @@ export async function getWhatsNew(user: AuthUser): Promise<WhatsNew> {
 
 // Closes the screen for this user, for the version they saw. A row is written even
 // when they have no preferences yet, so the screen does not come back.
-export async function markWhatsNewSeen(userId: string): Promise<void> {
+export async function markWhatsNewSeen(db: Db, userId: string): Promise<void> {
   await db
     .insert(userPreference)
     .values({ userId, seenVersion: getAppVersion() })

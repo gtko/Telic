@@ -2,7 +2,6 @@ import {
   agentSkill,
   agentTool,
   aiAgent,
-  db,
   teamWorkspaceId,
   integrationCredential,
   issue,
@@ -17,8 +16,9 @@ import {
   user,
   workspace,
   workspaceManager,
+  type Db,
 } from '@repo/db';
-import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, like, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { HttpError, iso, pgErrorCode } from '#shared/lib';
 import { isReservedSlug, projectRefSql, teamRef } from './ref';
 import { getLimits } from '#shared/limits';
@@ -222,8 +222,8 @@ export interface TeamLeadRow {
 
 // The caller's teams as DTOs, optionally narrowed to one: the teams they are in and
 // the ones their role in a workspace reaches (workspace-roles.ts).
-async function loadTeamRows(userId: string, teamId?: number): Promise<TeamRow[]> {
-  const grants = await workspaceGrants(userId);
+async function loadTeamRows(db: Db, userId: string, teamId?: number): Promise<TeamRow[]> {
+  const grants = await workspaceGrants(db, userId);
   const grantedTeams = [...grants.keys()];
   const rows = await db
     .select({
@@ -264,8 +264,8 @@ async function loadTeamRows(userId: string, teamId?: number): Promise<TeamRow[]>
     db
       .select({
         teamId: project.teamId,
-        count: sql<number>`count(*)::int`,
-        joined: sql<number>`count(${projectMember.userId})::int`,
+        count: sql<number>`count(*)`,
+        joined: sql<number>`count(${projectMember.userId})`,
       })
       .from(project)
       .leftJoin(
@@ -277,34 +277,34 @@ async function loadTeamRows(userId: string, teamId?: number): Promise<TeamRow[]>
     db
       .select({
         teamId: teamMember.teamId,
-        count: sql<number>`count(*)::int`,
-        owners: sql<number>`count(*) filter (where ${teamMember.role} = 'owner')::int`,
+        count: sql<number>`count(*)`,
+        owners: sql<number>`count(*) filter (where ${teamMember.role} = 'owner')`,
       })
       .from(teamMember)
       .where(inArray(teamMember.teamId, ids))
       .groupBy(teamMember.teamId),
     db
-      .select({ teamId: teamRole.teamId, count: sql<number>`count(*)::int` })
+      .select({ teamId: teamRole.teamId, count: sql<number>`count(*)` })
       .from(teamRole)
       .where(inArray(teamRole.teamId, ids))
       .groupBy(teamRole.teamId),
     db
-      .select({ teamId: integrationCredential.teamId, count: sql<number>`count(*)::int` })
+      .select({ teamId: integrationCredential.teamId, count: sql<number>`count(*)` })
       .from(integrationCredential)
       .where(inArray(integrationCredential.teamId, ids))
       .groupBy(integrationCredential.teamId),
     db
-      .select({ teamId: aiAgent.teamId, count: sql<number>`count(*)::int` })
+      .select({ teamId: aiAgent.teamId, count: sql<number>`count(*)` })
       .from(aiAgent)
       .where(inArray(aiAgent.teamId, ids))
       .groupBy(aiAgent.teamId),
     db
-      .select({ teamId: agentSkill.teamId, count: sql<number>`count(*)::int` })
+      .select({ teamId: agentSkill.teamId, count: sql<number>`count(*)` })
       .from(agentSkill)
       .where(inArray(agentSkill.teamId, ids))
       .groupBy(agentSkill.teamId),
     db
-      .select({ teamId: agentTool.teamId, count: sql<number>`count(*)::int` })
+      .select({ teamId: agentTool.teamId, count: sql<number>`count(*)` })
       .from(agentTool)
       .where(inArray(agentTool.teamId, ids))
       .groupBy(agentTool.teamId),
@@ -349,15 +349,16 @@ async function loadTeamRows(userId: string, teamId?: number): Promise<TeamRow[]>
 // The teams the user belongs to. mcpOnly drops the ones with MCP switched off, so an
 // MCP caller only sees the teams it can act in.
 export async function listTeams(
+  db: Db,
   userId: string,
   opts: { mcpOnly?: boolean } = {},
 ): Promise<TeamRow[]> {
-  const rows = await loadTeamRows(userId);
+  const rows = await loadTeamRows(db, userId);
   return opts.mcpOnly ? rows.filter((row) => row.mcpEnabled) : rows;
 }
 
 // The team's MCP switch alone, for the guard that runs on every team-scoped MCP call.
-export async function teamMcpEnabled(teamId: number): Promise<boolean> {
+export async function teamMcpEnabled(db: Db, teamId: number): Promise<boolean> {
   const [row] = await db
     .select({ mcpEnabled: team.mcpEnabled })
     .from(team)
@@ -366,6 +367,7 @@ export async function teamMcpEnabled(teamId: number): Promise<boolean> {
 }
 
 export async function getTeamProjectDefaults(
+  db: Db,
   teamId: number,
 ): Promise<{ defaultAgentIds: number[] }> {
   const [row] = await db
@@ -383,6 +385,7 @@ export async function getTeamProjectDefaults(
 }
 
 export async function setTeamProjectDefaults(
+  db: Db,
   teamId: number,
   defaultAgentIds: number[],
 ): Promise<{ defaultAgentIds: number[] }> {
@@ -406,7 +409,7 @@ export interface TeamMcpSettings {
   projects: { projectId: number; enabled: boolean }[];
 }
 
-async function getTeamMcp(teamId: number): Promise<TeamMcpSettings> {
+async function getTeamMcp(db: Db, teamId: number): Promise<TeamMcpSettings> {
   const [rows, projects] = await Promise.all([
     db.select({ mcpEnabled: team.mcpEnabled }).from(team).where(eq(team.id, teamId)),
     db
@@ -422,6 +425,7 @@ async function getTeamMcp(teamId: number): Promise<TeamMcpSettings> {
 // another team is ignored rather than written, so an id from elsewhere changes
 // nothing.
 export async function setTeamMcp(
+  db: Db,
   teamId: number,
   patch: { enabled?: boolean; projects?: { projectId: number; enabled: boolean }[] },
 ): Promise<TeamMcpSettings> {
@@ -438,10 +442,11 @@ export async function setTeamMcp(
       .set({ mcpEnabled: enabled })
       .where(and(eq(project.teamId, teamId), inArray(project.id, ids)));
   }
-  return getTeamMcp(teamId);
+  return getTeamMcp(db, teamId);
 }
 
 export async function getTeamMembership(
+  db: Db,
   teamId: number,
   userId: string,
 ): Promise<TeamStanding | null> {
@@ -455,24 +460,25 @@ export async function getTeamMembership(
 // The team itself: the row the list carries, with what the caller may do with the
 // resources it holds. Its members and its projects are read separately, one request
 // per section of the page. Returns null when the caller is not a member of it.
-export async function getTeam(teamId: number, userId: string): Promise<TeamDetail | null> {
-  const [row] = await loadTeamRows(userId, teamId);
+export async function getTeam(db: Db, teamId: number, userId: string): Promise<TeamDetail | null> {
+  const [row] = await loadTeamRows(db, userId, teamId);
   if (!row) return null;
 
   const [permissions, leads] = await Promise.all([
     runsTeam(row.role)
       ? fullPermissions()
-      : Promise.all([getTeamPermissions(teamId, userId), workspaceGrant(teamId, userId)]).then(
-          ([own, grant]) => mergePermissions(own, grant === 'owner' ? null : grant),
-        ),
-    listTeamLeads(teamId),
+      : Promise.all([
+          getTeamPermissions(db, teamId, userId),
+          workspaceGrant(db, teamId, userId),
+        ]).then(([own, grant]) => mergePermissions(own, grant === 'owner' ? null : grant)),
+    listTeamLeads(db, teamId),
   ]);
   return { ...row, permissions, leads };
 }
 
 // The owners and the managers of the team, owners first, then by name. Agents are left
 // out: an agent's standing grants nothing, so it runs no team.
-async function listTeamLeads(teamId: number): Promise<TeamLeadRow[]> {
+async function listTeamLeads(db: Db, teamId: number): Promise<TeamLeadRow[]> {
   const rows = await db
     .select({
       userId: user.id,
@@ -498,6 +504,7 @@ async function listTeamLeads(teamId: number): Promise<TeamLeadRow[]> {
 // One page of the team's members, people and agents alike, by name. The search and the
 // window run in the database, so a team with many members is never loaded whole.
 export async function listTeamMembers(
+  db: Db,
   teamId: number,
   options: MemberFilters & { limit: number; offset: number },
 ): Promise<TeamMemberPage> {
@@ -523,7 +530,7 @@ export async function listTeamMembers(
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(teamMember)
       .innerJoin(user, eq(user.id, teamMember.userId))
       .leftJoin(aiAgent, eq(aiAgent.userId, teamMember.userId))
@@ -550,12 +557,13 @@ export async function listTeamMembers(
 // role reaches the team see every one of them, everyone else only the ones they joined.
 // The search matches the key or the name.
 async function visibleTeamProjects(
+  db: Db,
   teamId: number,
   userId: string,
   standing: TeamStanding,
   search?: string,
 ) {
-  const seesAll = runsTeam(standing) || (await workspaceGrant(teamId, userId)) !== null;
+  const seesAll = runsTeam(standing) || (await workspaceGrant(db, teamId, userId)) !== null;
   const term = search?.trim();
   return and(
     eq(project.teamId, teamId),
@@ -563,7 +571,7 @@ async function visibleTeamProjects(
       ? undefined
       : sql`exists (select 1 from ${projectMember} where ${projectMember.projectId} = ${project.id}
       and ${projectMember.userId} = ${userId})`,
-    term ? or(ilike(project.key, `%${term}%`), ilike(project.name, `%${term}%`)) : undefined,
+    term ? or(like(project.key, `%${term}%`), like(project.name, `%${term}%`)) : undefined,
   );
 }
 
@@ -571,12 +579,13 @@ async function visibleTeamProjects(
 // window runs in the database, so a team with many projects is never loaded whole;
 // the owners are read for the page, not for every project.
 export async function listTeamProjects(
+  db: Db,
   teamId: number,
   userId: string,
   standing: TeamStanding,
   options: { search?: string; limit: number; offset: number },
 ): Promise<TeamProjectPage> {
-  const where = await visibleTeamProjects(teamId, userId, standing, options.search);
+  const where = await visibleTeamProjects(db, teamId, userId, standing, options.search);
   const [projects, counted] = await Promise.all([
     db
       .select({
@@ -588,7 +597,7 @@ export async function listTeamProjects(
         mcpEnabled: project.mcpEnabled,
         archivedAt: project.archivedAt,
         createdAt: project.createdAt,
-        memberCount: sql<number>`count(${projectMember.userId})::int`,
+        memberCount: sql<number>`count(${projectMember.userId})`,
         isMember: sql<boolean>`bool_or(${projectMember.userId} = ${userId})`,
       })
       .from(project)
@@ -600,7 +609,7 @@ export async function listTeamProjects(
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(project)
       .where(where),
   ]);
@@ -655,6 +664,7 @@ export async function listTeamProjects(
 // Every project the caller reads, as id, key, name and MCP reach: the picker on an
 // agent and the team's MCP switches, which need them all rather than a page.
 export async function listTeamProjectOptions(
+  db: Db,
   teamId: number,
   userId: string,
   standing: TeamStanding,
@@ -669,13 +679,13 @@ export async function listTeamProjectOptions(
     })
     .from(project)
     .innerJoin(team, eq(team.id, project.teamId))
-    .where(await visibleTeamProjects(teamId, userId, standing))
+    .where(await visibleTeamProjects(db, teamId, userId, standing))
     .orderBy(project.key);
 }
 
 // When the project's issue feed last moved. Read as the newest row rather than a
 // max(), which the driver returns as a formatted string instead of a Date.
-async function lastActivityAt(projectId: number): Promise<string | null> {
+async function lastActivityAt(db: Db, projectId: number): Promise<string | null> {
   const rows = await db
     .select({ createdAt: issueActivity.createdAt })
     .from(issueActivity)
@@ -688,7 +698,7 @@ async function lastActivityAt(projectId: number): Promise<string | null> {
 
 // Whether the project is one the team owns. The team-scoped project routes check it
 // so a project of another team answers 404 rather than being acted on.
-export async function teamOwnsProject(teamId: number, projectId: number): Promise<boolean> {
+export async function teamOwnsProject(db: Db, teamId: number, projectId: number): Promise<boolean> {
   const rows = await db
     .select({ id: project.id })
     .from(project)
@@ -701,23 +711,24 @@ export async function teamOwnsProject(teamId: number, projectId: number): Promis
 // neither runs the team nor belongs to the project, so the route answers 404 in both
 // cases.
 export async function getTeamProject(
+  db: Db,
   teamId: number,
   projectId: number,
   userId: string,
   standing: TeamStanding,
 ): Promise<TeamProjectDetail | null> {
-  if (!(await teamOwnsProject(teamId, projectId))) return null;
+  if (!(await teamOwnsProject(db, teamId, projectId))) return null;
 
   const viewer = projectAccess(
-    await getMemberContext(projectId, userId),
-    await projectWorkspaceGrant(projectId, userId),
+    await getMemberContext(db, projectId, userId),
+    await projectWorkspaceGrant(db, projectId, userId),
   );
   if (!runsTeam(standing) && !viewer) return null;
 
   const [activity, stats, source] = await Promise.all([
-    lastActivityAt(projectId),
-    getStats(projectId),
-    getMembershipSource(projectId, userId),
+    lastActivityAt(db, projectId),
+    getStats(db, projectId),
+    getMembershipSource(db, projectId, userId),
   ]);
 
   return {
@@ -738,25 +749,27 @@ export async function getTeamProject(
 // first: who runs the project is the first thing the list has to answer. Returns
 // null under the same two conditions getTeamProject does.
 export async function listTeamProjectMembers(
+  db: Db,
   teamId: number,
   projectId: number,
   userId: string,
   standing: TeamStanding,
   options: MemberFilters & { limit: number; offset: number },
 ): Promise<TeamProjectMemberPage | null> {
-  if (!(await teamOwnsProject(teamId, projectId))) return null;
+  if (!(await teamOwnsProject(db, teamId, projectId))) return null;
   if (
     !runsTeam(standing) &&
-    !(await getMembership(projectId, userId)) &&
-    !(await projectWorkspaceGrant(projectId, userId))
+    !(await getMembership(db, projectId, userId)) &&
+    !(await projectWorkspaceGrant(db, projectId, userId))
   ) {
     return null;
   }
 
-  const { items, total } = await listMembersPage(projectId, { ...options, order: 'owners' });
+  const { items, total } = await listMembersPage(db, projectId, { ...options, order: 'owners' });
 
   return {
     items: items.map((m) => ({
+      db,
       userId: m.userId,
       name: m.name,
       email: m.email,
@@ -779,6 +792,7 @@ type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Writes a team owned by one account, with the default role its projects assign.
 export async function insertOwnedTeam(
+  db: Db,
   tx: Transaction,
   workspaceId: number,
   name: string,
@@ -801,7 +815,7 @@ export async function insertOwnedTeam(
 
 // The people across the workspace's teams, which is what a seat ceiling counts. An
 // agent's bot user sits in a member list but takes no seat.
-export async function listSeatHolderIds(workspaceId: number): Promise<string[]> {
+export async function listSeatHolderIds(db: Db, workspaceId: number): Promise<string[]> {
   const rows = await db
     .selectDistinct({ userId: teamMember.userId })
     .from(teamMember)
@@ -812,23 +826,24 @@ export async function listSeatHolderIds(workspaceId: number): Promise<string[]> 
 
 // Refuses to add this person to the team when that takes a seat the workspace does not
 // have. Somebody already in another team of the workspace holds a seat.
-export async function assertSeatFree(teamId: number, userId: string): Promise<void> {
+export async function assertSeatFree(db: Db, teamId: number, userId: string): Promise<void> {
   const workspaceId = await teamWorkspaceId(teamId, db);
   const { maxSeats } = await getLimits(workspaceId);
   if (maxSeats === 0) return;
-  const holders = await listSeatHolderIds(workspaceId);
+  const holders = await listSeatHolderIds(db, workspaceId);
   if (!holders.includes(userId) && holders.length >= maxSeats) {
     throw new HttpError(409, `The workspace has no free seats out of ${maxSeats}`);
   }
 }
 
 export async function createTeam(
+  db: Db,
   name: string,
   slug: string,
   ownerId: string,
   workspaceId: number,
 ): Promise<TeamRow> {
-  await assertMayCreateTeam(workspaceId, ownerId);
+  await assertMayCreateTeam(db, workspaceId, ownerId);
   const { maxTeams } = await getLimits(workspaceId);
   if (maxTeams > 0 && (await db.$count(team, eq(team.workspaceId, workspaceId))) >= maxTeams) {
     throw new HttpError(409, `The workspace already has ${maxTeams} teams`);
@@ -836,7 +851,14 @@ export async function createTeam(
   assertSlugAllowed(slug);
   return withSlugConflict(() =>
     db.transaction(async (tx) => {
-      const { team: row, membership } = await insertOwnedTeam(tx, workspaceId, name, ownerId, slug);
+      const { team: row, membership } = await insertOwnedTeam(
+        db,
+        tx,
+        workspaceId,
+        name,
+        ownerId,
+        slug,
+      );
       return {
         id: row.id,
         workspaceId: row.workspaceId,
@@ -880,6 +902,7 @@ async function withSlugConflict<T>(write: () => Promise<T>): Promise<T> {
 }
 
 export async function updateTeam(
+  db: Db,
   teamId: number,
   changes: { name?: string; slug?: string },
   userId: string,
@@ -895,14 +918,14 @@ export async function updateTeam(
   if (changes.name !== undefined || changes.slug !== undefined) {
     await withSlugConflict(() => db.update(team).set(changes).where(eq(team.id, teamId)));
   }
-  const [row] = await loadTeamRows(userId, teamId);
+  const [row] = await loadTeamRows(db, userId, teamId);
   return row;
 }
 
 // A team holding a project or an AI agent is kept: those are people's work, and the
 // delete cascades to everything the team owns.
-export async function deleteTeam(teamId: number): Promise<void> {
-  const skillKeys = await teamSkillObjectKeys(teamId);
+export async function deleteTeam(db: Db, teamId: number): Promise<void> {
+  const skillKeys = await teamSkillObjectKeys(db, teamId);
   const deleted = await db
     .delete(team)
     .where(
@@ -920,6 +943,7 @@ export async function deleteTeam(teamId: number): Promise<void> {
 }
 
 async function membershipInTransaction(
+  db: Db,
   tx: Transaction,
   teamId: number,
   userId: string,
@@ -934,17 +958,18 @@ async function membershipInTransaction(
 // The actor's standing raised to their workspace grant (getTeamAccess), read inside the
 // transaction that locks the team.
 async function actorStandingInTransaction(
+  db: Db,
   tx: Transaction,
   teamId: number,
   userId: string,
 ): Promise<TeamStanding | null> {
-  const standing = await membershipInTransaction(tx, teamId, userId);
-  return teamAccess(standing, await workspaceGrant(teamId, userId))?.role ?? null;
+  const standing = await membershipInTransaction(db, tx, teamId, userId);
+  return teamAccess(standing, await workspaceGrant(db, teamId, userId))?.role ?? null;
 }
 
 // The last owner row is kept even against the workspace owner, who acts as an owner
 // without one.
-async function assertKeepsAnOwner(tx: Transaction, teamId: number): Promise<void> {
+async function assertKeepsAnOwner(db: Db, tx: Transaction, teamId: number): Promise<void> {
   const owners = await tx.$count(
     teamMember,
     and(eq(teamMember.teamId, teamId), eq(teamMember.role, 'owner')),
@@ -956,6 +981,7 @@ async function assertKeepsAnOwner(tx: Transaction, teamId: number): Promise<void
 // agent settings, and nobody sets their own rank. Only an owner grants the owner rank
 // or changes what another owner holds.
 export async function setTeamMemberRole(
+  db: Db,
   teamId: number,
   actor: { userId: string; role: TeamStanding },
   userId: string,
@@ -963,18 +989,18 @@ export async function setTeamMemberRole(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.select({ id: team.id }).from(team).where(eq(team.id, teamId)).for('update');
-    const actorRole = await actorStandingInTransaction(tx, teamId, actor.userId);
+    const actorRole = await actorStandingInTransaction(db, tx, teamId, actor.userId);
     if (!runsTeam(actorRole))
       throw new HttpError(403, 'Only a team owner or manager can change ranks');
     if (userId === actor.userId) throw new HttpError(409, 'You cannot change your own rank');
-    const current = await membershipInTransaction(tx, teamId, userId);
+    const current = await membershipInTransaction(db, tx, teamId, userId);
     if (!current) throw new HttpError(404, 'Member not found');
     if (current === 'agent')
       throw new HttpError(409, "An agent's rank comes from its agent settings");
     if (actorRole !== 'owner' && (role === 'owner' || current === 'owner')) {
       throw new HttpError(403, 'Only a team owner can grant or take the owner rank');
     }
-    if (current === 'owner' && role !== 'owner') await assertKeepsAnOwner(tx, teamId);
+    if (current === 'owner' && role !== 'owner') await assertKeepsAnOwner(db, tx, teamId);
     await tx
       .update(teamMember)
       .set({ role })
@@ -987,6 +1013,7 @@ export async function setTeamMemberRole(
 // routes refuse such a removal for the same reason. The other owner has to be named
 // first, from the project's member list.
 async function assertLeavesNoProjectOwnerless(
+  db: Db,
   tx: Transaction,
   teamId: number,
   userId: string,
@@ -1017,7 +1044,12 @@ async function assertLeavesNoProjectOwnerless(
 // Ends a team membership: the member leaves the team and every project it owns. What
 // they already did in those projects stays — issues keep their assignee and their
 // author.
-async function dropTeamMembership(tx: Transaction, teamId: number, userId: string): Promise<void> {
+async function dropTeamMembership(
+  db: Db,
+  tx: Transaction,
+  teamId: number,
+  userId: string,
+): Promise<void> {
   const teamProjects = tx
     .select({ id: project.id })
     .from(project)
@@ -1057,6 +1089,7 @@ async function dropTeamMembership(tx: Transaction, teamId: number, userId: strin
 // that same sync granted with it. Only the plain member rows it writes — a rank raised
 // by hand is the team's, and the reconciliation leaves those alone too.
 async function assertNotProvisioned(
+  db: Db,
   tx: Transaction,
   teamId: number,
   userId: string,
@@ -1073,24 +1106,25 @@ async function assertNotProvisioned(
 // Removes a member from the team. Nobody removes themselves — that is leaving the
 // team.
 export async function removeTeamMember(
+  db: Db,
   teamId: number,
   actorId: string,
   userId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.select({ id: team.id }).from(team).where(eq(team.id, teamId)).for('update');
-    if ((await actorStandingInTransaction(tx, teamId, actorId)) !== 'owner') {
+    if ((await actorStandingInTransaction(db, tx, teamId, actorId)) !== 'owner') {
       throw new HttpError(403, 'Only a team owner can remove members');
     }
     if (userId === actorId) throw new HttpError(409, 'Leave the team instead of removing yourself');
-    const current = await membershipInTransaction(tx, teamId, userId);
+    const current = await membershipInTransaction(db, tx, teamId, userId);
     if (!current) throw new HttpError(404, 'Member not found');
     if (current === 'agent')
       throw new HttpError(409, 'An agent is removed with its agent settings');
-    if (current === 'owner') await assertKeepsAnOwner(tx, teamId);
-    await assertNotProvisioned(tx, teamId, userId);
-    await assertLeavesNoProjectOwnerless(tx, teamId, userId, 'They');
-    await dropTeamMembership(tx, teamId, userId);
+    if (current === 'owner') await assertKeepsAnOwner(db, tx, teamId);
+    await assertNotProvisioned(db, tx, teamId, userId);
+    await assertLeavesNoProjectOwnerless(db, tx, teamId, userId, 'They');
+    await dropTeamMembership(db, tx, teamId, userId);
   });
 }
 
@@ -1099,22 +1133,22 @@ export async function removeTeamMember(
 // owner has nobody who can rename it. Neither can the only owner of one of its
 // projects, for the same reason one project down. An agent cannot either: its standing
 // is written with the agent and nothing puts it back, so leaving would strand it.
-export async function leaveTeam(teamId: number, userId: string): Promise<void> {
+export async function leaveTeam(db: Db, teamId: number, userId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.select({ id: team.id }).from(team).where(eq(team.id, teamId)).for('update');
-    const role = await membershipInTransaction(tx, teamId, userId);
+    const role = await membershipInTransaction(db, tx, teamId, userId);
     if (!role) throw new HttpError(404, 'Member not found');
     if (role === 'agent') throw new HttpError(409, 'An agent is removed with its agent settings');
     if (role === 'owner') {
       const [{ count }] = await tx
-        .select({ count: sql<number>`count(*)::int` })
+        .select({ count: sql<number>`count(*)` })
         .from(teamMember)
         .where(and(eq(teamMember.teamId, teamId), eq(teamMember.role, 'owner')));
       if (count === 1) throw new HttpError(409, 'The last owner cannot leave the team');
     }
-    await assertNotProvisioned(tx, teamId, userId);
-    await assertLeavesNoProjectOwnerless(tx, teamId, userId, 'You');
-    await dropTeamMembership(tx, teamId, userId);
+    await assertNotProvisioned(db, tx, teamId, userId);
+    await assertLeavesNoProjectOwnerless(db, tx, teamId, userId, 'You');
+    await dropTeamMembership(db, tx, teamId, userId);
   });
 }
 
@@ -1122,7 +1156,7 @@ export async function leaveTeam(teamId: number, userId: string): Promise<void> {
 // agent goes with the account, teams and all. Any other passes to the instance owner,
 // with the teams and projects the account owned alone in it, so its people keep a
 // workspace somebody manages.
-export async function releaseOwnedWorkspaces(userId: string): Promise<void> {
+export async function releaseOwnedWorkspaces(db: Db, userId: string): Promise<void> {
   const owned = await db
     .select({ workspaceId: workspaceManager.workspaceId })
     .from(workspaceManager)
@@ -1136,7 +1170,7 @@ export async function releaseOwnedWorkspaces(userId: string): Promise<void> {
     .limit(1);
   const successor = instanceOwner?.id;
   for (const { workspaceId } of owned) {
-    if (!(await workspaceHoldsWork(workspaceId))) {
+    if (!(await workspaceHoldsWork(db, workspaceId))) {
       await db.delete(workspace).where(eq(workspace.id, workspaceId));
       continue;
     }
@@ -1155,7 +1189,7 @@ export async function releaseOwnedWorkspaces(userId: string): Promise<void> {
           set: { role: 'owner' },
         });
     });
-    await dropWorkspaceMemberships(workspaceId, userId);
+    await dropWorkspaceMemberships(db, workspaceId, userId);
   }
 }
 
@@ -1163,7 +1197,11 @@ export async function releaseOwnedWorkspaces(userId: string): Promise<void> {
 // projects: what the workspace's identity provider does when it deprovisions them. A
 // team or project they own alone passes to the workspace owner, so none is left with
 // nobody who can manage it.
-export async function dropWorkspaceMemberships(workspaceId: number, userId: string): Promise<void> {
+export async function dropWorkspaceMemberships(
+  db: Db,
+  workspaceId: number,
+  userId: string,
+): Promise<void> {
   await db.transaction(async (tx) => {
     const teams = await tx
       .select({ id: team.id })
@@ -1180,9 +1218,9 @@ export async function dropWorkspaceMemberships(workspaceId: number, userId: stri
       );
     for (const { id: teamId } of teams) {
       if (owner && owner.userId !== userId) {
-        await handOverSoleOwnership(tx, teamId, userId, owner.userId);
+        await handOverSoleOwnership(db, tx, teamId, userId, owner.userId);
       }
-      await dropTeamMembership(tx, teamId, userId);
+      await dropTeamMembership(db, tx, teamId, userId);
     }
   });
 }
@@ -1191,6 +1229,7 @@ export async function dropWorkspaceMemberships(workspaceId: number, userId: stri
 // itself and any of its projects. A project membership stands on a team one, so the
 // successor joins the team first.
 async function handOverSoleOwnership(
+  db: Db,
   tx: Transaction,
   teamId: number,
   userId: string,

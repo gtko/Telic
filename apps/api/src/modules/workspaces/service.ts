@@ -2,7 +2,6 @@ import { forgetPersonalWorkspace, getAuthSettings } from '@repo/auth';
 import {
   aiAgent,
   createWorkspace,
-  db,
   project,
   team,
   teamMember,
@@ -10,20 +9,9 @@ import {
   workspace,
   workspaceManager,
   type DbExecutor,
+  type Db,
 } from '@repo/db';
-import {
-  and,
-  asc,
-  eq,
-  exists,
-  ilike,
-  inArray,
-  ne,
-  notExists,
-  or,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
+import { and, asc, eq, exists, like, inArray, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { requireUser, type AuthUser } from '#shared/access';
 import { HttpError } from '#shared/lib';
 import { getOwnedWorkspaceLimit } from '#shared/limits';
@@ -32,6 +20,7 @@ import { workspaceRoleGrant, type WorkspaceGrant } from '#shared/workspace-roles
 export type WorkspaceRole = 'owner' | 'admin';
 
 export async function getWorkspaceRole(
+  db: Db,
   workspaceId: number,
   userId: string,
 ): Promise<WorkspaceRole | null> {
@@ -44,6 +33,7 @@ export async function getWorkspaceRole(
 
 // What the person's role in the workspace that holds the team grants there.
 export async function workspaceGrant(
+  db: Db,
   teamId: number,
   userId: string,
 ): Promise<WorkspaceGrant | null> {
@@ -59,6 +49,7 @@ export async function workspaceGrant(
 }
 
 export async function projectWorkspaceGrant(
+  db: Db,
   projectId: number,
   userId: string,
 ): Promise<WorkspaceGrant | null> {
@@ -75,7 +66,10 @@ export async function projectWorkspaceGrant(
 }
 
 // Every team the person reaches through a workspace role, with what the role grants.
-export async function workspaceGrants(userId: string): Promise<Map<number, WorkspaceGrant>> {
+export async function workspaceGrants(
+  db: Db,
+  userId: string,
+): Promise<Map<number, WorkspaceGrant>> {
   const rows = await db
     .select({ teamId: team.id, role: workspaceManager.role })
     .from(workspaceManager)
@@ -97,11 +91,12 @@ export interface WorkspaceStanding {
 
 // Somebody who does not manage the workspace gets the same 404 as for an unknown one.
 export async function requireWorkspaceManager(
+  db: Db,
   workspaceId: number,
   user: AuthUser | undefined | null,
 ): Promise<WorkspaceStanding> {
-  const current = requireUser(user);
-  const role = await getWorkspaceRole(workspaceId, current.id);
+  const current = requireUser(db, user);
+  const role = await getWorkspaceRole(db, workspaceId, current.id);
   if (!role) throw new HttpError(404, 'Workspace not found');
   return { workspaceId, role, userId: current.id };
 }
@@ -120,28 +115,32 @@ function mayCreateTeam(role: WorkspaceRole | null, teamCreation: string | undefi
   );
 }
 
-export async function assertMayCreateTeam(workspaceId: number, userId: string): Promise<void> {
+export async function assertMayCreateTeam(
+  db: Db,
+  workspaceId: number,
+  userId: string,
+): Promise<void> {
   const [row] = await db
     .select({ teamCreation: workspace.teamCreation })
     .from(workspace)
     .where(eq(workspace.id, workspaceId));
-  const role = await getWorkspaceRole(workspaceId, userId);
+  const role = await getWorkspaceRole(db, workspaceId, userId);
   const allowed =
     mayCreateTeam(role, row?.teamCreation) &&
-    (role !== null || (await inWorkspaceTeam(workspaceId, userId)));
+    (role !== null || (await inWorkspaceTeam(db, workspaceId, userId)));
   if (!allowed) throw new HttpError(403, 'You may not create a team in this workspace');
 }
 
-async function inWorkspaceTeam(workspaceId: number, userId: string): Promise<boolean> {
+async function inWorkspaceTeam(db: Db, workspaceId: number, userId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: user.id })
     .from(user)
-    .where(and(eq(user.id, userId), workspacePeople(workspaceId)));
+    .where(and(eq(user.id, userId), workspacePeople(db, workspaceId)));
   return row !== undefined;
 }
 
 // The workspaces a person sees: those they manage and those holding a team of theirs.
-export async function listWorkspaces(userId: string) {
+export async function listWorkspaces(db: Db, userId: string) {
   const rows = await db
     .select({
       id: workspace.id,
@@ -175,7 +174,7 @@ export async function listWorkspaces(userId: string) {
   });
 }
 
-export async function getWorkspace(workspaceId: number, role: WorkspaceRole) {
+export async function getWorkspace(db: Db, workspaceId: number, role: WorkspaceRole) {
   const [row] = await db
     .select({
       id: workspace.id,
@@ -191,13 +190,13 @@ export async function getWorkspace(workspaceId: number, role: WorkspaceRole) {
     ...row,
     teamCreation: row.teamCreation as TeamCreation,
     role,
-    deletion: await workspaceDeletion(workspaceId),
+    deletion: await workspaceDeletion(db, workspaceId),
   };
 }
 
 // Whether a team of the workspace has a project or an AI agent: people's work, which a
 // deleted workspace would take with it.
-export async function workspaceHoldsWork(workspaceId: number): Promise<boolean> {
+export async function workspaceHoldsWork(db: Db, workspaceId: number): Promise<boolean> {
   const [row] = await db
     .select({ id: team.id })
     .from(team)
@@ -228,15 +227,15 @@ export type WorkspaceDeletion = 'allowed' | 'work';
 
 // Whether the owner may delete the workspace, and if not, why: one whose teams hold work
 // keeps it until its projects and AI agents are gone.
-export async function workspaceDeletion(workspaceId: number): Promise<WorkspaceDeletion> {
-  return (await workspaceHoldsWork(workspaceId)) ? 'work' : 'allowed';
+export async function workspaceDeletion(db: Db, workspaceId: number): Promise<WorkspaceDeletion> {
+  return (await workspaceHoldsWork(db, workspaceId)) ? 'work' : 'allowed';
 }
 
 // Its teams go with it; their people keep their accounts and their other teams. An owner
 // left with no workspace gets a fresh personal one: the instance owner always, anyone
 // else while personal workspaces are on.
-export async function deleteWorkspace(workspaceId: number, ownerId: string): Promise<void> {
-  if ((await workspaceDeletion(workspaceId)) === 'work') {
+export async function deleteWorkspace(db: Db, workspaceId: number, ownerId: string): Promise<void> {
+  if ((await workspaceDeletion(db, workspaceId)) === 'work') {
     throw new HttpError(409, 'Delete the projects and AI agents of its teams first');
   }
   await db.delete(workspace).where(eq(workspace.id, workspaceId));
@@ -250,6 +249,7 @@ export type WorkspaceCreationBlock = 'restricted' | 'limit';
 // user is no person and creates none. No core route calls this or createOwnWorkspace;
 // an edition that lets a person own more workspaces mounts its route on them.
 export async function workspaceCreation(
+  db: Db,
   current: AuthUser,
   executor: DbExecutor = db,
 ): Promise<{ allowed: boolean; reason: WorkspaceCreationBlock | null }> {
@@ -268,11 +268,11 @@ export async function workspaceCreation(
   return { allowed: true, reason: null };
 }
 
-export async function createOwnWorkspace(current: AuthUser, name: string): Promise<number> {
+export async function createOwnWorkspace(db: Db, current: AuthUser, name: string): Promise<number> {
   return db.transaction(async (tx) => {
     // Two requests at once would otherwise both count the same owned workspaces.
     await tx.select({ id: user.id }).from(user).where(eq(user.id, current.id)).for('update');
-    const { reason } = await workspaceCreation(current, tx);
+    const { reason } = await workspaceCreation(db, current, tx);
     if (reason === 'restricted') {
       throw new HttpError(403, 'Only the instance owner can create workspaces');
     }
@@ -284,6 +284,7 @@ export async function createOwnWorkspace(current: AuthUser, name: string): Promi
 // A manager renames and recolours it; who creates teams is the owner's to decide, so an
 // admin cannot let themselves create teams.
 export async function updateWorkspace(
+  db: Db,
   workspaceId: number,
   role: WorkspaceRole,
   patch: { name?: string; color?: string | null; teamCreation?: TeamCreation },
@@ -302,11 +303,12 @@ export async function updateWorkspace(
 // them anyway. An owner left with no workspace gets a fresh personal one: the instance
 // owner always, anyone else while personal workspaces are on.
 export async function transferWorkspace(
+  db: Db,
   workspaceId: number,
   ownerId: string,
   toUserId: string,
 ): Promise<void> {
-  if ((await getWorkspaceRole(workspaceId, toUserId)) !== 'admin') {
+  if ((await getWorkspaceRole(db, workspaceId, toUserId)) !== 'admin') {
     throw new HttpError(404, 'This person is not an admin of the workspace');
   }
   const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, toUserId));
@@ -338,7 +340,7 @@ export async function transferWorkspace(
   forgetPersonalWorkspace(ownerId);
 }
 
-export async function listManagers(workspaceId: number) {
+export async function listManagers(db: Db, workspaceId: number) {
   const rows = await db
     .select({
       userId: user.id,
@@ -356,7 +358,7 @@ export async function listManagers(workspaceId: number) {
 
 // People in a team of the workspace, the only ones who may be made its admin. An
 // agent's bot user is in a team but is not a person.
-function workspacePeople(workspaceId: number): SQL {
+function workspacePeople(db: Db, workspaceId: number): SQL {
   return sql`${user.id} in (${db
     .select({ id: teamMember.userId })
     .from(teamMember)
@@ -366,14 +368,14 @@ function workspacePeople(workspaceId: number): SQL {
 
 const CANDIDATE_LIMIT = 20;
 
-export async function listManagerCandidates(workspaceId: number, search?: string) {
+export async function listManagerCandidates(db: Db, workspaceId: number, search?: string) {
   const term = search?.trim();
   return db
     .select({ userId: user.id, name: user.name, email: user.email, image: user.image })
     .from(user)
     .where(
       and(
-        workspacePeople(workspaceId),
+        workspacePeople(db, workspaceId),
         notExists(
           db
             .select({ one: sql`1` })
@@ -385,18 +387,18 @@ export async function listManagerCandidates(workspaceId: number, search?: string
               ),
             ),
         ),
-        term ? or(ilike(user.name, `%${term}%`), ilike(user.email, `%${term}%`)) : undefined,
+        term ? or(like(user.name, `%${term}%`), like(user.email, `%${term}%`)) : undefined,
       ),
     )
     .orderBy(asc(user.name))
     .limit(CANDIDATE_LIMIT);
 }
 
-export async function addAdmin(workspaceId: number, userId: string): Promise<void> {
+export async function addAdmin(db: Db, workspaceId: number, userId: string): Promise<void> {
   const [person] = await db
     .select({ id: user.id })
     .from(user)
-    .where(and(eq(user.id, userId), workspacePeople(workspaceId)));
+    .where(and(eq(user.id, userId), workspacePeople(db, workspaceId)));
   if (!person) throw new HttpError(404, 'This person is not in a team of the workspace');
   const inserted = await db
     .insert(workspaceManager)
@@ -406,8 +408,8 @@ export async function addAdmin(workspaceId: number, userId: string): Promise<voi
   if (inserted.length === 0) throw new HttpError(409, 'This person already manages the workspace');
 }
 
-export async function removeAdmin(workspaceId: number, userId: string): Promise<void> {
-  const role = await getWorkspaceRole(workspaceId, userId);
+export async function removeAdmin(db: Db, workspaceId: number, userId: string): Promise<void> {
+  const role = await getWorkspaceRole(db, workspaceId, userId);
   if (!role) throw new HttpError(404, 'Manager not found');
   if (role === 'owner') throw new HttpError(409, 'The workspace owner cannot be removed');
   await db

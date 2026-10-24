@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db, notificationDelivery, getInstanceEmailConfig, team } from '@repo/db';
+import { notificationDelivery, getInstanceEmailConfig, team, type Db } from '@repo/db';
 import { trustedOrigins } from '@repo/auth';
 import { emailBody, hasEmailProvider, sendEmail } from '@repo/mailer';
 import { and, eq, sql } from 'drizzle-orm';
@@ -16,6 +16,7 @@ interface InviteProject {
 const INVITE_EMAIL_LOCK_NAMESPACE = 8242;
 
 export async function enqueueInviteEmail(
+  db: Db,
   project: InviteProject,
   invite: InviteRow,
 ): Promise<boolean> {
@@ -71,7 +72,11 @@ export async function enqueueInviteEmail(
 // A team invite names no project, and the notification outbox belongs to one, so it
 // cannot be queued there. It is sent at once instead, as the sign-in emails are:
 // best effort, without the outbox's retries. A failure leaves the link to be copied.
-export async function sendTeamInviteEmail(teamId: number, invite: InviteRow): Promise<boolean> {
+export async function sendTeamInviteEmail(
+  db: Db,
+  teamId: number,
+  invite: InviteRow,
+): Promise<boolean> {
   const config = await getInstanceEmailConfig();
   if (!config || !hasEmailProvider(config)) return false;
 

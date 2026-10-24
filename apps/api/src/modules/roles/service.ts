@@ -1,5 +1,5 @@
-import { db, teamRole, projectMember, aiAgent, teamInvite, scimGroupMapping } from '@repo/db';
-import { and, asc, count, eq, ilike, isNull, sql } from 'drizzle-orm';
+import { teamRole, projectMember, aiAgent, teamInvite, scimGroupMapping, type Db } from '@repo/db';
+import { and, asc, count, eq, like, isNull, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { normalizePermissions, type Permissions } from '#shared/permissions';
 
@@ -34,13 +34,14 @@ export interface RolePage {
 // One page of the team's roles, oldest first, with how many match in all. The search
 // matches the name.
 export async function listRolesPage(
+  db: Db,
   teamId: number,
   options: { search?: string; limit: number; offset: number },
 ): Promise<RolePage> {
   const term = options.search?.trim();
   const where = and(
     eq(teamRole.teamId, teamId),
-    term ? ilike(teamRole.name, `%${term}%`) : undefined,
+    term ? like(teamRole.name, `%${term}%`) : undefined,
   );
   const [rows, counted] = await Promise.all([
     db
@@ -51,7 +52,7 @@ export async function listRolesPage(
       .limit(options.limit)
       .offset(options.offset),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(*)` })
       .from(teamRole)
       .where(where),
   ]);
@@ -60,7 +61,7 @@ export async function listRolesPage(
 
 // Every role of the team. Read by the pickers that assign one, and by the clipboard
 // export, which carries the matrices of all of them.
-export async function listRoles(teamId: number): Promise<RoleRow[]> {
+export async function listRoles(db: Db, teamId: number): Promise<RoleRow[]> {
   const rows = await db
     .select()
     .from(teamRole)
@@ -69,7 +70,7 @@ export async function listRoles(teamId: number): Promise<RoleRow[]> {
   return rows.map(mapRole);
 }
 
-export async function getRole(teamId: number, roleId: number): Promise<RoleRow | null> {
+export async function getRole(db: Db, teamId: number, roleId: number): Promise<RoleRow | null> {
   const rows = await db
     .select()
     .from(teamRole)
@@ -79,7 +80,7 @@ export async function getRole(teamId: number, roleId: number): Promise<RoleRow |
 
 // The role a member joins on when the caller picks none. Null when the team has no
 // default role, which leaves the member on the built-in member matrix.
-export async function getDefaultRoleId(teamId: number): Promise<number | null> {
+export async function getDefaultRoleId(db: Db, teamId: number): Promise<number | null> {
   const rows = await db
     .select({ id: teamRole.id })
     .from(teamRole)
@@ -88,6 +89,7 @@ export async function getDefaultRoleId(teamId: number): Promise<number | null> {
 }
 
 export async function createRole(
+  db: Db,
   teamId: number,
   input: { name: string; permissions: unknown },
 ): Promise<RoleRow> {
@@ -104,6 +106,7 @@ export async function createRole(
 }
 
 export async function updateRole(
+  db: Db,
   teamId: number,
   roleId: number,
   input: { name?: string; permissions?: unknown },
@@ -111,7 +114,7 @@ export async function updateRole(
   const set: { name?: string; permissions?: Permissions } = {};
   if (input.name !== undefined) set.name = input.name;
   if (input.permissions !== undefined) set.permissions = normalizePermissions(input.permissions);
-  if (Object.keys(set).length === 0) return getRole(teamId, roleId);
+  if (Object.keys(set).length === 0) return getRole(db, teamId, roleId);
   const [row] = await db
     .update(teamRole)
     .set(set)
@@ -131,7 +134,7 @@ export interface RoleUsage {
   groups: number;
 }
 
-export async function getRoleUsage(roleId: number): Promise<RoleUsage> {
+export async function getRoleUsage(db: Db, roleId: number): Promise<RoleUsage> {
   const [members, agents, invites, groups] = await Promise.all([
     db
       .select({ n: count() })
@@ -170,6 +173,7 @@ export function isRoleInUse(usage: RoleUsage): boolean {
 // members it provisions onto the default matrix. The caller guards against deleting
 // the default role and supplies the target whenever the role is in use.
 export async function deleteRole(
+  db: Db,
   teamId: number,
   roleId: number,
   targetRoleId: number | null,
