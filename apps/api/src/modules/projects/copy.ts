@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   project,
   projectMember,
   projectColumn,
@@ -230,6 +230,7 @@ function remapActionEffect(effect: unknown, maps: CopyIdMaps): unknown {
 // transaction and removed again if it rolls back. The team's agents are attached to
 // the new project after it commits, through the same service function the UI uses.
 export async function copyProject(
+  db: Db,
   sourceProjectId: number,
   input: { key: string; name: string; description?: string },
   ownerId: string,
@@ -249,12 +250,12 @@ export async function copyProject(
 
   const copiedDocumentAssetKeys: string[] = [];
 
-  const source = await getProjectById(sourceProjectId);
+  const source = await getProjectById(db, sourceProjectId);
   if (!source) throw new HttpError(404, 'Project not found');
-  const ownerTeam = await targetTeam(ownerId, teamId);
+  const ownerTeam = await targetTeam(db, ownerId, teamId);
   // What a new project starts with, set instance-wide in god mode. Read before the
   // transaction opens so the settings lookup is not part of it.
-  const defaults = await getProjectDefaults();
+  const defaults = await getProjectDefaults(db);
   // Agents, integration credentials and roles belong to the team, so what references
   // them survives the copy only when it stays in the same team.
   const sameTeam = ownerTeam.id === source.teamId;
@@ -517,13 +518,14 @@ export async function copyProject(
           .from(documentAsset)
           .where(inArray(documentAsset.documentId, sourceDocumentIds));
         await assertAttachmentStorageCapacity(
+          db,
           proj.id,
           assetRows.reduce((total, asset) => total + asset.sizeBytes, 0),
           0,
           tx,
         );
         for (const asset of assetRows) {
-          await assertAttachmentFileAllowed(asset.sizeBytes, asset.contentType);
+          await assertAttachmentFileAllowed(db, asset.sizeBytes, asset.contentType);
         }
         const assetIdsByDocument = new Map<number, Map<string, string>>();
         for (const asset of assetRows) {
@@ -649,13 +651,14 @@ export async function copyProject(
   // would mean a new bot user and a new API key for something the operator did not ask
   // for, and its skills and configured tools would be missing anyway.
   if (inc.agents && sameTeam) {
-    for (const a of await listAgents(source.teamId, sourceProjectId)) {
+    for (const a of await listAgents(db, source.teamId, sourceProjectId)) {
       // The member fields the agent reacts to, remapped onto the copies.
       const fieldTriggers = a.fieldTriggers.flatMap((trigger) => {
         const fieldId = maps.field.get(trigger.fieldId);
         return fieldId == null ? [] : [{ fieldId, delaySec: trigger.delaySec }];
       });
       await updateAgent(
+        db,
         a.id,
         ownerTeam.id,
         {
@@ -675,8 +678,8 @@ export async function copyProject(
   // its own cadence rather than inheriting a past due time. The options go through the
   // extension with the id maps, for the ids they hold.
   if (inc.schedules && sameTeam) {
-    for (const s of await listAllAgentSchedules(sourceProjectId, ownerId)) {
-      await createAgentSchedule({
+    for (const s of await listAllAgentSchedules(db, sourceProjectId, ownerId)) {
+      await createAgentSchedule(db, {
         projectId: newProject.id,
         agentId: s.agentId,
         actorUserId: ownerId,

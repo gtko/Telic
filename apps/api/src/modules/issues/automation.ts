@@ -1,4 +1,4 @@
-import { db, issue, projectColumn } from '@repo/db';
+import { type Db, issue, projectColumn } from '@repo/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getSubtaskAutomationSettings } from '#modules/projects/service';
 import { listSubtasks } from './subtasks';
@@ -18,18 +18,19 @@ import type { ActivityActor } from './activity';
 const CLOSED_STATE_TYPES = ['completed', 'canceled'];
 
 export async function applySubtaskAutomation(
+  db: Db,
   after: IssueRow,
   actorUserId?: ActivityActor,
 ): Promise<void> {
-  const settings = await getSubtaskAutomationSettings(after.projectId);
+  const settings = await getSubtaskAutomationSettings(db, after.projectId);
   if (!settings.completeParent && !settings.closeSubtasks) return;
-  if (!(await isClosedColumn(after.columnId))) return;
+  if (!(await isClosedColumn(db, after.columnId))) return;
 
   if (after.parentId !== null) {
-    if (settings.completeParent) await completeParent(after.parentId, after, actorUserId);
+    if (settings.completeParent) await completeParent(db, after.parentId, after, actorUserId);
     return;
   }
-  if (settings.closeSubtasks) await closeSubtasks(after, actorUserId);
+  if (settings.closeSubtasks) await closeSubtasks(db, after, actorUserId);
 }
 
 // Moves the issue's parent into the column the issue was just closed in, once every
@@ -37,40 +38,44 @@ export async function applySubtaskAutomation(
 // the parent open; an archived parent is left where it is rather than brought back.
 // A parent already closed keeps its own column: the rule has nothing left to do.
 async function completeParent(
+  db: Db,
   parentId: number,
   subtask: IssueRow,
   actorUserId?: ActivityActor,
 ): Promise<void> {
-  const siblingColumnIds = (await listSubtasks(parentId))
+  const siblingColumnIds = (await listSubtasks(db, parentId))
     .filter((s) => !s.archived && s.id !== subtask.id)
     .map((s) => s.columnId);
-  const parentColumnId = await activeColumn(parentId);
+  const parentColumnId = await activeColumn(db, parentId);
   if (parentColumnId === null) return;
-  const closed = await closedColumnIds([...siblingColumnIds, parentColumnId]);
+  const closed = await closedColumnIds(db, [...siblingColumnIds, parentColumnId]);
   if (closed.has(parentColumnId)) return;
   if (siblingColumnIds.some((id) => !closed.has(id))) return;
-  await updateIssue(parentId, { columnId: subtask.columnId }, actorUserId, {
+  await updateIssue(db, parentId, { columnId: subtask.columnId }, actorUserId, {
     skipIfColumnFull: true,
   });
 }
 
 // Moves the issue's still-open subtasks into the column it was just closed in.
-async function closeSubtasks(parent: IssueRow, actorUserId?: ActivityActor): Promise<void> {
-  const subtasks = (await listSubtasks(parent.id)).filter((s) => !s.archived);
-  const closed = await closedColumnIds(subtasks.map((s) => s.columnId));
+async function closeSubtasks(db: Db, parent: IssueRow, actorUserId?: ActivityActor): Promise<void> {
+  const subtasks = (await listSubtasks(db, parent.id)).filter((s) => !s.archived);
+  const closed = await closedColumnIds(
+    db,
+    subtasks.map((s) => s.columnId),
+  );
   for (const subtask of subtasks)
     if (!closed.has(subtask.columnId))
-      await updateIssue(subtask.id, { columnId: parent.columnId }, actorUserId, {
+      await updateIssue(db, subtask.id, { columnId: parent.columnId }, actorUserId, {
         skipIfColumnFull: true,
       });
 }
 
-async function isClosedColumn(columnId: number): Promise<boolean> {
-  return (await closedColumnIds([columnId])).has(columnId);
+async function isClosedColumn(db: Db, columnId: number): Promise<boolean> {
+  return (await closedColumnIds(db, [columnId])).has(columnId);
 }
 
 // The subset of the given column ids whose stateType counts as closed.
-async function closedColumnIds(columnIds: number[]): Promise<Set<number>> {
+async function closedColumnIds(db: Db, columnIds: number[]): Promise<Set<number>> {
   const ids = [...new Set(columnIds)];
   if (ids.length === 0) return new Set();
   const rows = await db
@@ -83,7 +88,7 @@ async function closedColumnIds(columnIds: number[]): Promise<Set<number>> {
 }
 
 // The issue's column, or null when it is gone or archived.
-async function activeColumn(issueId: number): Promise<number | null> {
+async function activeColumn(db: Db, issueId: number): Promise<number | null> {
   const [row] = await db
     .select({ columnId: issue.columnId })
     .from(issue)

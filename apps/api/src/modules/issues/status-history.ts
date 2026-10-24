@@ -1,4 +1,4 @@
-import { db, issueStatus, projectColumn } from '@repo/db';
+import { type Db, issueStatus, projectColumn } from '@repo/db';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 
@@ -13,6 +13,7 @@ import { iso } from '#shared/lib';
 // `enteredAt` to set that instant — a creation starts its first stretch when the
 // issue itself starts.
 export async function recordStatusChange(
+  db: Db,
   issueIds: number[],
   columnId: number,
   enteredAt?: Date,
@@ -58,7 +59,7 @@ export interface TimelineSegment {
 
 // Every stretch the issue spent in one column, oldest first. A deleted column falls
 // back to the name it had at the time, so the stretches spent in it are still named.
-export async function listStatusTimeline(issueId: number): Promise<TimelineSegment[]> {
+export async function listStatusTimeline(db: Db, issueId: number): Promise<TimelineSegment[]> {
   const rows = await db
     .select({
       status: sql<string | null>`coalesce(${projectColumn.name}, ${issueStatus.columnName})`,

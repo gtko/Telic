@@ -1,4 +1,4 @@
-import { db, issue, issueLink, project as projectTable } from '@repo/db';
+import { type Db, issue, issueLink, project as projectTable } from '@repo/db';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HttpError } from '#shared/lib';
@@ -69,7 +69,7 @@ function storedLink(
 
 // Every relation the issue takes part in, on either side, ordered by kind and
 // then by the other issue's number.
-export async function listIssueLinks(issueId: number): Promise<IssueLinkRow[]> {
+export async function listIssueLinks(db: Db, issueId: number): Promise<IssueLinkRow[]> {
   const rows = await db
     .select({
       id: issueLink.id,
@@ -126,6 +126,7 @@ export interface BoardIssueLink {
 // nothing there could name it — which also keeps an issue's relations from
 // growing as it ages into an archive full of finished work.
 export async function attachBoardLinks<T extends { id: number }>(
+  db: Db,
   issues: T[],
   projectId: number,
 ): Promise<(T & { links: BoardIssueLink[] })[]> {
@@ -225,6 +226,7 @@ interface EndRow {
 // duplicate. The activity entries join it in one transaction; the webhooks fire
 // after it commits, so a rolled-back relation is never announced.
 export async function addIssueLink(
+  db: Db,
   issueId: number,
   targetIssueId: number,
   kind: IssueLinkInputKind,
@@ -279,9 +281,10 @@ export async function addIssueLink(
   });
 
   await emitIssueEvents(
+    db,
     target.projectId,
     'issue.link_changed',
-    () => getIssues([issueId, targetIssueId]),
+    () => getIssues(db, [issueId, targetIssueId]),
     actorUserId,
   );
 
@@ -321,6 +324,7 @@ interface RemovedRow {
 // write the change to the feed once. Returns false when there is no such link on
 // this issue.
 export async function removeIssueLink(
+  db: Db,
   issueId: number,
   linkId: number,
   actorUserId?: string | null,
@@ -368,9 +372,10 @@ export async function removeIssueLink(
 
   if (!removed) return false;
   await emitIssueEvents(
+    db,
     removed.projectId,
     'issue.link_changed',
-    () => getIssues(removed.issueIds),
+    () => getIssues(db, removed.issueIds),
     actorUserId,
   );
   return true;

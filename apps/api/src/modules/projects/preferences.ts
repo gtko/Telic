@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia';
-import { db } from '@repo/db';
+import { type Db } from '@repo/db';
 import { projectMember } from '@repo/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { mcpTool } from '#mcp/generate';
@@ -11,6 +11,7 @@ import { commonErrors } from '#shared/responses';
 import { ProjectPreferencesResponse, updateProjectPreferencesBody } from './model';
 
 async function updatePreferences(
+  db: Db,
   projectId: number,
   userId: string,
   preferences: typeof updateProjectPreferencesBody.static,
@@ -32,7 +33,7 @@ export const projectPreferences = new Elysia({
   .use(guards)
   .patch(
     '/projects/:projectKey/preferences',
-    ({ project, user, body }) => updatePreferences(project.id, requireUser(user).id, body),
+    ({ db, project, user, body }) => updatePreferences(db, project.id, requireUser(user).id, body),
     {
       body: updateProjectPreferencesBody,
       projectMember: true,

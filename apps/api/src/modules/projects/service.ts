@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   aiAgent,
   chatAttachment,
   documentAsset,
@@ -178,18 +178,20 @@ interface ProjectListOptions {
 }
 
 export async function listProjects(
+  db: Db,
   userId: string,
   opts: ProjectListOptions = {},
 ): Promise<ProjectListItem[]> {
-  return (await readProjects(userId, opts)).items;
+  return (await readProjects(db, userId, opts)).items;
 }
 
 export function searchProjects(
+  db: Db,
   userId: string,
   opts: Omit<ProjectListOptions, 'mcpOnly' | 'withPermissions' | 'favoritesFirst'>,
   window: { limit: number; offset: number },
 ): Promise<{ items: ProjectListItem[]; total: number }> {
-  return readProjects(userId, { ...opts, favoritesFirst: true }, window);
+  return readProjects(db, userId, { ...opts, favoritesFirst: true }, window);
 }
 
 // A project reached through the workspace has no membership row, so its preference
@@ -203,11 +205,12 @@ function preference(
 }
 
 async function readProjects(
+  db: Db,
   userId: string,
   opts: ProjectListOptions,
   window?: { limit: number; offset: number },
 ): Promise<{ items: ProjectListItem[]; total: number }> {
-  const grants = await workspaceGrants(userId);
+  const grants = await workspaceGrants(db, userId);
   const grantedTeams = [...grants.keys()];
   const term = opts.q?.trim().replace(/[\\%_]/g, '\\$&');
   const callerMember = and(
@@ -327,7 +330,11 @@ async function readProjects(
 // A bare key is what every URL carried while keys were unique on the instance: it
 // still names a project as long as only one project with that key is in the
 // caller's teams, and is refused with 409 once there are several.
-export async function getProjectByRef(ref: string, userId: string): Promise<ProjectRow | null> {
+export async function getProjectByRef(
+  db: Db,
+  ref: string,
+  userId: string,
+): Promise<ProjectRow | null> {
   const dot = ref.indexOf('.');
   if (dot >= 0) {
     const teamPart = ref.slice(0, dot);
@@ -362,7 +369,7 @@ export async function getProjectByRef(ref: string, userId: string): Promise<Proj
           ),
         ),
       ),
-    workspaceGrants(userId),
+    workspaceGrants(db, userId),
   ]);
   const mine = rows.filter(
     (r) => teamIds.some((m) => m.teamId === r.teamId) || grants.has(r.teamId),
@@ -377,7 +384,7 @@ export async function getProjectByRef(ref: string, userId: string): Promise<Proj
   return mapProject(mine[0]);
 }
 
-export async function getProjectById(id: number): Promise<ProjectRow | null> {
+export async function getProjectById(db: Db, id: number): Promise<ProjectRow | null> {
   const rows = await db
     .select(projectWithTeam)
     .from(project)
@@ -389,7 +396,7 @@ export async function getProjectById(id: number): Promise<ProjectRow | null> {
 // The team that owns a project, for the resources the team holds on behalf of all of
 // them (integration credentials, notification providers). Throws 404 for an unknown
 // project.
-export async function getProjectTeamId(projectId: number): Promise<number> {
+export async function getProjectTeamId(db: Db, projectId: number): Promise<number> {
   const rows = await db
     .select({ teamId: project.teamId })
     .from(project)
@@ -399,7 +406,7 @@ export async function getProjectTeamId(projectId: number): Promise<number> {
 }
 
 // The team a new project belongs to. The caller's rank in it is checked by the route.
-export async function targetTeam(userId: string, teamId: number): Promise<TargetTeam> {
+export async function targetTeam(db: Db, userId: string, teamId: number): Promise<TargetTeam> {
   const [row] = await db
     .select({
       id: team.id,
@@ -412,7 +419,7 @@ export async function targetTeam(userId: string, teamId: number): Promise<Target
     .where(eq(team.id, teamId));
   if (!row) throw new HttpError(404, 'Team not found');
   // The creator joins the team with the project (joinTeamAsCreator).
-  await assertSeatFree(row.id, userId);
+  await assertSeatFree(db, row.id, userId);
   return row;
 }
 
@@ -515,6 +522,7 @@ export const ISSUE_TYPE_PRESET_KEYS = Object.keys(ISSUE_TYPE_PRESETS);
 export type IssueTypePreset = keyof typeof ISSUE_TYPE_PRESETS;
 
 export async function createProject(
+  db: Db,
   input: {
     key: string;
     name: string;
@@ -524,10 +532,10 @@ export async function createProject(
   ownerId: string,
   teamId: number,
 ): Promise<ProjectRow> {
-  const ownerTeam = await targetTeam(ownerId, teamId);
+  const ownerTeam = await targetTeam(db, ownerId, teamId);
   // What a new project starts with, set instance-wide in god mode. Read before the
   // transaction opens so the settings lookup is not part of it.
-  const defaults = await getProjectDefaults();
+  const defaults = await getProjectDefaults(db);
   const defaultAgents = ownerTeam.defaultAgentIds.length
     ? await db
         .select({ userId: aiAgent.userId })
@@ -536,7 +544,7 @@ export async function createProject(
           and(eq(aiAgent.teamId, ownerTeam.id), inArray(aiAgent.id, ownerTeam.defaultAgentIds)),
         )
     : [];
-  const defaultRoleId = defaultAgents.length ? await getDefaultRoleId(ownerTeam.id) : null;
+  const defaultRoleId = defaultAgents.length ? await getDefaultRoleId(db, ownerTeam.id) : null;
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(project)
@@ -594,12 +602,13 @@ export async function createProject(
 // A key stored before PROJECT_KEY_PATTERN existed (e.g. "7XTR") cannot form an issue
 // identifier, so it may be replaced once. A valid key does not change.
 export async function updateProject(
+  db: Db,
   projectId: number,
   patch: { key?: string; name?: string; description?: string },
 ): Promise<ProjectRow | null> {
   const values: Partial<typeof project.$inferInsert> = {};
   if (patch.key !== undefined) {
-    const current = await getProjectById(projectId);
+    const current = await getProjectById(db, projectId);
     if (!current) return null;
     if (patch.key !== current.key) {
       if (new RegExp(PROJECT_KEY_PATTERN).test(current.key)) {
@@ -610,12 +619,13 @@ export async function updateProject(
   }
   if (patch.name !== undefined) values.name = patch.name;
   if (patch.description !== undefined) values.description = patch.description;
-  if (Object.keys(values).length === 0) return getProjectById(projectId);
+  if (Object.keys(values).length === 0) return getProjectById(db, projectId);
   await db.update(project).set(values).where(eq(project.id, projectId));
-  return getProjectById(projectId);
+  return getProjectById(db, projectId);
 }
 
 export async function setProjectArchived(
+  db: Db,
   projectId: number,
   archived: boolean,
 ): Promise<ProjectRow | null> {
@@ -623,7 +633,7 @@ export async function setProjectArchived(
     .update(project)
     .set({ archivedAt: archived ? new Date() : null })
     .where(eq(project.id, projectId));
-  return getProjectById(projectId);
+  return getProjectById(db, projectId);
 }
 
 // The project's feature toggles, read from the project row.
@@ -643,10 +653,11 @@ export function projectFeatures(row: ProjectRow): ProjectFeatures {
 // Turns the optional sections on or off. Only the supplied ones change; a section
 // that is turned off keeps its rows and shows again when it is turned back on.
 export async function setProjectFeatures(
+  db: Db,
   projectId: number,
   patch: Partial<ProjectFeatures>,
 ): Promise<ProjectRow | null> {
-  const { blockedFeatures } = await getTeamLimits(await getProjectTeamId(projectId));
+  const { blockedFeatures } = await getTeamLimits(await getProjectTeamId(db, projectId));
   const blocked = blockedFeatures.find((feature) => patch[feature]);
   if (blocked) {
     throw new HttpError(400, `${featureLabel(blocked)} are not available for this team`);
@@ -660,9 +671,9 @@ export async function setProjectFeatures(
   if (patch.subtasks !== undefined) values.subtasksEnabled = patch.subtasks;
   if (patch.checklists !== undefined) values.checklistsEnabled = patch.checklists;
   if (patch.issueStats !== undefined) values.issueStatsEnabled = patch.issueStats;
-  if (Object.keys(values).length === 0) return getProjectById(projectId);
+  if (Object.keys(values).length === 0) return getProjectById(db, projectId);
   await db.update(project).set(values).where(eq(project.id, projectId));
-  return getProjectById(projectId);
+  return getProjectById(db, projectId);
 }
 
 // Which estimate kinds the project's issues carry, and whether its members log the
@@ -679,6 +690,7 @@ export interface EstimateSettings {
 // Turns them on or off. One turned off keeps what the issues already carry — the
 // estimates, the logged entries — which show again when it is turned back on.
 export async function setEstimateSettings(
+  db: Db,
   projectId: number,
   input: EstimateSettings,
 ): Promise<EstimateSettings | null> {
@@ -725,8 +737,15 @@ function normalizeDays(value: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export async function getAutoArchiveSettings(projectId: number): Promise<AutoArchiveSettings> {
-  const stored = await getProjectSetting<Partial<AutoArchiveSettings>>(projectId, AUTO_ARCHIVE_KEY);
+export async function getAutoArchiveSettings(
+  db: Db,
+  projectId: number,
+): Promise<AutoArchiveSettings> {
+  const stored = await getProjectSetting<Partial<AutoArchiveSettings>>(
+    db,
+    projectId,
+    AUTO_ARCHIVE_KEY,
+  );
   return {
     completedDays: normalizeDays(stored?.completedDays),
     canceledDays: normalizeDays(stored?.canceledDays),
@@ -734,6 +753,7 @@ export async function getAutoArchiveSettings(projectId: number): Promise<AutoArc
 }
 
 export async function setAutoArchiveSettings(
+  db: Db,
   projectId: number,
   input: { completedDays?: number | null; canceledDays?: number | null },
 ): Promise<AutoArchiveSettings> {
@@ -741,7 +761,7 @@ export async function setAutoArchiveSettings(
     completedDays: normalizeDays(input.completedDays),
     canceledDays: normalizeDays(input.canceledDays),
   };
-  await setProjectSetting(projectId, AUTO_ARCHIVE_KEY, next);
+  await setProjectSetting(db, projectId, AUTO_ARCHIVE_KEY, next);
   return next;
 }
 
@@ -758,9 +778,11 @@ export interface SubtaskAutomationSettings {
 }
 
 export async function getSubtaskAutomationSettings(
+  db: Db,
   projectId: number,
 ): Promise<SubtaskAutomationSettings> {
   const stored = await getProjectSetting<Partial<SubtaskAutomationSettings>>(
+    db,
     projectId,
     SUBTASK_AUTOMATION_KEY,
   );
@@ -771,6 +793,7 @@ export async function getSubtaskAutomationSettings(
 }
 
 export async function setSubtaskAutomationSettings(
+  db: Db,
   projectId: number,
   input: SubtaskAutomationSettings,
 ): Promise<SubtaskAutomationSettings> {
@@ -778,7 +801,7 @@ export async function setSubtaskAutomationSettings(
     completeParent: input.completeParent,
     closeSubtasks: input.closeSubtasks,
   };
-  await setProjectSetting(projectId, SUBTASK_AUTOMATION_KEY, next);
+  await setProjectSetting(db, projectId, SUBTASK_AUTOMATION_KEY, next);
   return next;
 }
 
@@ -791,8 +814,8 @@ export async function setSubtaskAutomationSettings(
 // issues and their columns are deleted by the same cascade, so it is satisfied. The
 // conversation threads of the project's agents are deleted first, since they live
 // outside those cascades.
-export async function deleteProject(projectId: number): Promise<void> {
-  await deleteThreadsWhere({ projectId });
+export async function deleteProject(db: Db, projectId: number): Promise<void> {
+  await deleteThreadsWhere(db, { projectId });
   // A team membership the SCIM reconciliation granted stands on the project
   // memberships it granted with it, and no group change follows the delete to re-check
   // it, so the members are read while they still exist and re-checked afterwards.
@@ -831,6 +854,6 @@ export async function deleteProject(projectId: number): Promise<void> {
   });
   await deleteObjects(assetKeys);
   for (const { teamId, userId } of provisioned) {
-    await dropUnusedTeamMembership(teamId, userId);
+    await dropUnusedTeamMembership(db, teamId, userId);
   }
 }

@@ -1,4 +1,4 @@
-import { db, issue, project as projectTable } from '@repo/db';
+import { type Db, issue, project as projectTable } from '@repo/db';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HttpError } from '#shared/lib';
@@ -21,7 +21,7 @@ export interface IssueRef {
   archived: boolean;
 }
 
-async function refsWhere(condition: SQL): Promise<IssueRef[]> {
+async function refsWhere(db: Db, condition: SQL): Promise<IssueRef[]> {
   const rows = await db
     .select({
       id: issue.id,
@@ -49,14 +49,14 @@ async function refsWhere(condition: SQL): Promise<IssueRef[]> {
 
 // The issue's subtasks, by issue number. Archived ones are included: they stay
 // attached to their parent and are restored as its subtasks.
-export async function listSubtasks(issueId: number): Promise<IssueRef[]> {
-  return refsWhere(eq(issue.parentId, issueId));
+export async function listSubtasks(db: Db, issueId: number): Promise<IssueRef[]> {
+  return refsWhere(db, eq(issue.parentId, issueId));
 }
 
 // The issue an issue is a subtask of, or null when it has none.
-export async function getParentRef(parentId: number | null): Promise<IssueRef | null> {
+export async function getParentRef(db: Db, parentId: number | null): Promise<IssueRef | null> {
   if (parentId === null) return null;
-  return (await refsWhere(eq(issue.id, parentId)))[0] ?? null;
+  return (await refsWhere(db, eq(issue.id, parentId)))[0] ?? null;
 }
 
 // Puts each of the board's issues together with how many subtasks it has, archived
@@ -64,6 +64,7 @@ export async function getParentRef(parentId: number | null): Promise<IssueRef | 
 // from its own payload — and it has to know about the archived ones too, since they
 // are what a delete or an archive asks about.
 export async function attachSubtaskCounts<T extends { id: number }>(
+  db: Db,
   issues: T[],
   projectId: number,
 ): Promise<(T & { subtaskCount: number })[]> {
@@ -82,11 +83,12 @@ export async function attachSubtaskCounts<T extends { id: number }>(
 // reverse of the cascading archive that took them with it. A subtask archived on
 // its own comes back too — the two are not told apart.
 export async function restoreSubtasksOf(
+  db: Db,
   issueId: number,
   actorUserId?: string | null,
 ): Promise<void> {
-  for (const subtask of await listSubtasks(issueId))
-    if (subtask.archived) await restoreIssue(subtask.id, actorUserId);
+  for (const subtask of await listSubtasks(db, issueId))
+    if (subtask.archived) await restoreIssue(db, subtask.id, actorUserId);
 }
 
 // What happens to an issue's subtasks when it is deleted or archived: they follow
@@ -109,13 +111,14 @@ export interface SubtaskDisposition {
 // projectId is the project the request is authorised for: an id outside it is
 // ignored, so a bulk call cannot reach the subtasks of another project's issues.
 export async function disposeSubtasksOf(
+  db: Db,
   projectId: number,
   issueIds: number[],
   action: 'delete' | 'archive',
   disposition: SubtaskDisposition | undefined,
   actorUserId?: string | null,
 ): Promise<AttachmentRow[]> {
-  const parents = await issuesWithSubtasks(projectId, issueIds);
+  const parents = await issuesWithSubtasks(db, projectId, issueIds);
   if (parents.length === 0) return [];
   if (!disposition)
     throw new HttpError(409, 'Choose what happens to the subtasks: cascade, detach or reassign');
@@ -126,13 +129,13 @@ export async function disposeSubtasksOf(
   const attachments: AttachmentRow[] = [];
   for (const parentId of parents)
     attachments.push(
-      ...(await disposeSubtasks(parentId, action, disposition.mode, newParentId, actorUserId)),
+      ...(await disposeSubtasks(db, parentId, action, disposition.mode, newParentId, actorUserId)),
     );
   return attachments;
 }
 
 // The ids of the project's issues that have subtasks, out of the given set.
-async function issuesWithSubtasks(projectId: number, ids: number[]): Promise<number[]> {
+async function issuesWithSubtasks(db: Db, projectId: number, ids: number[]): Promise<number[]> {
   if (ids.length === 0) return [];
   const parent = alias(issue, 'parent_issue');
   const rows = await db
@@ -146,20 +149,21 @@ async function issuesWithSubtasks(projectId: number, ids: number[]): Promise<num
 // Applies the choice to one issue's subtasks. Runs one subtask at a time so each
 // gets the activity entries and webhooks its own update/delete/archive writes.
 async function disposeSubtasks(
+  db: Db,
   issueId: number,
   action: 'delete' | 'archive',
   mode: SubtaskMode,
   newParentId: number | null,
   actorUserId?: string | null,
 ): Promise<AttachmentRow[]> {
-  const subtasks = await listSubtasks(issueId);
+  const subtasks = await listSubtasks(db, issueId);
 
   if (mode === 'cascade') {
     const attachments: AttachmentRow[] = [];
     for (const subtask of subtasks) {
       if (action === 'delete')
-        attachments.push(...((await deleteIssue(subtask.id, actorUserId)) ?? []));
-      else await archiveIssue(subtask.id, actorUserId);
+        attachments.push(...((await deleteIssue(db, subtask.id, actorUserId)) ?? []));
+      else await archiveIssue(db, subtask.id, actorUserId);
     }
     return attachments;
   }
@@ -168,7 +172,7 @@ async function disposeSubtasks(
   // that link has to hold (same project, no subtask as a parent) are enforced by
   // the update itself, which rejects the whole request on the first failure.
   for (const subtask of subtasks)
-    await updateIssue(subtask.id, { parentId: newParentId }, actorUserId);
+    await updateIssue(db, subtask.id, { parentId: newParentId }, actorUserId);
   return [];
 }
 

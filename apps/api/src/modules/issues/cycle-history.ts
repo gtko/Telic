@@ -1,4 +1,4 @@
-import { db, cycle, issueCycle } from '@repo/db';
+import { type Db, cycle, issueCycle } from '@repo/db';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { cycleStatus, type CycleStatus } from '#modules/cycles/service';
@@ -22,6 +22,7 @@ export interface IssueCycleRow {
 // Call this from every write that changes issue.cycle_id. A cycle delete needs no
 // call — its records go with it.
 export async function recordCycleChange(
+  db: Db,
   issueId: number,
   before: number | null,
   after: number | null,
@@ -51,7 +52,7 @@ export async function recordCycleChange(
 // before the cycle ended says nothing about where the work happened, so it is
 // dropped here. A cycle appears once: an issue that was planned into the same cycle
 // twice has its stretches folded into the first entry and the last exit.
-export async function listIssueCycles(issueId: number): Promise<IssueCycleRow[]> {
+export async function listIssueCycles(db: Db, issueId: number): Promise<IssueCycleRow[]> {
   const rows = await db
     .select({
       cycleId: cycle.id,

@@ -1,4 +1,4 @@
-import { db } from '@repo/db';
+import { type Db } from '@repo/db';
 import { sql } from 'drizzle-orm';
 import { recordActivityForIssues } from './activity';
 import { getIssues } from './service';
@@ -8,7 +8,7 @@ import { emitIssueEvents } from './webhook-payload';
 // their project's threshold. Inactivity is measured by issue.updated_at: moving to a
 // terminal column bumps it, and any later edit resets the clock, so an issue is
 // archived only after the full period with no activity.
-export async function sweepStaleIssues(): Promise<number> {
+export async function sweepStaleIssues(db: Db): Promise<number> {
   // The threshold lives in project_setting under key 'auto_archive' as
   // { completedDays, canceledDays } (kept in sync with getAutoArchiveSettings in
   // modules/projects/service.ts); a positive day count enables archiving for that state
@@ -46,6 +46,6 @@ export async function sweepStaleIssues(): Promise<number> {
     idsByProject.set(row.project_id, ids);
   }
   for (const [projectId, ids] of idsByProject)
-    await emitIssueEvents(projectId, 'issue.updated', () => getIssues(ids), actor);
+    await emitIssueEvents(db, projectId, 'issue.updated', () => getIssues(db, ids), actor);
   return archived.length;
 }

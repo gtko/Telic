@@ -1,5 +1,5 @@
 import {
-  db,
+  type Db,
   agentRun,
   customField,
   customFieldOption,
@@ -33,6 +33,7 @@ import { queueStatusRuns } from '#modules/agents/schedules/issue-runs';
 // in the target and dropped when there is no match. Links and documents must stay
 // inside one project, so those that reach an issue left behind are removed.
 export async function moveIssue(
+  db: Db,
   issueId: number,
   target: ProjectRow,
   columnId: number | undefined,
@@ -111,10 +112,10 @@ export async function moveIssue(
   }));
   const perColumn = new Map<number, number>();
   for (const p of plans) perColumn.set(p.newColumnId, (perColumn.get(p.newColumnId) ?? 0) + 1);
-  for (const [id, incoming] of perColumn) await assertWipLimit(id, incoming);
+  for (const [id, incoming] of perColumn) await assertWipLimit(db, id, incoming);
 
-  const labels = await mapLabels(movedIds, target.id);
-  const fields = await mapFields(movedIds, target.id);
+  const labels = await mapLabels(db, movedIds, target.id);
+  const fields = await mapFields(db, movedIds, target.id);
 
   await db.transaction(async (tx) => {
     // Everything above was read without a lock. A concurrent move of the same issue, or
@@ -216,9 +217,9 @@ export async function moveIssue(
   });
 
   for (const p of plans) {
-    await recordStatusChange([p.id], p.newColumnId);
-    await recordCycleChange(p.id, p.cycleId, null);
-    const after = (await getIssue(p.id))!;
+    await recordStatusChange(db, [p.id], p.newColumnId);
+    await recordCycleChange(db, p.id, p.cycleId, null);
+    const after = (await getIssue(db, p.id))!;
     await recordActivity(
       p.id,
       [
@@ -231,15 +232,16 @@ export async function moveIssue(
       actorUserId,
     );
     if (p.id === issueId && p.parentId !== null)
-      await recordParentChange(p.id, p.parentId, null, actorUserId);
-    await emitIssueEvent('issue.updated', after, actorUserId);
-    await queueStatusRuns([p.id], p.newColumnId, actorUserId);
+      await recordParentChange(db, p.id, p.parentId, null, actorUserId);
+    await emitIssueEvent(db, 'issue.updated', after, actorUserId);
+    await queueStatusRuns(db, [p.id], p.newColumnId, actorUserId);
   }
-  return (await getIssue(issueId))!;
+  return (await getIssue(db, issueId))!;
 }
 
 // The target project's labels the moved issues carry, matched by name.
 async function mapLabels(
+  db: Db,
   issueIds: number[],
   targetProjectId: number,
 ): Promise<{ issueId: number; labelId: number }[]> {
@@ -260,7 +262,7 @@ async function mapLabels(
 // same name and kind (null when there is none, or when another value of the issue
 // already took it), and the select options re-pointed at the target field's option of
 // the same value.
-async function mapFields(issueIds: number[], targetProjectId: number) {
+async function mapFields(db: Db, issueIds: number[], targetProjectId: number) {
   const targetFields = await db
     .select({ id: customField.id, name: customField.name, fieldType: customField.fieldType })
     .from(customField)

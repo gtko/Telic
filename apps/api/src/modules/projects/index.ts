@@ -55,8 +55,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   .use(projectPreferences)
   .get(
     '/projects',
-    ({ user, request, query }) =>
-      listProjects(requireUser(user).id, {
+    ({ db, user, request, query }) =>
+      listProjects(db, requireUser(user).id, {
         mcpOnly: isMcpRequest(request.headers),
         withPermissions: query.permissions === 'true',
         q: query.q,
@@ -79,9 +79,10 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
 
   .get(
     '/projects/search',
-    ({ user, query }) =>
+    ({ db, user, query }) =>
       paginate(query, (window) =>
         searchProjects(
+          db,
           requireUser(user).id,
           {
             q: query.q,
@@ -109,10 +110,10 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
 
   .post(
     '/projects/:projectKey/copy',
-    async ({ project, body, user, set }) => {
+    async ({ db, project, body, user, set }) => {
       const { include, ...meta } = body;
       set.status = 201;
-      return await copyProject(project.id, meta, requireUser(user).id, project.teamId, include);
+      return await copyProject(db, project.id, meta, requireUser(user).id, project.teamId, include);
     },
     {
       body: copyProjectBody,
@@ -142,7 +143,7 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // themselves. A role without work item access still needs it to open any page.
   .get(
     '/projects/:projectKey',
-    async ({ project, user }) => {
+    async ({ db, project, user }) => {
       const userId = requireUser(user).id;
       const [
         columns,
@@ -155,15 +156,15 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
         viewer,
         teamAccess,
       ] = await Promise.all([
-        listColumns(project.id),
-        listIssueTypes(project.id),
-        listLabels(project.id),
-        listLabelGroups(project.id),
-        listAssigneeCandidates(project.id),
-        listCustomFields(project.id, { allTypes: true }),
-        listIssueTemplates(project.id),
-        getProjectAccess(project.id, userId),
-        getTeamAccess(project.teamId, userId),
+        listColumns(db, project.id),
+        listIssueTypes(db, project.id),
+        listLabels(db, project.id),
+        listLabelGroups(db, project.id),
+        listAssigneeCandidates(db, project.id),
+        listCustomFields(db, project.id, { allTypes: true }),
+        listIssueTemplates(db, project.id),
+        getProjectAccess(db, project.id, userId),
+        getTeamAccess(db, project.teamId, userId),
       ]);
       // The permission guard already asserted access, so it always exists here; guard
       // against a race (access revoked mid-request).
@@ -199,8 +200,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // pattern (see updateProject). Owner-only.
   .patch(
     '/projects/:projectKey',
-    async ({ project, body }) => {
-      const updated = await updateProject(project.id, body);
+    async ({ db, project, body }) => {
+      const updated = await updateProject(db, project.id, body);
       if (!updated) throw new HttpError(404, 'Project not found');
       return updated;
     },
@@ -243,10 +244,10 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // reachability is not here — it is the team's, set in its MCP settings.
   .patch(
     '/projects/:projectKey/settings',
-    async ({ project, body }) => {
+    async ({ db, project, body }) => {
       let current = project;
       if (body.features !== undefined) {
-        const updated = await setProjectFeatures(project.id, body.features);
+        const updated = await setProjectFeatures(db, project.id, body.features);
         if (!updated) throw new HttpError(404, 'Project not found');
         current = updated;
       }
@@ -269,7 +270,7 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // payload above: a granted role reads or changes it without being an owner.
   .get(
     '/projects/:projectKey/settings/auto-archive',
-    ({ project }) => getAutoArchiveSettings(project.id),
+    ({ db, project }) => getAutoArchiveSettings(db, project.id),
     {
       permission: ['workflow_config', 'read'],
       response: { 200: AutoArchiveResponse, ...accessErrors },
@@ -281,7 +282,7 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // group as it is", which this endpoint does not do.
   .patch(
     '/projects/:projectKey/settings/auto-archive',
-    ({ project, body }) => setAutoArchiveSettings(project.id, body),
+    ({ db, project, body }) => setAutoArchiveSettings(db, project.id, body),
     {
       body: updateAutoArchiveBody,
       permission: ['workflow_config', 'edit'],
@@ -292,7 +293,7 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
 
   .get(
     '/projects/:projectKey/settings/subtasks',
-    ({ project }) => getSubtaskAutomationSettings(project.id),
+    ({ db, project }) => getSubtaskAutomationSettings(db, project.id),
     {
       permission: ['workflow_config', 'read'],
       response: { 200: SubtaskAutomationResponse, ...accessErrors },
@@ -303,7 +304,7 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // Both automations are sent together, the same as the thresholds above.
   .patch(
     '/projects/:projectKey/settings/subtasks',
-    ({ project, body }) => setSubtaskAutomationSettings(project.id, body),
+    ({ db, project, body }) => setSubtaskAutomationSettings(db, project.id, body),
     {
       body: updateSubtaskAutomationBody,
       permission: ['workflow_config', 'edit'],
@@ -317,8 +318,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // gets, so only the write lives here.
   .patch(
     '/projects/:projectKey/settings/estimates',
-    async ({ project, body }) => {
-      const updated = await setEstimateSettings(project.id, body);
+    async ({ db, project, body }) => {
+      const updated = await setEstimateSettings(db, project.id, body);
       if (!updated) throw new HttpError(404, 'Project not found');
       return updated;
     },
@@ -334,8 +335,8 @@ export const projectRoutes = new Elysia({ name: 'projects', detail: { tags: ['Pr
   // Owner-only.
   .delete(
     '/projects/:projectKey',
-    async ({ project }) => {
-      await deleteProject(project.id);
+    async ({ db, project }) => {
+      await deleteProject(db, project.id);
       return noContent();
     },
     {

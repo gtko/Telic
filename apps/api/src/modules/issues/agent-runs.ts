@@ -1,10 +1,11 @@
-import { db, agentRun, aiAgent, issue } from '@repo/db';
+import { type Db, agentRun, aiAgent, issue } from '@repo/db';
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { iso } from '#shared/lib';
 import { contextTokensOf, executionState } from '#modules/agents/core/run-queue';
 import { getRunTrace } from '#modules/agents/core/runtime/traces';
 
 export async function listIssueAgentRuns(
+  db: Db,
   projectId: number,
   issueId: number,
   before?: number,
@@ -60,6 +61,7 @@ export async function listIssueAgentRuns(
 }
 
 export async function getIssueAgentRunTrace(
+  db: Db,
   projectId: number,
   issueId: number,
   runId: number,
@@ -79,5 +81,5 @@ export async function getIssueAgentRunTrace(
       ),
     );
   if (!run) return undefined;
-  return getRunTrace(run.agentId, runId, projectId, issueId, viewerId, traceId);
+  return getRunTrace(db, run.agentId, runId, projectId, issueId, viewerId, traceId);
 }
