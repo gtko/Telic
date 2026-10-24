@@ -75,9 +75,9 @@ export function mimeAllowed(contentType: string, allowed: string[]): boolean {
   );
 }
 
-// One row (`size`) per attachment of every kind that counts against a quota — issue, chat,
+// One row (`size`) per attachment of every kind that counts against a quota — issue,
 // document and initiative attachments — of one project or of every project of one workspace.
-// A single UNION ALL, so the total costs one D1 round trip instead of four.
+// A single UNION ALL, so the total costs one D1 round trip instead of three.
 function attachmentSizes(scope: 'project' | 'workspace', id: number): SQL {
   const inScope = (projectColumn: string): SQL =>
     scope === 'project'
@@ -87,8 +87,6 @@ function attachmentSizes(scope: 'project' | 'workspace', id: number): SQL {
   return sql`
     SELECT a.size_bytes AS size FROM issue_attachment a JOIN issue i ON i.id = a.issue_id
       WHERE ${inScope('i.project_id')}
-    UNION ALL
-    SELECT a.size_bytes FROM chat_attachment a WHERE ${inScope('a.project_id')}
     UNION ALL
     SELECT a.size_bytes FROM document_asset a JOIN project_document d ON d.id = a.document_id
       WHERE ${inScope('d.project_id')}
@@ -109,7 +107,7 @@ async function storedBytes(
 }
 
 // Total attachment bytes a project has stored, across every kind that counts
-// against its quota (issue, chat, document, initiative attachments) — what a new
+// against its quota (issue, document, initiative attachments) — what a new
 // upload's size is checked against before it is allowed, and what a worker
 // importing issue attachments checks against too. One statement. On its own the check is
 // advisory: D1 has no row or advisory lock to serialize it against a concurrent insert, so
@@ -141,20 +139,19 @@ export async function workspaceStoredBytes(
   return storedBytes(executor, 'workspace', workspaceId);
 }
 
-export type AttachmentKind = 'issue' | 'chat' | 'document' | 'initiative';
+export type AttachmentKind = 'issue' | 'document' | 'initiative';
 
 export interface ReserveStorageInput {
   kind: AttachmentKind;
   // The project whose quota the upload counts against.
   projectId: number;
-  // The row the attachment hangs on: the issue, document or initiative id. A chat attachment
-  // belongs to the project itself, so `ownerId` is ignored for kind 'chat'.
+  // The row the attachment hangs on: the issue, document or initiative id.
   ownerId: number;
   s3Key: string;
   filename: string;
   contentType: string;
   sizeBytes: number;
-  // Who uploaded it. Stored for 'chat' and 'document'; the other two tables have no column.
+  // Who uploaded it. Stored for 'document'; the other two tables have no column.
   uploadedByUserId?: string | null;
   // Allowed total for the project, in bytes. 0 or less means unlimited.
   quotaBytes: number;
@@ -166,7 +163,6 @@ const RESERVE_TARGETS: Record<
   { table: string; ownerColumn: string; hasUploader: boolean }
 > = {
   issue: { table: 'issue_attachment', ownerColumn: 'issue_id', hasUploader: false },
-  chat: { table: 'chat_attachment', ownerColumn: 'project_id', hasUploader: true },
   document: { table: 'document_asset', ownerColumn: 'document_id', hasUploader: true },
   initiative: { table: 'initiative_attachment', ownerColumn: 'initiative_id', hasUploader: false },
 };
@@ -180,8 +176,6 @@ function ownerInProject(kind: AttachmentKind, ownerId: number, projectId: number
       return sql`SELECT 1 FROM project_document WHERE id = ${ownerId} AND project_id = ${projectId}`;
     case 'initiative':
       return sql`SELECT 1 FROM initiative WHERE id = ${ownerId} AND project_id = ${projectId}`;
-    case 'chat':
-      return sql`SELECT 1 FROM project WHERE id = ${projectId}`;
   }
 }
 
@@ -201,7 +195,7 @@ export async function reserveStorage(
   }
   const target = RESERVE_TARGETS[input.kind];
   const publicId = input.publicId ?? crypto.randomUUID();
-  const ownerId = input.kind === 'chat' ? input.projectId : input.ownerId;
+  const ownerId = input.ownerId;
   const uploaderColumn = target.hasUploader ? sql.raw(', uploaded_by_user_id') : sql.raw('');
   const uploaderValue = target.hasUploader ? sql`, ${input.uploadedByUserId ?? null}` : sql.raw('');
   const withinQuota =

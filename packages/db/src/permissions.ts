@@ -15,11 +15,7 @@ export const PERMISSION_RESOURCES = [
   'states',
   'issue_types',
   'labels',
-  'ai_agents',
   'integrations',
-  'agent_skills',
-  'agent_tools',
-  'agent_usage',
   'custom_fields',
   'issue_templates',
   'workflow_config',
@@ -40,15 +36,14 @@ export type Permissions = Record<PermissionResource, ResourcePermissions>;
 
 // Resources that do not carry the whole CRUD set: the danger zone is the project's
 // settings page and its deletion, the workflow config is read and written, an invite
-// is created and revoked but never edited, the repository settings are shown only to
-// whoever may change them, and what the agents spent is only read. A resource left out
+// is created and revoked but never edited, and the repository settings are shown only to
+// whoever may change them. A resource left out
 // here supports every action. Unsupported cells stay present and false, so a caller
 // reads any cell without a lookup.
 const RESOURCE_ACTIONS: Partial<Record<PermissionResource, readonly PermissionAction[]>> = {
   danger_zone: ['read', 'delete'],
   workflow_config: ['read', 'edit'],
   repositories: ['edit'],
-  agent_usage: ['read'],
   members_invite: ['read', 'create', 'delete'],
 };
 
@@ -91,7 +86,6 @@ export function defaultMemberPermissions(): Permissions {
   p.states.read = true;
   p.issue_types.read = true;
   p.labels.read = true;
-  p.ai_agents.read = true;
   p.custom_fields.read = true;
   p.issue_templates.read = true;
   p.members_manage.read = true;
