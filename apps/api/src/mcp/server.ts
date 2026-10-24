@@ -45,22 +45,27 @@ export async function buildMcpServer(
 
   const table = routeTools(app);
   const byName = new Map(table.map((t) => [t.name, t]));
-  const teamId = await callerTeam(db, userId);
+  // Only tools/list and tools/call need it; initialize does not pay for the two queries.
+  let team: Promise<number | null> | undefined;
+  const resolveTeam = () => (team ??= callerTeam(db, userId));
   const needsTeam = (tool: McpRouteTool) => tool.pathParams.includes(TEAM_PARAM);
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: table.map((t) => ({
-      name: t.name,
-      description: t.description,
-      // A caller whose team is already known does not get to name one.
-      inputSchema:
-        teamId !== null && needsTeam(t)
-          ? withoutFields(t.inputSchema, [TEAM_PARAM])
-          : t.inputSchema,
-      annotations: t.annotations,
-      outputSchema: t.images ? undefined : t.outputSchema,
-    })),
-  }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const teamId = await resolveTeam();
+    return {
+      tools: table.map((t) => ({
+        name: t.name,
+        description: t.description,
+        // A caller whose team is already known does not get to name one.
+        inputSchema:
+          teamId !== null && needsTeam(t)
+            ? withoutFields(t.inputSchema, [TEAM_PARAM])
+            : t.inputSchema,
+        annotations: t.annotations,
+        outputSchema: t.images ? undefined : t.outputSchema,
+      })),
+    };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const tool = byName.get(req.params.name);
@@ -73,6 +78,7 @@ export async function buildMcpServer(
       };
     }
     const args = { ...(req.params.arguments ?? {}) };
+    const teamId = needsTeam(tool) ? await resolveTeam() : null;
     if (needsTeam(tool)) {
       if (teamId !== null) args[TEAM_PARAM] = teamId;
       else if (args[TEAM_PARAM] == null) {

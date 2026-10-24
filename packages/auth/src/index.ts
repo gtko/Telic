@@ -84,7 +84,7 @@ interface AuthConfig {
   cookieDomain: string | undefined;
   hostPrefixedCookies: boolean;
   passkeyRpID: string;
-  clientIpHeader: string | undefined;
+  clientIpHeader: string;
   trustedProxies: string[] | undefined;
   mcpOAuth: boolean;
   mcpIssuer: string;
@@ -140,9 +140,11 @@ function authConfig(env: AuthEnv): AuthConfig {
   // no scheme). In prod set PASSKEY_RP_ID to the public frontend hostname.
   const passkeyRpID = env.PASSKEY_RP_ID ?? new URL(trustedOrigins[0]!).hostname;
 
-  // The client IP keys the rate limit. Unset, better-auth reads X-Forwarded-For and takes
-  // it only when it holds one address; TRUSTED_PROXIES lets it read a chain.
-  const clientIpHeader = env.CLIENT_IP_HEADER;
+  // The client IP keys the rate limit. The api runs on Cloudflare Workers, which sets
+  // CF-Connecting-IP itself; without an IP the limit would share one bucket per path.
+  // CLIENT_IP_HEADER overrides it behind another proxy; TRUSTED_PROXIES lets better-auth
+  // read an X-Forwarded-For chain.
+  const clientIpHeader = env.CLIENT_IP_HEADER || 'cf-connecting-ip';
   const trustedProxies = env.TRUSTED_PROXIES?.split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
@@ -301,16 +303,16 @@ export async function verifyMcpAccessToken(
   env: AuthEnv,
   db: Db,
   token: string,
+  auth: Auth = createAuth(env, db),
 ): Promise<string | null> {
   const cfg = authConfig(env);
   if (!cfg.mcpOAuth) return null;
   let claims: { sub?: string; sid?: unknown; cnf?: unknown; client_id?: unknown };
   try {
-    ({ payload: claims } = await jwtVerify(
-      token,
-      createLocalJWKSet(await createAuth(env, db).api.getJwks()),
-      { issuer: cfg.mcpIssuer, audience: cfg.mcpResource },
-    ));
+    ({ payload: claims } = await jwtVerify(token, createLocalJWKSet(await auth.api.getJwks()), {
+      issuer: cfg.mcpIssuer,
+      audience: cfg.mcpResource,
+    }));
   } catch {
     return null;
   }
@@ -1077,7 +1079,7 @@ export function createAuth(env: AuthEnv, db: Db) {
         secure: cfg.hostPrefixedCookies || !isLoopbackUrl(baseURL),
       },
       ipAddress: {
-        ipAddressHeaders: cfg.clientIpHeader ? [cfg.clientIpHeader] : undefined,
+        ipAddressHeaders: [cfg.clientIpHeader],
         trustedProxies: cfg.trustedProxies,
       },
     },
