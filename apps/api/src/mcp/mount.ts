@@ -1,5 +1,6 @@
 import { t } from 'elysia';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/sdk/types.js';
 import { isAccountDeactivated, type Auth, mcpUnauthorized, verifyMcpAccessToken } from '@repo/auth';
 import type { Db } from '@repo/db';
 import type { Env } from '../env';
@@ -7,11 +8,46 @@ import { buildMcpServer } from './server';
 import type { McpApp } from './types';
 import type { McpCredential } from './credential';
 
+const JWT_SHAPE = /^[\w-]+\.[\w-]+\.[\w-]+$/;
+
 // The API key on the request. MCP clients send Authorization: Bearer <key>;
 // x-api-key is also accepted (the REST convention). Returns null when absent.
 function extractApiKey(request: Request): string | null {
   const bearer = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
   return bearer ?? request.headers.get('x-api-key') ?? null;
+}
+
+// Answers without building a server what the SDK transport would reject with an opaque 400.
+// A client speaking a newer protocol revision opens with `server/discover` and an unsupported
+// `mcp-protocol-version`; a JSON-RPC "method not found" sends it back to `initialize` at once.
+export function unsupportedRequest(request: Request, body: unknown): Response | null {
+  const message = (Array.isArray(body) ? body[0] : body) as
+    { id?: unknown; method?: unknown } | null | undefined;
+  const id = message?.id ?? null;
+  const supported = [...SUPPORTED_PROTOCOL_VERSIONS];
+  if (message?.method === 'server/discover') {
+    return Response.json({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32601, message: 'Method not found: server/discover', data: { supported } },
+    });
+  }
+  const version = request.headers.get('mcp-protocol-version');
+  if (message?.method !== 'initialize' && version && !supported.includes(version)) {
+    return Response.json(
+      {
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: -32000,
+          message: `Bad Request: Unsupported protocol version: ${version} (supported versions: ${supported.join(', ')})`,
+          data: { supported },
+        },
+      },
+      { status: 400 },
+    );
+  }
+  return null;
 }
 
 // Adds the MCP endpoint (/mcp) to the app. Mounted on
@@ -45,6 +81,8 @@ export function mountMcp(app: any): void {
       auth: Auth;
     }) => {
       const serve = async (credential: McpCredential, userId: string) => {
+        const rejected = unsupportedRequest(request, body);
+        if (rejected) return rejected;
         const server = await buildMcpServer(db, mcpApp, credential, userId);
         const transport = new WebStandardStreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
@@ -55,6 +93,12 @@ export function mountMcp(app: any): void {
       };
 
       const apiKey = extractApiKey(request);
+      // An OAuth access token is a JWT and an API key is not: try the token first so the
+      // common OAuth call does not pay for an API key lookup that cannot match.
+      if (apiKey && JWT_SHAPE.test(apiKey)) {
+        const userId = await verifyMcpAccessToken(env, db, apiKey, auth);
+        if (userId) return serve({ kind: 'oauth', accessToken: apiKey }, userId);
+      }
       if (apiKey) {
         const headers = new Headers(request.headers);
         headers.set('x-api-key', apiKey);
@@ -69,7 +113,7 @@ export function mountMcp(app: any): void {
           // Not an API key: it may be an OAuth access token, checked below.
         }
       }
-      const userId = apiKey ? await verifyMcpAccessToken(env, db, apiKey) : null;
+      const userId = apiKey ? await verifyMcpAccessToken(env, db, apiKey, auth) : null;
       if (apiKey && userId) return serve({ kind: 'oauth', accessToken: apiKey }, userId);
       return mcpUnauthorized(env);
     },

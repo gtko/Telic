@@ -116,7 +116,7 @@ async function readJsonBody({ request, contentType }: { request: Request; conten
 // it and pass it to Eden Treaty to drive routes in memory (no network). It is compiled ahead of
 // time (see the end of the file), which is how Elysia runs where `new Function` is not allowed.
 // Keep the chain unbroken so `type App` stays accurate.
-export const app = new Elysia({ adapter: dynamicAdapter, aot: false })
+export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 'typebox' })
   // First, so every route (the ones mounted after the chain included) reads ctx.env, ctx.db
   // and ctx.auth instead of a module-level global.
   .use(requestContext)
