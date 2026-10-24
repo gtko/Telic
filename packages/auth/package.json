@@ -30,7 +30,6 @@
     "@cloudflare/workers-types": "^5.20261023.1",
     "@repo/eslint-config": "workspace:*",
     "@types/bun": "latest",
-    "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

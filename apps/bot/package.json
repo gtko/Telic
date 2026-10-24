@@ -7,7 +7,8 @@
     "dev": "wrangler dev",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@repo/db": "workspace:*",

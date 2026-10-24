@@ -33,7 +33,4 @@
   },
   // Secrets (wrangler secret put): APP_ENCRYPTION_KEY, and the SMTP/Resend/Telegram credentials
   // live in the database, encrypted with it. Nothing secret belongs in this file.
-  "vars": {
-    "TELEMETRY_DISABLED": "",
-  },
 }
