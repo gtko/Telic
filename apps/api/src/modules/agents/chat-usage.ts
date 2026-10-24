@@ -1,4 +1,4 @@
-import { db, agentChatUsage } from '@repo/db';
+import { agentChatUsage, type Db } from '@repo/db';
 import { eq, inArray } from 'drizzle-orm';
 
 // The context size of a chat thread (see the agent_chat_usage comment in the schema).
@@ -18,6 +18,7 @@ export interface ContextUsage {
 // is an agent that reports nothing a context size can be read from, which is a fact
 // about the agent and is shown as a dash.
 export async function recordContextUsage(
+  db: Db,
   threadId: string,
   agentId: number,
   usage: ContextUsage | null,
@@ -37,7 +38,10 @@ export async function recordContextUsage(
 
 // The context size of each of the given threads. A thread with no completed answer is
 // absent from the map; one whose agent reports no usable counts maps to null.
-export async function readContextSizes(threadIds: string[]): Promise<Map<string, number | null>> {
+export async function readContextSizes(
+  db: Db,
+  threadIds: string[],
+): Promise<Map<string, number | null>> {
   const sizes = new Map<string, number | null>();
   if (threadIds.length === 0) return sizes;
   const rows = await db
@@ -61,6 +65,6 @@ export function contextField(
 }
 
 // The row has no foreign key to the thread, so deleting the thread has to take it along.
-export async function deleteContextUsage(threadId: string): Promise<void> {
+export async function deleteContextUsage(db: Db, threadId: string): Promise<void> {
   await db.delete(agentChatUsage).where(eq(agentChatUsage.threadId, threadId));
 }

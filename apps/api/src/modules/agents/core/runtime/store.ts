@@ -1,27 +1,34 @@
-import { PostgresStore } from '@mastra/pg';
-import { db } from '@repo/db';
-import { sql } from 'drizzle-orm';
+import { D1Store } from '@mastra/cloudflare-d1';
+import type { D1Like } from './bindings';
 
-// The Postgres store Mastra keeps its own tables in, on the application database.
-// Two things write to it: conversation memory (threads and messages, see memory.ts)
-// and the traces of agent runs (see observability.ts).
+// The D1 store Mastra keeps its own tables in (`mastra_threads`, `mastra_messages`...), on
+// the application database. Conversation memory (see memory.ts) is the only thing that uses
+// it: the spans of agent runs are ours (`ai_spans`, see span-exporter.ts), since D1Store has
+// no observability domain.
 
-let store: PostgresStore | null = null;
+type Entry = { store: D1Store; ready: Promise<void> };
+const stores = new WeakMap<object, Entry>();
 
-export function getStore(): PostgresStore {
-  if (!store) {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is required for the agent store');
-    store = new PostgresStore({ id: 'ai-agent-memory', connectionString: url });
+function entryOf(d1: D1Like): Entry {
+  let entry = stores.get(d1);
+  if (!entry) {
+    const store = new D1Store({
+      id: 'ai-agent-memory',
+      // workers-types' D1Database; ours is its structural subset.
+      binding: d1 as never,
+    });
+    entry = { store, ready: store.init() };
+    // A failed init is retried on the next call instead of poisoning the isolate.
+    entry.ready.catch(() => stores.delete(d1));
+    stores.set(d1, entry);
   }
-  return store;
+  return entry;
 }
 
-// Mastra creates its tables on first use, so an instance whose agents have never run
-// has none of them yet. Everything that reads the spans directly checks this first.
-export async function spansTableExists(): Promise<boolean> {
-  const rows = await db.execute<{ exists: boolean }>(
-    sql`SELECT to_regclass('public.mastra_ai_spans') IS NOT NULL AS exists`,
-  );
-  return rows[0]?.exists === true;
+// Mastra creates its tables on first use (CREATE TABLE IF NOT EXISTS), so an instance whose
+// agents never ran has none of them yet: the store is initialised before it is handed out.
+export async function getStore(d1: D1Like): Promise<D1Store> {
+  const entry = entryOf(d1);
+  await entry.ready;
+  return entry.store;
 }
