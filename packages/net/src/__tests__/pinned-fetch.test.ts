@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'bun:test';
+import { describe, it, expect, afterEach } from 'vitest';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { assertPublicHttpUrl, pinnedFetch, UrlNotAllowedError } from '../index';
 

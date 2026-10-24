@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   S3Client,
   PutObjectCommand,
@@ -6,16 +5,31 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 
-// S3-compatible object store (RustFS in the Compose stacks) for attachments — api's issue/chat/document/
-// initiative attachments and the worker's imported issue attachments alike. Only
-// the file bytes live here; the metadata and object key are rows in whichever
-// table owns them (issue_attachment, chat_attachment, ...).
+// Object store for attachments — api's issue/chat/document/initiative attachments and
+// the worker's imported issue attachments alike. Only the file bytes live here; the
+// metadata and object key are rows in whichever table owns them (issue_attachment,
+// chat_attachment, ...).
 //
-// Config comes from env. forcePathStyle is required for RustFS (and most
+// Two backends serve the same functions. On Cloudflare Workers the Worker's R2 bucket
+// binding is the natural one: once useR2Bucket(env.BUCKET) has been called, every
+// function below reads and writes that bucket and the S3 client is not used. Otherwise
+// an S3-compatible store (RustFS in the Compose stacks) is configured from env.
+//
+// S3 config comes from env. forcePathStyle is required for RustFS (and most
 // self-hosted S3 gateways) because they do not serve virtual-host-style buckets;
 // hosted stores that only serve virtual-host-style buckets set
 // S3_FORCE_PATH_STYLE=false. region is sent but ignored by RustFS; a value is
 // still required by the SDK.
+
+// The part of an R2 bucket binding this module uses.
+export type R2BucketBinding = Pick<R2Bucket, 'put' | 'get' | 'delete'>;
+
+let r2: R2BucketBinding | null = null;
+
+// Routes every function below to an R2 bucket binding, or back to the S3 client with null.
+export function useR2Bucket(bucket: R2BucketBinding | null): void {
+  r2 = bucket;
+}
 
 let cached: { client: S3Client; bucket: string } | null = null;
 
@@ -42,7 +56,11 @@ function getClient(): { client: S3Client; bucket: string } {
   return cached;
 }
 
-export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+export async function putObject(key: string, body: Uint8Array, contentType: string): Promise<void> {
+  if (r2) {
+    await r2.put(key, body, { httpMetadata: { contentType } });
+    return;
+  }
   const { client, bucket } = getClient();
   await client.send(
     new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }),
@@ -52,9 +70,19 @@ export async function putObject(key: string, body: Buffer, contentType: string):
 // Returns a web ReadableStream of the object body so a route can stream it to
 // the client without buffering the whole file (matters for video). contentType
 // and contentLength fall back to sensible defaults when the object store omits them.
+// A missing object is an error on both backends.
 export async function getObject(
   key: string,
 ): Promise<{ body: ReadableStream; contentType: string; contentLength?: number }> {
+  if (r2) {
+    const object = await r2.get(key);
+    if (!object) throw new Error(`Object '${key}' does not exist`);
+    return {
+      body: object.body,
+      contentType: object.httpMetadata?.contentType || 'application/octet-stream',
+      contentLength: object.size,
+    };
+  }
   const { client, bucket } = getClient();
   const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   if (!res.Body) throw new Error(`Object '${key}' has no body`);
@@ -73,6 +101,10 @@ export async function getObjectText(key: string): Promise<string> {
 }
 
 export async function deleteObject(key: string): Promise<void> {
+  if (r2) {
+    await r2.delete(key);
+    return;
+  }
   const { client, bucket } = getClient();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
@@ -117,5 +149,5 @@ export function attachmentObjectKey(
     .replace(/[^\w.-]+/g, '_')
     .slice(-100);
   const ownerPath = ownerId === null ? '' : `${ownerId}/`;
-  return `projects/${projectId}/${namespace}/${ownerPath}${randomUUID()}-${safeName}`;
+  return `projects/${projectId}/${namespace}/${ownerPath}${crypto.randomUUID()}-${safeName}`;
 }

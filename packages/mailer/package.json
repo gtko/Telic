@@ -8,16 +8,15 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "nodemailer": "^10.1.0"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
     "@repo/eslint-config": "workspace:*",
-    "@types/bun": "latest",
-    "@types/nodemailer": "^8.0.2",
+    "@types/node": "^26.6.5",
     "eslint": "^9.39.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }
