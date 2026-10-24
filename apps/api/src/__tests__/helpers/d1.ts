@@ -4,7 +4,7 @@
 import { createDb, createWorkspace, type Db } from '@repo/db';
 import { project, projectColumn, projectMember, team, teamMember, user } from '@repo/db/schema';
 import { Miniflare } from 'miniflare';
-import type { ProjectRow } from '#modules/projects/model';
+import type { ProjectRow } from '#modules/projects/service';
 import { migrateD1 } from '../../../../../packages/db/src/migrate';
 
 export interface TestDb {
@@ -18,7 +18,7 @@ export async function createTestDb(): Promise<TestDb> {
     script: 'export default { fetch() { return new Response("ok") } }',
     d1Databases: { DB: 'test-db' },
   });
-  const db = createDb((await mf.getD1Database('DB')) as unknown as D1Database);
+  const db = createDb((await mf.getD1Database('DB')) as unknown as Parameters<typeof createDb>[0]);
   // For the stand-ins of setup-vtest.ts that cannot be handed a db.
   (globalThis as { __vtestDb?: Db }).__vtestDb = db;
   await migrateD1(db);
