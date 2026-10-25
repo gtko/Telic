@@ -1,6 +1,6 @@
 {
   "title": "MCP 서버",
-  "description": "Model Context Protocol을 통해 AI 에이전트를 이 프로젝트에 연결합니다. 에이전트는 API 키에 허용된 범위에서만 접근할 수 있습니다.",
+  "description": "Model Context Protocol을 통해 MCP 클라이언트를 이 프로젝트에 연결합니다. 클라이언트는 API 키에 허용된 범위에서만 접근할 수 있습니다.",
   "disabled": "비활성화",
   "offForTeam": "{team} 팀에서 MCP가 비활성화되어 있습니다.",
   "offForProject": "{team} 팀에서는 MCP가 활성화되어 있지만 이 프로젝트에서는 비활성화되어 있습니다.",

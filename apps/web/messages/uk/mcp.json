@@ -1,6 +1,6 @@
 {
   "title": "MCP-сервер",
-  "description": "Підключіть AI-агентів до проєкту через Model Context Protocol. Агент бачить те, що дозволяє його API-ключ.",
+  "description": "Підключіть MCP-клієнти до проєкту через Model Context Protocol. Клієнт бачить те, що дозволяє його API-ключ.",
   "disabled": "Вимкнено",
   "offForTeam": "MCP вимкнено для команди {team}.",
   "offForProject": "У команді {team} MCP увімкнено, але для цього проєкту вимкнено.",

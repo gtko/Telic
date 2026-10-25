@@ -1,11 +1,9 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Archive,
   ArchiveRestore,
-  Check,
-  ClipboardCopy,
   FolderInput,
   GitBranch,
   Globe,
@@ -23,7 +21,7 @@ import { qk } from '@/services/queryKeys';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useArchiveAction } from '../../hooks/useArchiveAction';
 import { ApplyActionDialog, DeleteIssueDialog, matchedActions } from './IssueActions';
-import { buildIssueBranchName, buildIssuePrompt } from '../../utils/issuePrompt';
+import { buildIssueBranchName } from '../../utils/issuePrompt';
 import { useSession } from '@/lib/auth-client';
 import { shareIssuePath } from '@/utils/paths';
 import { Button } from '@/components/ui/button';
@@ -33,7 +31,7 @@ import MoveIssueDialog from './MoveIssueDialog';
 import { useTranslations } from 'next-intl';
 
 // The issue detail Actions: the manual actions whose condition matches this
-// issue, plus Copy Prompt and a delete button. Owns the delete/apply
+// issue, plus a delete button. Owns the delete/apply
 // confirmations and the mutations they run. The confirm dialogs render through a
 // portal, so their position in the tree does not matter.
 export default function IssueActionsBar({
@@ -62,8 +60,6 @@ export default function IssueActionsBar({
   const [moving, setMoving] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState<ActionDef | null>(null);
   const [sharing, setSharing] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Enabling/revoking the public link refetches the issue so its shareToken and
   // shareExtended (which the dialog reads) stay in sync. The same call creates the
@@ -79,16 +75,8 @@ export default function IssueActionsBar({
   }
 
   // Manual actions whose condition matches this issue, applied as one patch.
-  // Applying one is a issue edit; Copy Prompt only reads the issue and is always
-  // available, so the block always renders.
+  // Applying one is an issue edit.
   const issueActions = canEdit ? matchedActions(actionsQuery.data ?? [], project, issue) : [];
-
-  async function copyPrompt() {
-    await navigator.clipboard.writeText(buildIssuePrompt(issue, project, session?.user));
-    setCopied(true);
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(false), 1500);
-  }
 
   // The issue's short identifier link (/IAP-62) redirects to the canonical page URL.
   async function copyLink() {
@@ -132,23 +120,6 @@ export default function IssueActionsBar({
           </Button>
         </TooltipTrigger>
         <TooltipContent>{t('copyBranch')}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size={btnSize}
-            className="text-muted-foreground hover:text-foreground"
-            onClick={copyPrompt}
-          >
-            {copied ? (
-              <Check className="size-4 text-green-500" />
-            ) : (
-              <ClipboardCopy className="size-4" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{copied ? t('copied') : t('copyPrompt')}</TooltipContent>
       </Tooltip>
       {canEdit && (
         <Tooltip>

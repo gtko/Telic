@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "Geral",
-      "description": "Workspaces pessoais, padrões para novos projetos, e rastros e tempo de execução de agentes."
+      "description": "Workspaces pessoais e padrões para novos projetos."
     },
     "authentication": {
       "label": "Autenticação",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "Disponível no Cloud e no Pro auto-hospedado.",
+    "available": "Disponível nesta instância.",
     "dashboard": {
       "title": "Dashboard",
       "description": "A atividade dos times e projetos deste workspace.",

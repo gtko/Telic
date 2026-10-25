@@ -211,11 +211,6 @@
     "options": "Seçenekler",
     "optionsHint": "Birden çok seçeneği virgülle ayırın.",
     "type": "Tür",
-    "memberScope": "Kapsam",
-    "memberScopes": {
-      "all": "Herkes",
-      "humans": "Yalnızca kişiler"
-    },
     "mainInfo": "Ana bilgi",
     "mainInfoTooltip": "Özellikler panelinde değil, iş gövdesinde gösterilir",
     "mainInfoMeta": "Ana bilgi",
@@ -239,8 +234,7 @@
     "importedWithTypes": "Özel alanlar uygulandı: {created} oluşturuldu, {types} iş türü eklendi.",
     "removeOption": "{value} seçeneğini kaldır",
     "typeChangeWarning": "Alanın türünü değiştirmek, işlerin bu alanda taşıdığı mevcut değerleri temizler.",
-    "optionsRemovedWarning": "Kaldırılan bir seçenek, onu taşıyan işlerden temizlenir.",
-    "memberScopeWarning": "Yeni kapsamın izin vermediği üyeler bu alandan temizlenir."
+    "optionsRemovedWarning": "Kaldırılan bir seçenek, onu taşıyan işlerden temizlenir."
   },
   "actions": {
     "new": "Yeni eylem",

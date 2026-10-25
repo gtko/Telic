@@ -33,11 +33,6 @@
   },
   "profileHeading": "프로필",
   "you": "(나)",
-  "tabs": {
-    "all": "전체",
-    "people": "사용자",
-    "label": "표시"
-  },
   "leaveProject": "프로젝트 나가기",
   "revokeAccess": "접근 권한 해제",
   "lastOwner": "프로젝트에는 최소 한 명의 소유자가 있어야 합니다",
@@ -87,22 +82,16 @@
   "added": "멤버가 추가되었습니다",
   "provisioned": "SCIM으로 관리됨",
   "search": {
-    "all": "멤버 검색",
-    "people": "사용자 검색"
+    "all": "멤버 검색"
   },
   "empty": {
     "all": {
       "title": "아직 멤버가 없습니다",
-      "description": "사용자와 AI 에이전트가 참여하면 여기에 표시됩니다."
-    },
-    "human": {
-      "title": "아직 사용자가 없습니다",
       "description": "사용자가 참여하면 여기에 표시됩니다."
     },
     "search": {
       "title": "검색 결과가 없습니다",
-      "all": "검색 조건과 일치하는 멤버가 없습니다.",
-      "human": "검색 조건과 일치하는 사용자가 없습니다."
+      "all": "검색 조건과 일치하는 멤버가 없습니다."
     }
   }
 }

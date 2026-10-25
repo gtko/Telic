@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "Which of the team's projects AI clients can reach."
+      "description": "Which of the team's projects MCP clients can reach."
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "Delete team",
       "hint": "Its members, roles, invites, skills, tools and integrations are deleted with it. People keep their accounts and their other teams.",
-      "blocked": "Delete the projects and AI agents of the team first.",
+      "blocked": "Delete the projects of the team first.",
       "title": "Delete {name}?",
       "description": "<strong>{name}</strong> is deleted with its members, roles, invites, skills, tools and integrations. People keep their accounts and their other teams. This cannot be undone.",
       "deleted": "Team deleted"
@@ -250,7 +250,7 @@
     "rail": "Workspaces",
     "create": "New workspace",
     "createUnavailableTitle": "More workspaces",
-    "createUnavailableHint": "More workspaces per person are available in Cloud and self-hosted Pro.",
+    "createUnavailableHint": "Creating more workspaces is not available on this instance.",
     "general": "General",
     "roles": {
       "owner": "Owner",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "Delete workspace",
       "hint": "Its teams are deleted with it. People keep their accounts and their other teams.",
-      "blocked": "Delete the projects and AI agents of its teams first.",
+      "blocked": "Delete the projects of its teams first.",
       "title": "Delete {name}?",
       "description": "<strong>{name}</strong> and its teams are deleted. People keep their accounts and their other teams. This cannot be undone.",
       "deleted": "Workspace deleted"

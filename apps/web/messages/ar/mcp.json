@@ -1,6 +1,6 @@
 {
   "title": "خادم MCP",
-  "description": "اربط وكلاء الذكاء الاصطناعي بالمشروع ده عبر Model Context Protocol. الوكيل بيشوف اللي مفتاح الـ API بتاعه بيسمح بيه.",
+  "description": "اربط عملاء MCP بالمشروع ده عبر Model Context Protocol. العميل بيشوف اللي مفتاح الـ API بتاعه بيسمح بيه.",
   "disabled": "مُعطَّل",
   "offForTeam": "MCP مقفول لفريق {team}.",
   "offForProject": "فريق {team} مفعّل عنده MCP، بس المشروع ده مقفول.",

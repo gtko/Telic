@@ -211,11 +211,6 @@
     "options": "Opsi",
     "optionsHint": "Pisahkan beberapa opsi dengan koma.",
     "type": "Tipe",
-    "memberScope": "Siapa yang dapat dipilih",
-    "memberScopes": {
-      "all": "Siapa saja",
-      "humans": "Hanya pengguna manusia"
-    },
     "mainInfo": "Info utama",
     "mainInfoTooltip": "Ditampilkan di badan issue, bukan di Properti",
     "mainInfoMeta": "Info utama",
@@ -239,8 +234,7 @@
     "importedWithTypes": "Bidang kustom berhasil diterapkan: {created} dibuat, {types} tipe issue ditambahkan.",
     "removeOption": "Hapus opsi {value}",
     "typeChangeWarning": "Mengubah tipe akan menghapus nilai yang sudah dimiliki issue pada bidang ini.",
-    "optionsRemovedWarning": "Opsi yang dihapus akan dibersihkan dari issue yang menggunakannya.",
-    "memberScopeWarning": "Anggota yang tidak diizinkan oleh cakupan baru akan dibersihkan dari bidang ini."
+    "optionsRemovedWarning": "Opsi yang dihapus akan dibersihkan dari issue yang menggunakannya."
   },
   "actions": {
     "new": "Tindakan baru",

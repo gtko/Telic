@@ -211,11 +211,6 @@
     "options": "選項",
     "optionsHint": "多個用逗號分隔。",
     "type": "類型",
-    "memberScope": "可選擇的成員範圍",
-    "memberScopes": {
-      "all": "任何人",
-      "humans": "僅成員"
-    },
     "mainInfo": "主要資訊",
     "mainInfoTooltip": "顯示在工作項目正文中，而不是「屬性」區域",
     "mainInfoMeta": "主要資訊",
@@ -239,8 +234,7 @@
     "importedWithTypes": "已套用自訂欄位：新建 {created} 個，新增 {types} 個工作項目類型。",
     "removeOption": "刪除選項 {value}",
     "typeChangeWarning": "更改類型會清除該欄位中已有的值。",
-    "optionsRemovedWarning": "刪除的選項會從選中它的工作項目中清除。",
-    "memberScopeWarning": "新範圍不允許的成員會被清除。"
+    "optionsRemovedWarning": "刪除的選項會從選中它的工作項目中清除。"
   },
   "actions": {
     "new": "新建操作",

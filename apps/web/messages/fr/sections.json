@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "Général",
-      "description": "Les espaces de travail personnels, les valeurs par défaut des nouveaux projets, ainsi que les traces et la durée d'exécution des agents."
+      "description": "Les espaces de travail personnels et les valeurs par défaut des nouveaux projets."
     },
     "authentication": {
       "label": "Authentification",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "Disponible dans Cloud et dans Pro auto-hébergé.",
+    "available": "Disponible sur cette instance.",
     "dashboard": {
       "title": "Tableau de bord",
       "description": "L'activité des équipes et des projets de cet espace de travail.",

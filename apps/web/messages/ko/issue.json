@@ -54,14 +54,12 @@
     "copyTitle": "제목 복사",
     "copyDescription": "설명 복사",
     "copyBranch": "브랜치 이름 복사",
-    "copyPrompt": "프롬프트 복사",
     "restore": "복원",
     "archive": "보관",
     "noAssignee": "담당자 없음",
     "noInitiative": "이니셔티브 없음",
     "noCycle": "사이클 없음",
-    "copyFailed": "클립보드에 복사할 수 없습니다.",
-    "promptCopied": "프롬프트가 클립보드에 복사되었습니다."
+    "copyFailed": "클립보드에 복사할 수 없습니다."
   },
   "commands": {
     "preview": "이슈 미리보기",
@@ -78,11 +76,9 @@
     "labels": "라벨 변경",
     "labelsPlaceholder": "라벨 선택…",
     "copyShortLink": "짧은 링크 복사",
-    "copyPrompt": "프롬프트 복사",
     "restore": "이슈 복원",
     "archive": "이슈 보관",
     "delete": "이슈 삭제",
-    "promptCopied": "프롬프트가 클립보드에 복사되었습니다.",
     "shortLinkCopied": "짧은 링크가 복사되었습니다."
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "짧은 링크 복사",
     "copyBranch": "브랜치 이름 복사",
     "copied": "복사됨",
-    "copyPrompt": "프롬프트 복사",
     "sharedPublicly": "공개 공유 중",
     "sharePublicly": "공개 공유",
     "restore": "이슈 복원",
@@ -331,7 +326,7 @@
     "fieldUpdated": "님이 <v>{field}</v>을(를) 업데이트하였습니다",
     "fieldSet": "님이 <v>{field}</v>을(를) <v>{value}</v>(으)로 설정하였습니다",
     "fieldCleared": "님이 <v>{field}</v>을(를) 지웠습니다",
-    "archived": "님이 이슈를 보관하였습니다",
+    "archived": "보관된 활동",
     "restored": "님이 이슈를 복원하였습니다",
     "pullRequestMerged": "님이 Pull Request <v>{pr}</v>을(를) 병합하였습니다",
     "pullRequestOpened": "님이 Pull Request <v>{pr}</v>을(를) 생성하였습니다",

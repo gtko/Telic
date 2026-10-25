@@ -28,9 +28,6 @@ export interface MemberRow {
   createdAt: string;
 }
 
-// Which members a list asks for: everyone or the people.
-export type MemberKind = 'all' | 'human';
-
 // How many members own the project is what a page window cannot answer, and the last
 // owner's row is the one that may not be removed.
 export type MemberPage = Page<MemberRow> & { ownerCount: number };
@@ -39,13 +36,11 @@ export type MemberPage = Page<MemberRow> & { ownerCount: number };
 // the server, so the page and the total agree.
 export interface MemberListParams extends PageParams {
   search?: string;
-  kind: MemberKind;
 }
 
-// The query string a member list takes: the page window, the kind filter and the
-// search. Shared with the team member lists.
+// The query string a member list takes: the page window and the search. Shared with the team member lists.
 export function memberListQuery(params: MemberListParams): string {
-  return pageQuery(params, { kind: params.kind, search: params.search });
+  return pageQuery(params, { search: params.search });
 }
 
 // Someone who can be added to a project without an invite: a member of the team that

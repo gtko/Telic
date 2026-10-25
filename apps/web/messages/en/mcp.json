@@ -1,6 +1,6 @@
 {
   "title": "MCP Server",
-  "description": "Connect AI agents to this project over the Model Context Protocol. An agent sees what its API key allows.",
+  "description": "Connect MCP clients to this project over the Model Context Protocol. A client sees what its API key allows.",
   "disabled": "Disabled",
   "offForTeam": "MCP is off for the team {team}.",
   "offForProject": "The team {team} has MCP on, but this project is off.",

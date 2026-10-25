@@ -1,25 +1,19 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import type { CustomField, CustomFieldType, MemberScope } from '@/lib/api/endpoints/customFields';
+import type { CustomField, CustomFieldType } from '@/lib/api/endpoints/customFields';
 import { cn } from '@/lib/utils';
 import Modal from '@/components/common/overlay/Modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  FIELD_TYPES,
-  FIELD_TYPE_ICONS,
-  MEMBER_SCOPES,
-  useFieldTypeLabel,
-} from '../../utils/fieldTypes';
+import { FIELD_TYPES, FIELD_TYPE_ICONS, useFieldTypeLabel } from '../../utils/fieldTypes';
 import SettingsWarningBanner from '../SettingsWarningBanner';
 import FieldOptionsEditor, { parseOptionValues, type OptionDraft } from './FieldOptionsEditor';
 
 export interface FieldFormValues {
   name: string;
   fieldType: CustomFieldType;
-  memberScope?: MemberScope;
   showInBody: boolean;
   options: { id?: number; value: string }[];
 }
@@ -56,23 +50,15 @@ export default function SettingsCustomFieldDialog({
   const fieldTypeLabel = useFieldTypeLabel();
   const [name, setName] = useState(initial?.name ?? '');
   const [fieldType, setFieldType] = useState<CustomFieldType>(initial?.fieldType ?? 'text');
-  const [memberScope, setMemberScope] = useState<MemberScope>(initial?.memberScope ?? 'all');
   const [showInBody, setShowInBody] = useState(initial?.showInBody ?? false);
   const [options, setOptions] = useState<OptionDraft[]>(
     () => initial?.options.map((o) => ({ key: `option-${o.id}`, id: o.id, value: o.value })) ?? [],
   );
   const [pendingOptions, setPendingOptions] = useState('');
-  const isMember = fieldType === 'member';
 
   // What the values issues already hold will not survive. Only an existing field has
   // any, so a new one warns about nothing.
   const typeChanged = initial != null && fieldType !== initial.fieldType;
-  const scopeNarrowed =
-    initial != null &&
-    !typeChanged &&
-    isMember &&
-    memberScope !== 'all' &&
-    memberScope !== initial.memberScope;
   const optionsRemoved = (initial?.options ?? []).some((o) => !options.some((d) => d.id === o.id));
 
   // Picking a type presets the placement to its default (body for markdown,
@@ -88,7 +74,6 @@ export default function SettingsCustomFieldDialog({
     onSubmit({
       name: name.trim(),
       fieldType,
-      memberScope: isMember ? memberScope : undefined,
       showInBody,
       options: holdsOptions(fieldType)
         ? [
@@ -164,32 +149,6 @@ export default function SettingsCustomFieldDialog({
               />
               {optionsRemoved && (
                 <SettingsWarningBanner>{t('optionsRemovedWarning')}</SettingsWarningBanner>
-              )}
-            </div>
-          )}
-
-          {isMember && (
-            <div className="space-y-1.5">
-              <Label>{t('memberScope')}</Label>
-              <div role="radiogroup" aria-label={t('memberScope')} className="flex flex-wrap gap-1">
-                {MEMBER_SCOPES.map((scope) => {
-                  const active = scope === memberScope;
-                  return (
-                    <button
-                      key={scope}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setMemberScope(scope)}
-                      className={cn(CHOICE_CLASS, 'h-8 px-2.5', active ? CHOICE_ON : CHOICE_OFF)}
-                    >
-                      {t(`memberScopes.${scope}`)}
-                    </button>
-                  );
-                })}
-              </div>
-              {scopeNarrowed && (
-                <SettingsWarningBanner>{t('memberScopeWarning')}</SettingsWarningBanner>
               )}
             </div>
           )}

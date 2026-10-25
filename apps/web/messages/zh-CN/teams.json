@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "团队中哪些项目可被 AI 客户端通过 MCP 访问。"
+      "description": "团队中哪些项目可被 MCP 客户端访问。"
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "删除团队",
       "hint": "其成员、角色、邀请、技能、工具和集成会一并删除。成员会保留自己的账户和其他团队。",
-      "blocked": "请先删除该团队的项目和 AI 代理。",
+      "blocked": "请先删除该团队的项目。",
       "title": "删除 {name}？",
       "description": "<strong>{name}</strong> 及其成员、角色、邀请、技能、工具和集成将被删除。成员会保留自己的账户和其他团队。此操作无法撤销。",
       "deleted": "团队已删除"
@@ -250,7 +250,7 @@
     "rail": "工作区",
     "create": "新建工作区",
     "createUnavailableTitle": "更多工作区",
-    "createUnavailableHint": "每人拥有多个工作区的功能可在 Cloud 和自托管 Pro 版中使用。",
+    "createUnavailableHint": "此实例不支持创建更多工作区。",
     "general": "常规",
     "roles": {
       "owner": "所有者",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "删除工作区",
       "hint": "其中的团队会一并删除。成员会保留自己的账户和其他团队。",
-      "blocked": "请先删除其团队中的项目和 AI 代理。",
+      "blocked": "请先删除其团队中的项目。",
       "title": "删除 {name}？",
       "description": "<strong>{name}</strong> 及其团队将被删除。成员会保留自己的账户和其他团队。此操作无法撤销。",
       "deleted": "工作区已删除"

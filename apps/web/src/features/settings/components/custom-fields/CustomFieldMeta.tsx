@@ -4,7 +4,7 @@ import type { CustomField } from '@/lib/api/endpoints/customFields';
 import { FIELD_TYPE_ICONS, useFieldTypeLabel } from '../../utils/fieldTypes';
 
 // What a field is, at the end of its row: its type, then what that type lets the field
-// hold — the options of a select, or the people a member field is narrowed to.
+// hold — the options of a select.
 export default function CustomFieldMeta({ field }: { field: CustomField }) {
   const t = useTranslations('settings.customFields');
   const fieldTypeLabel = useFieldTypeLabel();
@@ -13,8 +13,6 @@ export default function CustomFieldMeta({ field }: { field: CustomField }) {
   let holds: string | null = null;
   if (field.options.length > 0) {
     holds = field.options.map((o) => o.value).join(', ');
-  } else if (field.memberScope != null && field.memberScope !== 'all') {
-    holds = t(`memberScopes.${field.memberScope}`);
   }
 
   return (

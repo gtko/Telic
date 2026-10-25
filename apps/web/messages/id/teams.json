@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "Proyek tim yang dapat diakses oleh klien AI."
+      "description": "Proyek tim yang dapat diakses oleh klien MCP."
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "Hapus tim",
       "hint": "Anggota, peran, undangan, keterampilan, alat, dan integrasinya ikut dihapus. Orang-orang tetap memiliki akun dan tim lain mereka.",
-      "blocked": "Hapus dulu proyek dan agen AI milik tim.",
+      "blocked": "Hapus dulu proyek milik tim.",
       "title": "Hapus {name}?",
       "description": "<strong>{name}</strong> dihapus beserta anggota, peran, undangan, keterampilan, alat, dan integrasinya. Orang-orang tetap memiliki akun dan tim lain mereka. Tindakan ini tidak dapat dibatalkan.",
       "deleted": "Tim dihapus"
@@ -250,7 +250,7 @@
     "rail": "Workspace",
     "create": "Workspace baru",
     "createUnavailableTitle": "Lebih banyak workspace",
-    "createUnavailableHint": "Lebih banyak workspace per orang tersedia di Cloud dan Pro self-hosted.",
+    "createUnavailableHint": "Membuat workspace tambahan tidak tersedia di instance ini.",
     "general": "Umum",
     "roles": {
       "owner": "Pemilik",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "Hapus workspace",
       "hint": "Timnya ikut dihapus. Orang-orang tetap memiliki akun dan tim lain mereka.",
-      "blocked": "Hapus dulu proyek dan agen AI di timnya.",
+      "blocked": "Hapus dulu proyek di timnya.",
       "title": "Hapus {name}?",
       "description": "<strong>{name}</strong> dan timnya akan dihapus. Orang-orang tetap memiliki akun dan tim lain mereka. Tindakan ini tidak dapat dibatalkan.",
       "deleted": "Workspace dihapus"

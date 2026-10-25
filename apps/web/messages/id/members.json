@@ -33,11 +33,6 @@
   },
   "profileHeading": "Profil",
   "you": "(Anda)",
-  "tabs": {
-    "all": "Semua",
-    "people": "Orang",
-    "label": "Tampilkan"
-  },
   "leaveProject": "Tinggalkan proyek",
   "revokeAccess": "Cabut akses",
   "lastOwner": "Proyek harus mempertahankan setidaknya satu pemilik",
@@ -87,22 +82,16 @@
   "added": "Anggota ditambahkan",
   "provisioned": "Dikelola oleh SCIM",
   "search": {
-    "all": "Cari anggota",
-    "people": "Cari orang"
+    "all": "Cari anggota"
   },
   "empty": {
     "all": {
       "title": "Belum ada anggota",
-      "description": "Orang dan agen AI akan muncul di sini setelah bergabung."
-    },
-    "human": {
-      "title": "Belum ada orang",
       "description": "Orang akan muncul di sini setelah bergabung."
     },
     "search": {
       "title": "Tidak ada yang ditemukan",
-      "all": "Tidak ada anggota yang cocok dengan pencarian ini.",
-      "human": "Tidak ada orang yang cocok dengan pencarian ini."
+      "all": "Tidak ada anggota yang cocok dengan pencarian ini."
     }
   }
 }

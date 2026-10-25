@@ -54,14 +54,12 @@
     "copyTitle": "Copiar título",
     "copyDescription": "Copiar descripción",
     "copyBranch": "Copiar nombre de rama",
-    "copyPrompt": "Copiar la consigna",
     "restore": "Restaurar",
     "archive": "Archivar",
     "noAssignee": "Sin asignar",
     "noInitiative": "Sin iniciativa",
     "noCycle": "Sin ciclo",
-    "copyFailed": "No se pudo copiar al portapapeles",
-    "promptCopied": "La consigna se ha copiado al portapapeles"
+    "copyFailed": "No se pudo copiar al portapapeles"
   },
   "commands": {
     "preview": "Previsualizar el ticket",
@@ -78,11 +76,9 @@
     "labels": "Alternar etiquetas",
     "labelsPlaceholder": "Alternar una etiqueta…",
     "copyShortLink": "Copiar el enlace corto",
-    "copyPrompt": "Copiar la consigna",
     "restore": "Restaurar el ticket",
     "archive": "Archivar el ticket",
     "delete": "Eliminar el ticket",
-    "promptCopied": "La consigna se ha copiado al portapapeles",
     "shortLinkCopied": "El enlace corto se ha copiado"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Copiar el enlace corto",
     "copyBranch": "Copiar el nombre de la rama",
     "copied": "¡Copiado!",
-    "copyPrompt": "Copiar la consigna",
     "sharedPublicly": "Compartida públicamente",
     "sharePublicly": "Compartir públicamente",
     "restore": "Restaurar el ticket",
@@ -331,7 +326,7 @@
     "fieldUpdated": "ha actualizado <v>{field}</v>",
     "fieldSet": "ha definido <v>{field}</v> a <v>{value}</v>",
     "fieldCleared": "ha vaciado <v>{field}</v>",
-    "archived": "ha archivado el ticket",
+    "archived": "Actividad archivada",
     "restored": "ha restaurado el ticket",
     "pullRequestMerged": "ha integrado el pull request <v>{pr}</v>",
     "pullRequestOpened": "ha abierto el pull request <v>{pr}</v>",

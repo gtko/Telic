@@ -1,5 +1,5 @@
 {
-  "description": "Yerleşik yapay zekâ ajanlarına sahip, kendi sunucunuzda barındırılabilen açık kaynaklı iş takip sistemi. İşleri kişilere veya ajanlara atayın; API, webhook'lar ve MCP ile yönetin.",
+  "description": "Kendi sunucunuzda barındırılabilen açık kaynaklı iş takip sistemi. Projeleri ve iş öğelerini yönetin; API, webhook'lar ve MCP ile ilerletin.",
   "screens": {
     "signIn": "Giriş yap",
     "signUp": "Kayıt ol",

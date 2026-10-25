@@ -9,7 +9,7 @@
   },
   "report": {
     "title": "你的資料發生了什麼變化",
-    "subtitle": "專案現在屬於團隊，團隊共享一份角色、技能、代理和整合認證資訊的清單。",
+    "subtitle": "專案現在屬於團隊，團隊共享一份角色和整合認證資訊的清單。",
     "teamsHeading": "團隊及其專案",
     "renamedRoles": "已重新命名的角色",
     "renamedCredentials": "已重新命名的整合認證資訊",

@@ -9,7 +9,7 @@
   },
   "report": {
     "title": "Verilerinizde neler değişti",
-    "subtitle": "Projeler artık bir takıma bağlıdır; takım genelinde ortak roller, yetenekler, ajanlar ve entegrasyon kimlik bilgileri paylaşılır.",
+    "subtitle": "Projeler artık bir takıma bağlıdır; takım genelinde ortak roller ve entegrasyon kimlik bilgileri paylaşılır.",
     "teamsHeading": "Takımlar ve projeleri",
     "renamedRoles": "Yeniden adlandırılan roller",
     "renamedCredentials": "Etiketi güncellenen entegrasyon bilgileri",

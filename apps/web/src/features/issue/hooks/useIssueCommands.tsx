@@ -5,7 +5,6 @@ import {
   ArchiveRestore,
   CalendarClock,
   CircleDashed,
-  ClipboardCopy,
   PanelRight,
   Share2,
   SquareArrowOutUpRight,
@@ -22,7 +21,6 @@ import { toDateStr } from '@/utils/dates';
 import { useActionsQuery } from '@/services/actions.service';
 import { useIssueQuery, useRestoreIssue, useUpdateIssue } from '@/services/issues.service';
 import { usePermissions } from '@/hooks/usePermissions';
-import { useSession } from '@/lib/auth-client';
 import { useShell } from '@/context/shellContext';
 import { colorDot } from '@/components/common/fields/colorDot';
 import { useFormatter, useTranslations } from 'next-intl';
@@ -38,7 +36,6 @@ import { useArchiveAction } from './useArchiveAction';
 import { StateIcon } from '../components/shared/IssueIcons';
 import { dueDatePresets } from '../utils/dueDatePresets';
 import { useDueDatePresetLabel } from './useDueDatePresetLabel';
-import { buildIssuePrompt } from '../utils/issuePrompt';
 
 // The palette commands for the issue the user is looking at — the issue page or
 // the open detail panel. They are the context menu's actions in command form and
@@ -57,7 +54,6 @@ export function useIssueCommands(
   const priorityLabel = usePriorityLabel();
   const presetLabel = useDueDatePresetLabel();
   const { onOpenIssue } = useShell();
-  const { data: session } = useSession();
   const projectKey = project?.project.ref ?? null;
   const issueQuery = useIssueQuery(issueId);
   const issue = issueQuery.data ?? null;
@@ -99,11 +95,6 @@ export function useIssueCommands(
   const members = project.assignees;
   const actions = matchedActions(actionsQuery.data ?? [], project, issue);
   const currentColumn = project.columns.find((c) => c.id === issue.columnId);
-
-  const copyPrompt = async () => {
-    await navigator.clipboard.writeText(buildIssuePrompt(issue, project, session?.user));
-    toast.success(t('promptCopied'));
-  };
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(`${window.location.origin}/${issue.identifier}`);
@@ -276,22 +267,13 @@ export function useIssueCommands(
     }
   }
 
-  items.push(
-    {
-      id: 'issue.copy-link',
-      label: t('copyShortLink'),
-      icon: <Share2 />,
-      keywords: 'url share',
-      run: () => void copyLink(),
-    },
-    {
-      id: 'issue.copy-prompt',
-      label: t('copyPrompt'),
-      icon: <ClipboardCopy />,
-      keywords: 'ai markdown clipboard',
-      run: () => void copyPrompt(),
-    },
-  );
+  items.push({
+    id: 'issue.copy-link',
+    label: t('copyShortLink'),
+    icon: <Share2 />,
+    keywords: 'url share',
+    run: () => void copyLink(),
+  });
 
   if (canEdit) {
     items.push(

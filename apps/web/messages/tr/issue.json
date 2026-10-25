@@ -54,14 +54,12 @@
     "copyTitle": "Başlığı kopyala",
     "copyDescription": "Açıklamayı kopyala",
     "copyBranch": "Dal (branch) adını kopyala",
-    "copyPrompt": "Prompt'u kopyala",
     "restore": "Geri yükle",
     "archive": "Arşivle",
     "noAssignee": "Sorumlu atanmamış",
     "noInitiative": "Girişim yok",
     "noCycle": "Döngü yok",
-    "copyFailed": "Panoya kopyalanamadı",
-    "promptCopied": "Prompt panoya kopyalandı"
+    "copyFailed": "Panoya kopyalanamadı"
   },
   "commands": {
     "preview": "İşi önizle",
@@ -78,11 +76,9 @@
     "labels": "Etiketleri aç/kapat",
     "labelsPlaceholder": "Bir etiketi aç/kapat…",
     "copyShortLink": "Kısa bağlantıyı kopyala",
-    "copyPrompt": "Prompt'u kopyala",
     "restore": "İşi geri yükle",
     "archive": "İşi arşivle",
     "delete": "İşi sil",
-    "promptCopied": "Prompt panoya kopyalandı",
     "shortLinkCopied": "Kısa bağlantı kopyalandı"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Kısa bağlantıyı kopyala",
     "copyBranch": "Dal adını kopyala",
     "copied": "Kopyalandı!",
-    "copyPrompt": "Prompt'u kopyala",
     "sharedPublicly": "Herkese açık paylaşıldı",
     "sharePublicly": "Herkese açık paylaş",
     "restore": "İşi geri yükle",
@@ -331,7 +326,7 @@
     "fieldUpdated": "<v>{field}</v> alanını güncelledi",
     "fieldSet": "<v>{field}</v> alanını <v>{value}</v> yaptı",
     "fieldCleared": "<v>{field}</v> alanını temizledi",
-    "archived": "işi arşivledi",
+    "archived": "Arşivlenmiş etkinlik",
     "restored": "işi geri yükledi",
     "pullRequestMerged": "<v>{pr}</v> pull request'ini birleştirdi",
     "pullRequestOpened": "<v>{pr}</v> pull request'ini açtı",

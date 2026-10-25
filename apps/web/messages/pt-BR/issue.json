@@ -54,14 +54,12 @@
     "copyTitle": "Copiar título",
     "copyDescription": "Copiar descrição",
     "copyBranch": "Copiar nome da branch",
-    "copyPrompt": "Copiar prompt",
     "restore": "Restaurar",
     "archive": "Arquivar",
     "noAssignee": "Sem responsável",
     "noInitiative": "Sem iniciativa",
     "noCycle": "Sem ciclo",
-    "copyFailed": "Não foi possível copiar",
-    "promptCopied": "Prompt copiado para a área de transferência"
+    "copyFailed": "Não foi possível copiar"
   },
   "commands": {
     "preview": "Visualizar issue",
@@ -78,11 +76,9 @@
     "labels": "Alternar etiquetas",
     "labelsPlaceholder": "Alternar uma etiqueta…",
     "copyShortLink": "Copiar link curto",
-    "copyPrompt": "Copiar prompt",
     "restore": "Restaurar issue",
     "archive": "Arquivar issue",
     "delete": "Excluir issue",
-    "promptCopied": "Prompt copiado para a área de transferência",
     "shortLinkCopied": "Link curto copiado"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Copiar link curto",
     "copyBranch": "Copiar nome da branch",
     "copied": "Copiado!",
-    "copyPrompt": "Copiar prompt",
     "sharedPublicly": "Compartilhado publicamente",
     "sharePublicly": "Compartilhar publicamente",
     "restore": "Restaurar issue",
@@ -331,7 +326,7 @@
     "fieldUpdated": "atualizou <v>{field}</v>",
     "fieldSet": "definiu <v>{field}</v> para <v>{value}</v>",
     "fieldCleared": "limpou <v>{field}</v>",
-    "archived": "arquivou a issue",
+    "archived": "Atividade arquivada",
     "restored": "restaurou a issue",
     "pullRequestMerged": "mesclou o pull request <v>{pr}</v>",
     "pullRequestOpened": "abriu o pull request <v>{pr}</v>",

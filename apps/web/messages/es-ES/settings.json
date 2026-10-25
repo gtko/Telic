@@ -211,11 +211,6 @@
     "options": "Opciones",
     "optionsHint": "Separa varias con comas.",
     "type": "Tipo",
-    "memberScope": "A quién contiene",
-    "memberScopes": {
-      "all": "Cualquiera",
-      "humans": "Solo personas"
-    },
     "mainInfo": "Información principal",
     "mainInfoTooltip": "Se muestra en el cuerpo del ticket, no en Propiedades",
     "mainInfoMeta": "Información principal",
@@ -239,8 +234,7 @@
     "importedWithTypes": "Campos personalizados aplicados: {created} creados, {types} tipos de ticket añadidos.",
     "removeOption": "Quitar la opción {value}",
     "typeChangeWarning": "Cambiar el tipo vacía los valores que los tickets ya tienen en este campo.",
-    "optionsRemovedWarning": "Una opción quitada se vacía de los tickets que la tienen.",
-    "memberScopeWarning": "Los miembros que el nuevo ámbito no permite se vacían de este campo."
+    "optionsRemovedWarning": "Una opción quitada se vacía de los tickets que la tienen."
   },
   "actions": {
     "new": "Nueva acción",

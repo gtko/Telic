@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "Cuáles de los proyectos del equipo pueden alcanzar los clientes de IA."
+      "description": "Cuáles de los proyectos del equipo pueden alcanzar los clientes MCP."
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "Eliminar equipo",
       "hint": "Se eliminan con él sus miembros, roles, invitaciones, habilidades, herramientas e integraciones. Las personas conservan sus cuentas y sus otros equipos.",
-      "blocked": "Elimina primero los proyectos y los agentes de IA del equipo.",
+      "blocked": "Elimina primero los proyectos del equipo.",
       "title": "¿Eliminar {name}?",
       "description": "<strong>{name}</strong> se elimina junto con sus miembros, roles, invitaciones, habilidades, herramientas e integraciones. Las personas conservan sus cuentas y sus otros equipos. No se puede deshacer.",
       "deleted": "Equipo eliminado"
@@ -250,7 +250,7 @@
     "rail": "Espacios de trabajo",
     "create": "Nuevo espacio de trabajo",
     "createUnavailableTitle": "Más espacios de trabajo",
-    "createUnavailableHint": "Más espacios de trabajo por persona están disponibles en Cloud y en Pro autoalojado.",
+    "createUnavailableHint": "Crear más espacios de trabajo no está disponible en esta instancia.",
     "general": "General",
     "roles": {
       "owner": "Propietario",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "Eliminar espacio de trabajo",
       "hint": "Sus equipos se eliminan con él. Las personas conservan sus cuentas y sus otros equipos.",
-      "blocked": "Elimina primero los proyectos y los agentes de IA de sus equipos.",
+      "blocked": "Elimina primero los proyectos de sus equipos.",
       "title": "¿Eliminar {name}?",
       "description": "<strong>{name}</strong> y sus equipos se eliminan. Las personas conservan sus cuentas y sus otros equipos. No se puede deshacer.",
       "deleted": "Espacio de trabajo eliminado"

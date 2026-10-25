@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "通用",
-      "description": "个人工作区、新建项目的默认设置，以及代理追踪和运行时长。"
+      "description": "个人工作区和新建项目的默认设置。"
     },
     "authentication": {
       "label": "身份验证",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "可在 Cloud 和自托管 Pro 版中使用。",
+    "available": "可在此实例中使用。",
     "dashboard": {
       "title": "仪表盘",
       "description": "此工作区中各团队和项目的动态。",

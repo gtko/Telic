@@ -9,7 +9,7 @@
   },
   "report": {
     "title": "What changed in your data",
-    "subtitle": "Projects belong to a team now, and a team shares one list of roles, skills, agents and integration credentials.",
+    "subtitle": "Projects belong to a team now, and a team shares one list of roles and integration credentials.",
     "teamsHeading": "Teams and their projects",
     "renamedRoles": "Renamed roles",
     "renamedCredentials": "Relabelled integration credentials",

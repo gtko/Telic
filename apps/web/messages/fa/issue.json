@@ -54,14 +54,12 @@
     "copyTitle": "کپی عنوان",
     "copyDescription": "کپی توضیحات",
     "copyBranch": "کپی نام شاخه",
-    "copyPrompt": "کپی پرامپت",
     "restore": "بازگردانی",
     "archive": "بایگانی",
     "noAssignee": "بدون مسئول",
     "noInitiative": "بدون ابتکار",
     "noCycle": "بدون سیکل",
-    "copyFailed": "کپی در کلیپ‌بورد ممکن نشد",
-    "promptCopied": "پرامپت در کلیپ‌بورد کپی شد"
+    "copyFailed": "کپی در کلیپ‌بورد ممکن نشد"
   },
   "commands": {
     "preview": "پیش‌نمایش تسک",
@@ -78,11 +76,9 @@
     "labels": "تغییر برچسب‌ها",
     "labelsPlaceholder": "تغییر یک برچسب…",
     "copyShortLink": "کپی لینک کوتاه",
-    "copyPrompt": "کپی پرامپت",
     "restore": "بازگردانی تسک",
     "archive": "بایگانی تسک",
     "delete": "حذف تسک",
-    "promptCopied": "پرامپت در کلیپ‌بورد کپی شد",
     "shortLinkCopied": "لینک کوتاه کپی شد"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "کپی لینک کوتاه",
     "copyBranch": "کپی نام شاخه",
     "copied": "کپی شد!",
-    "copyPrompt": "کپی پرامپت",
     "sharedPublicly": "به‌صورت عمومی به اشتراک گذاشته شد",
     "sharePublicly": "اشتراک‌گذاری عمومی",
     "restore": "بازگردانی تسک",
@@ -331,7 +326,7 @@
     "fieldUpdated": "<v>{field}</v> را به‌روزرسانی کرد",
     "fieldSet": "<v>{field}</v> را روی <v>{value}</v> تنظیم کرد",
     "fieldCleared": "<v>{field}</v> را پاک کرد",
-    "archived": "تسک را بایگانی کرد",
+    "archived": "فعالیت بایگانی‌شده",
     "restored": "تسک را بازیابی کرد",
     "pullRequestMerged": "درخواست ادغام <v>{pr}</v> را ادغام کرد",
     "pullRequestOpened": "درخواست ادغام <v>{pr}</v> را باز کرد",

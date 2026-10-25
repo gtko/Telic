@@ -1,5 +1,5 @@
 {
-  "description": "自托管的开源项目管理和工作项跟踪工具，内置 AI 代理。你可以将工作指派给人员或代理，也可以通过 API、Webhook 和 MCP 进行管理。",
+  "description": "自托管的开源项目管理和工作项跟踪工具，可通过 API、Webhook 和 MCP 使用。",
   "screens": {
     "signIn": "登录",
     "signUp": "注册",

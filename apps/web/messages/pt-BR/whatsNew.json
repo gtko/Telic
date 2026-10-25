@@ -9,7 +9,7 @@
   },
   "report": {
     "title": "O que mudou nos seus dados",
-    "subtitle": "Projetos agora pertencem a um time, e um time compartilha uma lista de funções, habilidades, agentes e credenciais de integração.",
+    "subtitle": "Projetos agora pertencem a um time, e um time compartilha uma lista de funções e credenciais de integração.",
     "teamsHeading": "Times e seus projetos",
     "renamedRoles": "Funções renomeadas",
     "renamedCredentials": "Credenciais de integração reetiquetadas",

@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "Umum",
-      "description": "Workspace pribadi, pengaturan bawaan untuk proyek baru, serta trace dan waktu jalan agen."
+      "description": "Workspace pribadi dan pengaturan bawaan untuk proyek baru."
     },
     "authentication": {
       "label": "Autentikasi",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "Tersedia di Cloud dan Pro self-hosted.",
+    "available": "Tersedia di instance ini.",
     "dashboard": {
       "title": "Dasbor",
       "description": "Aktivitas tim dan proyek di workspace ini.",

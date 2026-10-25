@@ -54,7 +54,7 @@
     "unstarProject": "Unstar {name}",
     "showProject": "Show {name} in my projects",
     "allHiddenTitle": "All projects are hidden",
-    "allHiddenDescription": "Hidden projects are excluded from your project navigation. Your access, teammates, and agents are unaffected. Show a project to open it again.",
+    "allHiddenDescription": "Les projets masqués sont exclus de votre navigation entre projets. Votre accès et vos coéquipiers ne sont pas affectés. Affichez un projet pour l'ouvrir de nouveau.",
     "workspaces": "Espaces de travail",
     "workspaceSettings": "Paramètres de l'espace de travail",
     "recent": "Récents",

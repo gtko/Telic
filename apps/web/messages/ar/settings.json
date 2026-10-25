@@ -211,11 +211,6 @@
     "options": "الخيارات",
     "optionsHint": "افصل بينهم بفاصلة.",
     "type": "النوع",
-    "memberScope": "مين ممكن يتحدد فيه",
-    "memberScopes": {
-      "all": "أي حد",
-      "humans": "الناس بس"
-    },
     "mainInfo": "المعلومات الرئيسية",
     "mainInfoTooltip": "يظهر في متن المهمة، لا في الخصائص",
     "mainInfoMeta": "معلومات رئيسية",
@@ -239,8 +234,7 @@
     "importedWithTypes": "طُبّقت الحقول المخصصة: {created} مُنشأة، و{types} نوع مهمة مُضاف.",
     "removeOption": "امسح الخيار {value}",
     "typeChangeWarning": "تغيير النوع هيمسح القيم اللي موجودة في الحقل ده.",
-    "optionsRemovedWarning": "الخيار اللي هيتشال هيتمسح من المهام اللي مختاراه.",
-    "memberScopeWarning": "الأعضاء اللي النطاق الجديد مش بيسمح بيهم هيتمسحوا."
+    "optionsRemovedWarning": "الخيار اللي هيتشال هيتمسح من المهام اللي مختاراه."
   },
   "actions": {
     "new": "إجراء جديد",

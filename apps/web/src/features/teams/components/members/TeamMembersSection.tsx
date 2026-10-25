@@ -5,7 +5,6 @@ import { Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import type { InviteRow } from '@/lib/api/endpoints/invites';
-import type { MemberKind } from '@/lib/api/endpoints/members';
 import type { TeamMember } from '@/lib/api/endpoints/teams';
 import {
   useDeleteTeamInvite,
@@ -27,7 +26,6 @@ import ListSkeleton from '@/components/common/skeleton/ListSkeleton';
 import MembersEmptyState from '@/components/common/page/MembersEmptyState';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TeamInviteDialog from './TeamInviteDialog';
 import TeamInvitesList from './TeamInvitesList';
 import { mayRenewInvite } from '@/utils/invites';
@@ -42,10 +40,9 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
   const tInvite = useTranslations('teams.invite');
   const tCommon = useTranslations('common');
   const team = useTeam(teamId);
-  const [kind, setKind] = useState<MemberKind>('all');
   const { search, setSearch, term } = useSearchTerm();
   const paging = usePaging();
-  const membersQuery = useTeamMembersQuery(teamId, { search: term, kind, ...paging.params });
+  const membersQuery = useTeamMembersQuery(teamId, { search: term, ...paging.params });
   const canInvite = team != null && team.role !== 'member';
   const invitesQuery = useTeamInvitesQuery(teamId, canInvite);
   const deleteInvite = useDeleteTeamInvite(teamId);
@@ -59,28 +56,17 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
 
   const members = membersQuery.data?.items ?? [];
   const total = membersQuery.data?.total ?? 0;
-  // The invites are not part of the paged member list, so tabs and pages leave them be;
+  // The invites are not part of the paged member list, so pages leave them be;
   // a search narrows them by address like it narrows the members.
   const needle = term?.toLowerCase();
   const pending = (invitesQuery.data ?? []).filter(
     (invite) => invite.status === 'pending' && (!needle || invite.email.includes(needle)),
   );
 
-  function onKindChange(next: string) {
-    setKind(next as MemberKind);
-    paging.reset();
-  }
-
   function onSearchChange(next: string) {
     setSearch(next);
     paging.reset();
   }
-
-  // The placeholder names what the open tab holds, so the search says what it covers.
-  const searchPlaceholder = {
-    all: tMembers('search.all'),
-    human: tMembers('search.people'),
-  }[kind];
 
   return (
     <SectionPageView
@@ -111,25 +97,17 @@ export default function TeamMembersSection({ teamId }: { teamId: number }) {
           />
         )}
 
-        <Tabs value={kind} onValueChange={onKindChange}>
-          <div className="flex items-center justify-between gap-3">
-            <TabsList variant="line" className="w-auto border-b-0">
-              <TabsTrigger value="all">{tMembers('tabs.all')}</TabsTrigger>
-              <TabsTrigger value="human">{tMembers('tabs.people')}</TabsTrigger>
-            </TabsList>
-            <SearchInput
-              value={search}
-              onChange={onSearchChange}
-              placeholder={searchPlaceholder}
-              className="w-60 shrink-0"
-            />
-          </div>
-        </Tabs>
+        <SearchInput
+          value={search}
+          onChange={onSearchChange}
+          placeholder={tMembers('search.all')}
+          className="w-60 shrink-0 self-end"
+        />
 
         {membersQuery.isPending ? (
           <ListSkeleton rows={4} rowClassName="h-12" />
         ) : members.length === 0 ? (
-          <MembersEmptyState kind={kind} searching={term !== undefined} />
+          <MembersEmptyState searching={term !== undefined} />
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-[720px] table-fixed">

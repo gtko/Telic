@@ -9,7 +9,7 @@
   },
   "report": {
     "title": "你的数据发生了什么变化",
-    "subtitle": "项目现在属于团队，团队共享一份角色、技能、智能体和集成凭据的列表。",
+    "subtitle": "项目现在属于团队，团队共享一份角色和集成凭据的列表。",
     "teamsHeading": "团队及其项目",
     "renamedRoles": "已重命名的角色",
     "renamedCredentials": "已重命名的集成凭据",

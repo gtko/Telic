@@ -54,14 +54,12 @@
     "copyTitle": "Salin judul",
     "copyDescription": "Salin deskripsi",
     "copyBranch": "Salin nama branch",
-    "copyPrompt": "Salin prompt",
     "restore": "Pulihkan",
     "archive": "Arsipkan",
     "noAssignee": "Tanpa penerima tugas",
     "noInitiative": "Tanpa inisiatif",
     "noCycle": "Tanpa cycle",
-    "copyFailed": "Gagal menyalin ke papan klip",
-    "promptCopied": "Prompt disalin ke papan klip"
+    "copyFailed": "Gagal menyalin ke papan klip"
   },
   "commands": {
     "preview": "Pratinjau issue",
@@ -78,11 +76,9 @@
     "labels": "Ubah label",
     "labelsPlaceholder": "Pilih label…",
     "copyShortLink": "Salin tautan singkat",
-    "copyPrompt": "Salin prompt",
     "restore": "Pulihkan issue",
     "archive": "Arsipkan issue",
     "delete": "Hapus issue",
-    "promptCopied": "Prompt disalin ke papan klip",
     "shortLinkCopied": "Tautan singkat disalin"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Salin tautan singkat",
     "copyBranch": "Salin nama branch",
     "copied": "Disalin!",
-    "copyPrompt": "Salin prompt",
     "sharedPublicly": "Dibagikan secara publik",
     "sharePublicly": "Bagikan secara publik",
     "restore": "Pulihkan issue",
@@ -331,7 +326,7 @@
     "fieldUpdated": "memperbarui <v>{field}</v>",
     "fieldSet": "mengatur <v>{field}</v> ke <v>{value}</v>",
     "fieldCleared": "mengosongkan <v>{field}</v>",
-    "archived": "mengarsipkan issue",
+    "archived": "Aktivitas diarsipkan",
     "restored": "memulihkan issue",
     "pullRequestMerged": "menggabungkan pull request <v>{pr}</v>",
     "pullRequestOpened": "membuka pull request <v>{pr}</v>",

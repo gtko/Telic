@@ -33,11 +33,6 @@
   },
   "profileHeading": "Profil",
   "you": "(siz)",
-  "tabs": {
-    "all": "Tümü",
-    "people": "Kişiler",
-    "label": "Göster"
-  },
   "leaveProject": "Projeden ayrıl",
   "revokeAccess": "Erişimi kaldır",
   "lastOwner": "Bir projede en az bir sahip bulunmalıdır",
@@ -87,22 +82,16 @@
   "added": "Üye eklendi",
   "provisioned": "SCIM tarafından yönetiliyor",
   "search": {
-    "all": "Üyeleri ara",
-    "people": "Kişileri ara"
+    "all": "Üyeleri ara"
   },
   "empty": {
     "all": {
       "title": "Henüz üye yok",
-      "description": "Kişiler ve yapay zekâ ajanları katıldıkça burada listelenir."
-    },
-    "human": {
-      "title": "Henüz kişi yok",
       "description": "Kişiler katıldıkça burada listelenir."
     },
     "search": {
       "title": "Sonuç bulunamadı",
-      "all": "Bu aramayla eşleşen üye bulunamadı.",
-      "human": "Bu aramayla eşleşen kişi bulunamadı."
+      "all": "Bu aramayla eşleşen üye bulunamadı."
     }
   }
 }

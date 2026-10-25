@@ -3,7 +3,7 @@
   "projectUnavailable": "Este projeto não está disponível.",
   "noProjects": "Nenhum projeto ainda. Crie um para começar.",
   "noTeamsTitle": "Ainda não há equipe",
-  "noTeamsHint": "Crie sua equipe. Nela ficarão os projetos, os membros e os agentes.",
+  "noTeamsHint": "Crie sua equipe. Nela ficarão os projetos e os membros.",
   "noTeamsMemberHint": "Peça ao proprietário do workspace para adicionar você a uma equipe.",
   "noProjectAccessHint": "Peça ao proprietário ou a um gerente da equipe para adicionar você a um projeto.",
   "noProjectAccessOwnerHint": "Peça ao proprietário ou a um gerente da equipe para adicionar você a um projeto, ou crie seu próprio time.",

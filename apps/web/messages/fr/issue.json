@@ -54,14 +54,12 @@
     "copyTitle": "Copier le titre",
     "copyDescription": "Copier la description",
     "copyBranch": "Copier le nom de branche",
-    "copyPrompt": "Copier le prompt",
     "restore": "Restaurer",
     "archive": "Archiver",
     "noAssignee": "Aucun responsable",
     "noInitiative": "Aucune initiative",
     "noCycle": "Aucun cycle",
-    "copyFailed": "Impossible de copier dans le presse-papiers",
-    "promptCopied": "Prompt copié dans le presse-papiers"
+    "copyFailed": "Impossible de copier dans le presse-papiers"
   },
   "commands": {
     "preview": "Aperçu du ticket",
@@ -78,11 +76,9 @@
     "labels": "Basculer les étiquettes",
     "labelsPlaceholder": "Basculer une étiquette…",
     "copyShortLink": "Copier le lien court",
-    "copyPrompt": "Copier le prompt",
     "restore": "Restaurer le ticket",
     "archive": "Archiver le ticket",
     "delete": "Supprimer le ticket",
-    "promptCopied": "Prompt copié dans le presse-papiers",
     "shortLinkCopied": "Lien court copié"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Copier le lien court",
     "copyBranch": "Copier le nom de branche",
     "copied": "Copié !",
-    "copyPrompt": "Copier le prompt",
     "sharedPublicly": "Partagé publiquement",
     "sharePublicly": "Partager publiquement",
     "restore": "Restaurer le ticket",
@@ -331,7 +326,7 @@
     "fieldUpdated": "a mis à jour <v>{field}</v>",
     "fieldSet": "a défini <v>{field}</v> sur <v>{value}</v>",
     "fieldCleared": "a effacé <v>{field}</v>",
-    "archived": "a archivé le ticket",
+    "archived": "Activité archivée",
     "restored": "a restauré le ticket",
     "pullRequestMerged": "a fusionné la pull request <v>{pr}</v>",
     "pullRequestOpened": "a ouvert la pull request <v>{pr}</v>",

@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "Les projets de l'équipe que les clients IA peuvent atteindre."
+      "description": "Les projets de l'équipe que les clients MCP peuvent atteindre."
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "Supprimer l'équipe",
       "hint": "Ses membres, rôles, invitations, compétences, outils et intégrations sont supprimés avec elle. Les personnes conservent leur compte et leurs autres équipes.",
-      "blocked": "Supprimez d'abord les projets et les agents IA de l'équipe.",
+      "blocked": "Supprimez d'abord les projets de l'équipe.",
       "title": "Supprimer {name} ?",
       "description": "<strong>{name}</strong> est supprimée avec ses membres, rôles, invitations, compétences, outils et intégrations. Les personnes conservent leur compte et leurs autres équipes. Cette action est irréversible.",
       "deleted": "Équipe supprimée"
@@ -250,7 +250,7 @@
     "rail": "Espaces de travail",
     "create": "Nouvel espace de travail",
     "createUnavailableTitle": "Plus d'espaces de travail",
-    "createUnavailableHint": "Plusieurs espaces de travail par personne sont disponibles dans Cloud et dans Pro auto-hébergé.",
+    "createUnavailableHint": "La création d'autres espaces de travail n'est pas disponible sur cette instance.",
     "general": "Général",
     "roles": {
       "owner": "Propriétaire",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "Supprimer l'espace de travail",
       "hint": "Ses équipes sont supprimées avec lui. Les personnes gardent leur compte et leurs autres équipes.",
-      "blocked": "Supprimez d'abord les projets et les agents IA de ses équipes.",
+      "blocked": "Supprimez d'abord les projets de ses équipes.",
       "title": "Supprimer {name} ?",
       "description": "<strong>{name}</strong> et ses équipes sont supprimés. Les personnes gardent leur compte et leurs autres équipes. Cette action est irréversible.",
       "deleted": "Espace de travail supprimé"

@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "Genel",
-      "description": "Kişisel çalışma alanları, yeni projeler için varsayılanlar, ajan izleme kayıtları ve çalışma süresi."
+      "description": "Kişisel çalışma alanları ve yeni projeler için varsayılanlar."
     },
     "authentication": {
       "label": "Kimlik Doğrulama",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "Cloud ve kendi sunucunuzda barındırılan Pro sürümünde mevcuttur.",
+    "available": "Bu kurulumda mevcuttur.",
     "dashboard": {
       "title": "Pano",
       "description": "Bu çalışma alanının takımları ve projeleri genelindeki etkinlikler.",

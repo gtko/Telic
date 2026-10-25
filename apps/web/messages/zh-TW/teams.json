@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "團隊中哪些專案可被 AI 用戶端透過 MCP 存取。"
+      "description": "團隊中哪些專案可被 MCP 用戶端存取。"
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "刪除團隊",
       "hint": "其成員、角色、邀請、技能、工具和整合會一併刪除。成員會保留自己的帳號和其他團隊。",
-      "blocked": "請先刪除該團隊的專案和 AI 代理。",
+      "blocked": "請先刪除該團隊的專案。",
       "title": "刪除 {name}？",
       "description": "<strong>{name}</strong> 及其成員、角色、邀請、技能、工具和整合將被刪除。成員會保留自己的帳號和其他團隊。此操作無法復原。",
       "deleted": "團隊已刪除"
@@ -250,7 +250,7 @@
     "rail": "工作區",
     "create": "新建工作區",
     "createUnavailableTitle": "更多工作區",
-    "createUnavailableHint": "每人擁有多個工作區的功能可在 Cloud 和自託管 Pro 版中使用。",
+    "createUnavailableHint": "此實例不支援建立更多工作區。",
     "general": "一般",
     "roles": {
       "owner": "所有者",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "刪除工作區",
       "hint": "其中的團隊會一併刪除。成員會保留自己的帳號和其他團隊。",
-      "blocked": "請先刪除其團隊中的專案和 AI 代理。",
+      "blocked": "請先刪除其團隊中的專案。",
       "title": "刪除 {name}？",
       "description": "<strong>{name}</strong> 及其團隊將被刪除。成員會保留自己的帳號和其他團隊。此操作無法復原。",
       "deleted": "工作區已刪除"

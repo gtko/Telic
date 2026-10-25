@@ -54,7 +54,7 @@
     "unstarProject": "Quitar {name} de destacados",
     "showProject": "Mostrar {name} en mis proyectos",
     "allHiddenTitle": "Todos los proyectos están ocultos",
-    "allHiddenDescription": "Los proyectos ocultos no aparecen en tu navegación de proyectos. Tu acceso, tus compañeros y los agentes no se ven afectados. Muestra un proyecto para volver a abrirlo.",
+    "allHiddenDescription": "Los proyectos ocultos no aparecen en tu navegación de proyectos. Tu acceso y tus compañeros no se ven afectados. Muestra un proyecto para volver a abrirlo.",
     "workspaces": "Espacios de trabajo",
     "workspaceSettings": "Ajustes del espacio de trabajo",
     "recent": "Recientes",

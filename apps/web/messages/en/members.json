@@ -33,11 +33,6 @@
   },
   "profileHeading": "Profile",
   "you": "(you)",
-  "tabs": {
-    "all": "All",
-    "people": "People",
-    "label": "Show"
-  },
   "leaveProject": "Leave project",
   "revokeAccess": "Revoke access",
   "lastOwner": "A project must keep at least one owner",
@@ -87,22 +82,16 @@
   "added": "Member added",
   "provisioned": "Managed by SCIM",
   "search": {
-    "all": "Search members",
-    "people": "Search people"
+    "all": "Search members"
   },
   "empty": {
     "all": {
       "title": "No members yet",
-      "description": "People and AI agents appear here once they join."
-    },
-    "human": {
-      "title": "No people yet",
       "description": "People appear here once they join."
     },
     "search": {
       "title": "Nothing found",
-      "all": "No member matches this search.",
-      "human": "No person matches this search."
+      "all": "No member matches this search."
     }
   }
 }

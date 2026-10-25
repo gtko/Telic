@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "사이드바 표시 또는 숨기기"
       },
-      "chat": {
-        "toggle": "AI 채팅 표시 또는 숨기기"
-      },
       "issue": {
         "new": "새 이슈"
       },

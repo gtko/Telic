@@ -211,11 +211,6 @@
     "options": "选项",
     "optionsHint": "多个用逗号分隔。",
     "type": "类型",
-    "memberScope": "可选择的对象",
-    "memberScopes": {
-      "all": "任何人",
-      "humans": "仅成员"
-    },
     "mainInfo": "主要信息",
     "mainInfoTooltip": "显示在工作项正文中，而不是“属性”区域",
     "mainInfoMeta": "主要信息",
@@ -239,8 +234,7 @@
     "importedWithTypes": "已应用自定义字段：新建 {created} 个，添加 {types} 个工作项类型。",
     "removeOption": "删除选项 {value}",
     "typeChangeWarning": "更改类型会清除该字段中已有的值。",
-    "optionsRemovedWarning": "删除的选项会从选中它的任务中清除。",
-    "memberScopeWarning": "新范围不允许的成员会被清除。"
+    "optionsRemovedWarning": "删除的选项会从选中它的任务中清除。"
   },
   "actions": {
     "new": "新建操作",

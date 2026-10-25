@@ -302,9 +302,7 @@ export const updateInstanceOidcSettings = (patch: InstanceOidcSettingsPatch) =>
 // The instance user directory: one page of accounts, and one account with the
 // projects it can reach. Search and paging all run on the server.
 export const listInstanceUsers = (params: PageParams & { search?: string }) =>
-  request<Page<InstanceUser>>(
-    `/god/users${pageQuery(params, { kind: 'human', search: params.search })}`,
-  );
+  request<Page<InstanceUser>>(`/god/users${pageQuery(params, { search: params.search })}`);
 
 export const getInstanceUser = (userId: string) =>
   request<InstanceUserDetail>(`/god/users/${userId}`);

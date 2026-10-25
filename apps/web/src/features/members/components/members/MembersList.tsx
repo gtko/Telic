@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import type { MemberKind, MemberRow as Member } from '@/lib/api/endpoints/members';
+import type { MemberRow as Member } from '@/lib/api/endpoints/members';
 import ConfirmDialog from '@/components/common/overlay/ConfirmDialog';
 import ListSkeleton from '@/components/common/skeleton/ListSkeleton';
 import MembersEmptyState from '@/components/common/page/MembersEmptyState';
 import SearchInput from '@/components/common/SearchInput';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMembersQuery, useRemoveMember } from '@/services/members.service';
 import { useTeamRoleOptionsQuery } from '@/services/roles.service';
 import { useSearchTerm } from '@/hooks/useSearchTerm';
@@ -31,7 +30,6 @@ export default function MembersList({
   teamId: number;
 }) {
   const t = useTranslations('members');
-  const [kind, setKind] = useState<MemberKind>('all');
   const { search, setSearch, term } = useSearchTerm();
   const paging = usePaging();
   const { can, isAdmin } = usePermissions();
@@ -45,28 +43,17 @@ export default function MembersList({
   const router = useRouter();
   const [target, setTarget] = useState<Member | null>(null);
 
-  const membersQuery = useMembersQuery(projectKey, { search: term, kind, ...paging.params });
+  const membersQuery = useMembersQuery(projectKey, { search: term, ...paging.params });
 
   const members = membersQuery.data?.items ?? [];
   const roles = rolesQuery.data ?? [];
   const total = membersQuery.data?.total ?? 0;
   const ownerCount = membersQuery.data?.ownerCount ?? 0;
 
-  function onKindChange(next: string) {
-    setKind(next as MemberKind);
-    paging.reset();
-  }
-
   function onSearchChange(next: string) {
     setSearch(next);
     paging.reset();
   }
-
-  // The placeholder names what the open tab holds, so the search says what it covers.
-  const searchPlaceholder = {
-    all: t('search.all'),
-    human: t('search.people'),
-  }[kind];
 
   if (membersQuery.isPending) return <ListSkeleton className="mb-8" rowClassName="h-14" />;
 
@@ -87,23 +74,15 @@ export default function MembersList({
 
   return (
     <div className="mb-8 flex min-h-0 flex-1 flex-col gap-4">
-      <Tabs value={kind} onValueChange={onKindChange}>
-        <div className="flex items-center justify-between gap-3">
-          <TabsList variant="line" className="w-auto border-b-0">
-            <TabsTrigger value="all">{t('tabs.all')}</TabsTrigger>
-            <TabsTrigger value="human">{t('tabs.people')}</TabsTrigger>
-          </TabsList>
-          <SearchInput
-            value={search}
-            onChange={onSearchChange}
-            placeholder={searchPlaceholder}
-            className="w-60 shrink-0"
-          />
-        </div>
-      </Tabs>
+      <SearchInput
+        value={search}
+        onChange={onSearchChange}
+        placeholder={t('search.all')}
+        className="w-60 shrink-0 self-end"
+      />
 
       {members.length === 0 ? (
-        <MembersEmptyState kind={kind} searching={term !== undefined} />
+        <MembersEmptyState searching={term !== undefined} />
       ) : (
         <Table className="min-w-[720px] table-fixed">
           <colgroup>

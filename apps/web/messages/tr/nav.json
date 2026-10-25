@@ -54,7 +54,7 @@
     "unstarProject": "{name} projesinden yıldızı kaldır",
     "showProject": "{name} projesini projelerimde göster",
     "allHiddenTitle": "Tüm projeler gizlendi",
-    "allHiddenDescription": "Gizli projeler proje gezintinizden kaldırılır. Erişim haklarınız, takım arkadaşlarınız ve ajanlarınız bundan etkilenmez. Tekrar açmak için projeyi görünür yapın.",
+    "allHiddenDescription": "Gizli projeler proje gezintinizden kaldırılır. Erişim haklarınız ve takım arkadaşlarınız bundan etkilenmez. Tekrar açmak için projeyi görünür yapın.",
     "workspaces": "Çalışma Alanları",
     "workspaceSettings": "Çalışma alanı ayarları",
     "recent": "Son Kullanılanlar",

@@ -1,6 +1,6 @@
 {
   "title": "Serveur MCP",
-  "description": "Connectez des agents IA à ce projet via le Model Context Protocol. Un agent hérite des droits de la clé d'API qu'il utilise.",
+  "description": "Connectez des clients MCP à ce projet via le Model Context Protocol. Un client hérite des droits de la clé d'API qu'il utilise.",
   "disabled": "Désactivé",
   "offForTeam": "MCP est désactivé pour l'équipe {team}.",
   "offForProject": "L'équipe {team} a activé MCP, mais ce projet est désactivé.",

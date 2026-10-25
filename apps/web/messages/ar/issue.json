@@ -54,14 +54,12 @@
     "copyTitle": "نسخ العنوان",
     "copyDescription": "نسخ الوصف",
     "copyBranch": "نسخ اسم الفرع",
-    "copyPrompt": "نسخ التوجيه",
     "restore": "استعادة",
     "archive": "أرشفة",
     "noAssignee": "بلا مسؤول",
     "noInitiative": "بلا مبادرة",
     "noCycle": "بلا دورة",
-    "copyFailed": "تعذّر النسخ إلى الحافظة",
-    "promptCopied": "تم نسخ التوجيه إلى الحافظة"
+    "copyFailed": "تعذّر النسخ إلى الحافظة"
   },
   "commands": {
     "preview": "معاينة المهمة",
@@ -78,11 +76,9 @@
     "labels": "تبديل الوسوم",
     "labelsPlaceholder": "تبديل وسم…",
     "copyShortLink": "نسخ الرابط المختصر",
-    "copyPrompt": "نسخ التوجيه",
     "restore": "استعادة المهمة",
     "archive": "أرشفة المهمة",
     "delete": "حذف المهمة",
-    "promptCopied": "تم نسخ التوجيه إلى الحافظة",
     "shortLinkCopied": "تم نسخ الرابط المختصر"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "نسخ الرابط المختصر",
     "copyBranch": "نسخ اسم الفرع",
     "copied": "تم النسخ!",
-    "copyPrompt": "نسخ التوجيه",
     "sharedPublicly": "مُشارَكة علنًا",
     "sharePublicly": "مشاركة علنًا",
     "restore": "استعادة المهمة",
@@ -331,7 +326,7 @@
     "fieldUpdated": "حدّث <v>{field}</v>",
     "fieldSet": "عيّن <v>{field}</v> إلى <v>{value}</v>",
     "fieldCleared": "مسح <v>{field}</v>",
-    "archived": "أرشف المهمة",
+    "archived": "نشاط مؤرشف",
     "restored": "استعاد المهمة",
     "pullRequestMerged": "دمج طلب السحب <v>{pr}</v>",
     "pullRequestOpened": "فتح طلب السحب <v>{pr}</v>",

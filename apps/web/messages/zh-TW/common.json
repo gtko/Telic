@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "顯示或隱藏側邊欄"
       },
-      "chat": {
-        "toggle": "顯示或隱藏 AI 聊天"
-      },
       "issue": {
         "new": "新建工作項目"
       },

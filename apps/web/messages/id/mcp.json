@@ -1,6 +1,6 @@
 {
   "title": "Server MCP",
-  "description": "Hubungkan agen AI ke proyek ini melalui Model Context Protocol. Agen memiliki izin sesuai kunci API yang digunakannya.",
+  "description": "Hubungkan klien MCP ke proyek ini melalui Model Context Protocol. Klien memiliki izin sesuai kunci API yang digunakannya.",
   "disabled": "Dinonaktifkan",
   "offForTeam": "MCP nonaktif untuk tim {team}.",
   "offForProject": "Tim {team} mengaktifkan MCP, tetapi proyek ini dinonaktifkan.",

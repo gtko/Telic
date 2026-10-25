@@ -54,14 +54,12 @@
     "copyTitle": "Скопировать название",
     "copyDescription": "Скопировать описание",
     "copyBranch": "Скопировать имя ветки",
-    "copyPrompt": "Скопировать промпт",
     "restore": "Восстановить",
     "archive": "Архивировать",
     "noAssignee": "Без исполнителя",
     "noInitiative": "Без инициативы",
     "noCycle": "Без цикла",
-    "copyFailed": "Не удалось скопировать",
-    "promptCopied": "Промпт скопирован"
+    "copyFailed": "Не удалось скопировать"
   },
   "commands": {
     "preview": "Посмотреть задачу",
@@ -78,11 +76,9 @@
     "labels": "Переключить метки",
     "labelsPlaceholder": "Переключить метку…",
     "copyShortLink": "Скопировать короткую ссылку",
-    "copyPrompt": "Скопировать промпт",
     "restore": "Восстановить задачу",
     "archive": "Архивировать задачу",
     "delete": "Удалить задачу",
-    "promptCopied": "Промпт скопирован",
     "shortLinkCopied": "Короткая ссылка скопирована"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Скопировать короткую ссылку",
     "copyBranch": "Скопировать название ветки",
     "copied": "Скопировано!",
-    "copyPrompt": "Скопировать промпт",
     "sharedPublicly": "В общем доступе",
     "sharePublicly": "Открыть доступ",
     "restore": "Восстановить задачу",
@@ -331,7 +326,7 @@
     "fieldUpdated": "обновил(а) <v>{field}</v>",
     "fieldSet": "установил(а) <v>{field}</v> в <v>{value}</v>",
     "fieldCleared": "очистил(а) <v>{field}</v>",
-    "archived": "архивировал(а) задачу",
+    "archived": "Архивная активность",
     "restored": "восстановил(а) задачу",
     "pullRequestMerged": "смержил(а) пул-реквест <v>{pr}</v>",
     "pullRequestOpened": "открыл(а) пул-реквест <v>{pr}</v>",

@@ -54,14 +54,12 @@
     "copyTitle": "Скопіювати назву",
     "copyDescription": "Скопіювати опис",
     "copyBranch": "Скопіювати назву гілки",
-    "copyPrompt": "Скопіювати промпт",
     "restore": "Відновити",
     "archive": "Архівувати",
     "noAssignee": "Без виконавця",
     "noInitiative": "Без ініціативи",
     "noCycle": "Без циклу",
-    "copyFailed": "Не вдалося скопіювати",
-    "promptCopied": "Промпт скопійовано"
+    "copyFailed": "Не вдалося скопіювати"
   },
   "commands": {
     "preview": "Переглянути задачу",
@@ -78,11 +76,9 @@
     "labels": "Перемкнути мітки",
     "labelsPlaceholder": "Перемкнути мітку…",
     "copyShortLink": "Скопіювати коротке посилання",
-    "copyPrompt": "Скопіювати промпт",
     "restore": "Відновити задачу",
     "archive": "Архівувати задачу",
     "delete": "Видалити задачу",
-    "promptCopied": "Промпт скопійовано",
     "shortLinkCopied": "Коротке посилання скопійовано"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Скопіювати коротке посилання",
     "copyBranch": "Скопіювати назву гілки",
     "copied": "Скопійовано!",
-    "copyPrompt": "Скопіювати промпт",
     "sharedPublicly": "У спільному доступі",
     "sharePublicly": "Відкрити доступ",
     "restore": "Відновити задачу",
@@ -331,7 +326,7 @@
     "fieldUpdated": "оновив(-ла) <v>{field}</v>",
     "fieldSet": "встановив(-ла) <v>{field}</v> у <v>{value}</v>",
     "fieldCleared": "очистив(-ла) <v>{field}</v>",
-    "archived": "архівував(-ла) задачу",
+    "archived": "Архівна активність",
     "restored": "відновив(-ла) задачу",
     "pullRequestMerged": "змержив(-ла) пул-реквест <v>{pr}</v>",
     "pullRequestOpened": "відкрив(-ла) пул-реквест <v>{pr}</v>",

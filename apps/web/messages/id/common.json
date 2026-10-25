@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Tampilkan atau sembunyikan bilah sisi"
       },
-      "chat": {
-        "toggle": "Tampilkan atau sembunyikan obrolan AI"
-      },
       "issue": {
         "new": "Issue baru"
       },

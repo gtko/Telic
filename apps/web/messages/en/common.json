@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Show or hide the sidebar"
       },
-      "chat": {
-        "toggle": "Show or hide the AI chat"
-      },
       "issue": {
         "new": "New issue"
       },

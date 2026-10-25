@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "General",
-      "description": "Personal workspaces, defaults for new projects, agent traces, and the agent run time limit."
+      "description": "Personal workspaces and defaults for new projects."
     },
     "authentication": {
       "label": "Authentication",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "Available in Cloud and self-hosted Pro.",
+    "available": "Available on this instance.",
     "dashboard": {
       "title": "Dashboard",
       "description": "Activity across the teams and projects of this workspace.",

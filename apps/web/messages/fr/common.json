@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Afficher ou masquer la barre latérale"
       },
-      "chat": {
-        "toggle": "Afficher ou masquer le chat IA"
-      },
       "issue": {
         "new": "Nouveau ticket"
       },

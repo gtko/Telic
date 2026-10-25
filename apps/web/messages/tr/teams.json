@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "Yapay zekâ istemcilerinin takımın hangi projelerine erişebileceği."
+      "description": "MCP istemcilerinin takımın hangi projelerine erişebileceği."
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "Takımı sil",
       "hint": "Üyeleri, rolleri, davetleri, yetenekleri, araçları ve entegrasyonları takımla birlikte silinir. Kişilerin hesapları ve diğer takımları korunur.",
-      "blocked": "Önce takımın projelerini ve yapay zekâ ajanlarını silin.",
+      "blocked": "Önce takımın projelerini silin.",
       "title": "{name} silinsin mi?",
       "description": "<strong>{name}</strong> takımı; üyeleri, rolleri, davetleri, yetenekleri, araçları ve entegrasyonlarıyla birlikte silinecektir. Kişilerin hesapları ve diğer takımları korunur. Bu işlem geri alınamaz.",
       "deleted": "Takım silindi"
@@ -250,7 +250,7 @@
     "rail": "Çalışma Alanları",
     "create": "Yeni çalışma alanı",
     "createUnavailableTitle": "Daha fazla çalışma alanı",
-    "createUnavailableHint": "Kişi başına daha fazla çalışma alanı Cloud ve Pro sürümlerinde mevcuttur.",
+    "createUnavailableHint": "Ek çalışma alanı oluşturma bu kurulumda kullanılamıyor.",
     "general": "Genel",
     "roles": {
       "owner": "Sahip",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "Çalışma alanını sil",
       "hint": "Takımları da onunla birlikte silinir. Kişilerin hesapları ve diğer takımları korunur.",
-      "blocked": "Önce takımlarının projelerini ve yapay zekâ ajanlarını silin.",
+      "blocked": "Önce takımlarının projelerini silin.",
       "title": "{name} silinsin mi?",
       "description": "<strong>{name}</strong> ve takımları silinecektir. Kişilerin hesapları ve diğer takımları korunur. Bu işlem geri alınamaz.",
       "deleted": "Çalışma alanı silindi"

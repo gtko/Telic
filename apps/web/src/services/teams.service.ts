@@ -15,7 +15,7 @@ import {
   sendTeamInviteEmail,
   deleteTeamInvite,
 } from '@/lib/api/endpoints/invites';
-import type { MemberKind, MemberListParams } from '@/lib/api/endpoints/members';
+import type { MemberListParams } from '@/lib/api/endpoints/members';
 import {
   type TeamProjectListParams,
   type Team,
@@ -107,7 +107,7 @@ export function useTeamProjectQuery(teamId: number, projectId: number) {
 export function useTeamProjectMembersQuery(
   teamId: number,
   projectId: number,
-  filters: { search?: string; kind: MemberKind },
+  filters: { search?: string },
   pageSize = DEFAULT_PAGE_SIZE,
 ) {
   return useInfiniteQuery({

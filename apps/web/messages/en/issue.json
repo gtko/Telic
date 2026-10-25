@@ -54,14 +54,12 @@
     "copyTitle": "Copy title",
     "copyDescription": "Copy description",
     "copyBranch": "Copy branch name",
-    "copyPrompt": "Copy Prompt",
     "restore": "Restore",
     "archive": "Archive",
     "noAssignee": "No assignee",
     "noInitiative": "No initiative",
     "noCycle": "No cycle",
-    "copyFailed": "Could not copy to clipboard",
-    "promptCopied": "Prompt copied to clipboard"
+    "copyFailed": "Could not copy to clipboard"
   },
   "commands": {
     "preview": "Preview issue",
@@ -78,11 +76,9 @@
     "labels": "Toggle labels",
     "labelsPlaceholder": "Toggle a label…",
     "copyShortLink": "Copy short link",
-    "copyPrompt": "Copy prompt",
     "restore": "Restore issue",
     "archive": "Archive issue",
     "delete": "Delete issue",
-    "promptCopied": "Prompt copied to clipboard",
     "shortLinkCopied": "Short link copied"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "Copy short link",
     "copyBranch": "Copy branch name",
     "copied": "Copied!",
-    "copyPrompt": "Copy Prompt",
     "sharedPublicly": "Shared publicly",
     "sharePublicly": "Share publicly",
     "restore": "Restore issue",
@@ -331,7 +326,7 @@
     "fieldUpdated": "updated <v>{field}</v>",
     "fieldSet": "set <v>{field}</v> to <v>{value}</v>",
     "fieldCleared": "cleared <v>{field}</v>",
-    "archived": "archived the issue",
+    "archived": "Archived activity",
     "restored": "restored the issue",
     "pullRequestMerged": "merged pull request <v>{pr}</v>",
     "pullRequestOpened": "opened pull request <v>{pr}</v>",

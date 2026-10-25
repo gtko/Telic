@@ -54,7 +54,7 @@
     "unstarProject": "{name} 즐겨찾기에서 제거",
     "showProject": "{name} 프로젝트 표시",
     "allHiddenTitle": "모든 프로젝트가 숨겨져 있습니다",
-    "allHiddenDescription": "숨긴 프로젝트는 프로젝트 탐색 메뉴에서 제외됩니다. 접근 권한, 팀 멤버 및 AI 에이전트에는 영향을 주지 않습니다. 다시 열려면 프로젝트를 표시하세요.",
+    "allHiddenDescription": "숨긴 프로젝트는 프로젝트 탐색 메뉴에서 제외됩니다. 접근 권한과 팀 멤버에는 영향을 주지 않습니다. 다시 열려면 프로젝트를 표시하세요.",
     "workspaces": "워크스페이스",
     "workspaceSettings": "워크스페이스 설정",
     "recent": "최근",

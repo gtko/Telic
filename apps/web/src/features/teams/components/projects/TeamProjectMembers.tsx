@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { MemberKind } from '@/lib/api/endpoints/members';
 import { useSearchTerm } from '@/hooks/useSearchTerm';
 import { useTeamProjectMembersQuery } from '@/services/teams.service';
 import { usePermissionCatalogQuery, useTeamRoleOptionsQuery } from '@/services/roles.service';
@@ -12,13 +11,6 @@ import { EmptyState } from '@/components/common/page/EmptyState';
 import RowAction from '@/components/common/RowAction';
 import SearchInput from '@/components/common/SearchInput';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import MemberAddDialog from '@/features/members/components/members/MemberAddDialog';
 import TeamProjectMemberCard from './TeamProjectMemberCard';
 
@@ -57,10 +49,9 @@ export default function TeamProjectMembers({
   const tMembers = useTranslations('members');
   const tCommon = useTranslations('common');
   const { search, setSearch, term } = useSearchTerm();
-  const [kind, setKind] = useState<MemberKind>('all');
   const [adding, setAdding] = useState(false);
 
-  const membersQuery = useTeamProjectMembersQuery(teamId, projectId, { search: term, kind });
+  const membersQuery = useTeamProjectMembersQuery(teamId, projectId, { search: term });
   // The roles carry the matrix each membership resolves to, so they are fetched for
   // every reader of the panel, not only the one who may reassign them.
   const rolesQuery = useTeamRoleOptionsQuery(teamId);
@@ -88,15 +79,6 @@ export default function TeamProjectMembers({
           placeholder={t('searchMembers')}
           className="min-w-0 flex-1"
         />
-        <Select value={kind} onValueChange={(value) => setKind(value as MemberKind)}>
-          <SelectTrigger className="h-9 w-[150px]" aria-label={tMembers('tabs.label')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{tMembers('tabs.all')}</SelectItem>
-            <SelectItem value="human">{tMembers('tabs.people')}</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {membersQuery.isPending ? (
@@ -104,7 +86,7 @@ export default function TeamProjectMembers({
       ) : members.length === 0 ? (
         <EmptyState
           title={t('noMembersTitle')}
-          description={term || kind !== 'all' ? t('noMemberMatches') : t('noProjectMembers')}
+          description={term ? t('noMemberMatches') : t('noProjectMembers')}
         />
       ) : (
         <>

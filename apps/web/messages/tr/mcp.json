@@ -1,6 +1,6 @@
 {
   "title": "MCP Sunucusu",
-  "description": "Yapay zekâ ajanlarını Model Context Protocol üzerinden bu projeye bağlayın. Ajan, yalnızca API anahtarının izin verdiği verileri görür.",
+  "description": "MCP istemcilerini Model Context Protocol üzerinden bu projeye bağlayın. İstemci, yalnızca API anahtarının izin verdiği verileri görür.",
   "disabled": "Devre dışı",
   "offForTeam": "{team} takımı için MCP kapalı.",
   "offForProject": "{team} takımında MCP açık, ancak bu proje için kapalı.",

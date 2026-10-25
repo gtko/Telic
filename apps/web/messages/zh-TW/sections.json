@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "一般",
-      "description": "個人工作區、新建專案的預設設定，以及代理追蹤和執行時長。"
+      "description": "個人工作區和新建專案的預設設定。"
     },
     "authentication": {
       "label": "身分驗證",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "可在 Cloud 和自託管 Pro 版中使用。",
+    "available": "可在此實例中使用。",
     "dashboard": {
       "title": "儀表板",
       "description": "此工作區中各團隊和專案的動態。",

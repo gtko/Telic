@@ -211,11 +211,6 @@
     "options": "Opções",
     "optionsHint": "Separe várias com vírgulas.",
     "type": "Tipo",
-    "memberScope": "Quem contém",
-    "memberScopes": {
-      "all": "Qualquer um",
-      "humans": "Apenas pessoas"
-    },
     "mainInfo": "Informação principal",
     "mainInfoTooltip": "Mostra no corpo da issue, não em Propriedades",
     "mainInfoMeta": "Informação principal",
@@ -239,8 +234,7 @@
     "importedWithTypes": "Campos personalizados aplicados: {created} criados, {types} tipos de issue adicionados.",
     "removeOption": "Remover opção {value}",
     "typeChangeWarning": "Mudar o tipo limpa os valores que as issues já têm neste campo.",
-    "optionsRemovedWarning": "Uma opção removida é limpa das issues que a têm.",
-    "memberScopeWarning": "Membros que o novo escopo não permite são limpos deste campo."
+    "optionsRemovedWarning": "Uma opção removida é limpa das issues que a têm."
   },
   "actions": {
     "new": "Nova ação",

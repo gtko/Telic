@@ -54,14 +54,12 @@
     "copyTitle": "複製標題",
     "copyDescription": "複製描述",
     "copyBranch": "複製分支名稱",
-    "copyPrompt": "複製提示詞",
     "restore": "恢復",
     "archive": "封存",
     "noAssignee": "無負責人",
     "noInitiative": "無計畫",
     "noCycle": "無週期",
-    "copyFailed": "無法複製到剪貼簿",
-    "promptCopied": "提示詞已複製到剪貼簿"
+    "copyFailed": "無法複製到剪貼簿"
   },
   "commands": {
     "preview": "預覽工作項目",
@@ -78,11 +76,9 @@
     "labels": "切換標籤",
     "labelsPlaceholder": "切換標籤…",
     "copyShortLink": "複製短連結",
-    "copyPrompt": "複製提示詞",
     "restore": "恢復工作項目",
     "archive": "封存工作項目",
     "delete": "刪除工作項目",
-    "promptCopied": "提示詞已複製到剪貼簿",
     "shortLinkCopied": "短連結已複製"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "複製短連結",
     "copyBranch": "複製分支名稱",
     "copied": "已複製！",
-    "copyPrompt": "複製提示詞",
     "sharedPublicly": "已公開共享",
     "sharePublicly": "公開共享",
     "restore": "恢復工作項目",
@@ -331,7 +326,7 @@
     "fieldUpdated": "更新了 <v>{field}</v>",
     "fieldSet": "將 <v>{field}</v> 設為 <v>{value}</v>",
     "fieldCleared": "清除了 <v>{field}</v>",
-    "archived": "封存了工作項目",
+    "archived": "已封存的活動",
     "restored": "恢復了工作項目",
     "pullRequestMerged": "合併了 Pull Request <v>{pr}</v>",
     "pullRequestOpened": "開啟了 Pull Request <v>{pr}</v>",

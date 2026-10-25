@@ -2,6 +2,7 @@
 
 import { type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { isArchivedActivity } from '../utils/archivedActivity';
 import type { FeedItem } from '@/lib/api/endpoints/activity';
 import { formatDate } from '@/utils/dates';
 import { isLinkRelation } from '@/utils/issueLinks';
@@ -182,7 +183,7 @@ export function useActivityText() {
         };
       }
       default:
-        return { line: a.action };
+        return { line: isArchivedActivity(a.action) ? t('archived') : a.action };
     }
   };
 }

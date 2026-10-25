@@ -211,11 +211,6 @@
     "options": "Options",
     "optionsHint": "Separate several with commas.",
     "type": "Type",
-    "memberScope": "Who it holds",
-    "memberScopes": {
-      "all": "Anyone",
-      "humans": "People only"
-    },
     "mainInfo": "Main info",
     "mainInfoTooltip": "Shows in the issue body, not Properties",
     "mainInfoMeta": "Main info",
@@ -239,8 +234,7 @@
     "importedWithTypes": "Applied custom fields: {created} created, {types} issue types added.",
     "removeOption": "Remove option {value}",
     "typeChangeWarning": "Changing the type clears the values issues already hold in this field.",
-    "optionsRemovedWarning": "A removed option is cleared from the issues that hold it.",
-    "memberScopeWarning": "Members the new scope does not allow are cleared from this field."
+    "optionsRemovedWarning": "A removed option is cleared from the issues that hold it."
   },
   "actions": {
     "new": "New action",

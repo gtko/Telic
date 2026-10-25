@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Mostrar ou ocultar a barra lateral"
       },
-      "chat": {
-        "toggle": "Mostrar ou ocultar o chat da IA"
-      },
       "issue": {
         "new": "Nova issue"
       },

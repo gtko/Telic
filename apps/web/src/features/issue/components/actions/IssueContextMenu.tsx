@@ -31,7 +31,7 @@ import { usePriorityLabel } from '@/hooks/usePriorityLabel';
 import { ShellCtx } from '@/context/shellContext';
 import { useArchiveAction } from '../../hooks/useArchiveAction';
 import { ApplyActionDialog, DeleteIssueDialog, matchedActions } from './IssueActions';
-import { buildIssueBranchName, buildIssuePrompt } from '../../utils/issuePrompt';
+import { buildIssueBranchName } from '../../utils/issuePrompt';
 import { useSession } from '@/lib/auth-client';
 import { toDateStr } from '@/utils/dates';
 import { colorDot } from '@/components/common/fields/colorDot';
@@ -377,13 +377,6 @@ export default function IssueContextMenu({
                 onSelect={() => copyText(buildIssueBranchName(issue, session?.user))}
               >
                 {t('copyBranch')}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                disabled={!copyIssue}
-                onSelect={() => copyText(buildIssuePrompt(copyIssue!, project, session?.user))}
-              >
-                {t('copyPrompt')}
               </ContextMenuItem>
             </ContextMenuSubContent>
           </ContextMenuSub>

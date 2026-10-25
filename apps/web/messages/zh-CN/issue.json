@@ -54,14 +54,12 @@
     "copyTitle": "复制标题",
     "copyDescription": "复制描述",
     "copyBranch": "复制分支名称",
-    "copyPrompt": "复制提示词",
     "restore": "恢复",
     "archive": "归档",
     "noAssignee": "无负责人",
     "noInitiative": "无计划",
     "noCycle": "无周期",
-    "copyFailed": "无法复制到剪贴板",
-    "promptCopied": "提示词已复制到剪贴板"
+    "copyFailed": "无法复制到剪贴板"
   },
   "commands": {
     "preview": "预览工作项",
@@ -78,11 +76,9 @@
     "labels": "切换标签",
     "labelsPlaceholder": "切换标签…",
     "copyShortLink": "复制短链接",
-    "copyPrompt": "复制提示词",
     "restore": "恢复工作项",
     "archive": "归档工作项",
     "delete": "删除工作项",
-    "promptCopied": "提示词已复制到剪贴板",
     "shortLinkCopied": "短链接已复制"
   },
   "dueDatePresets": {
@@ -96,7 +92,6 @@
     "copyShortLink": "复制短链接",
     "copyBranch": "复制分支名称",
     "copied": "已复制！",
-    "copyPrompt": "复制提示词",
     "sharedPublicly": "已公开共享",
     "sharePublicly": "公开共享",
     "restore": "恢复工作项",
@@ -331,7 +326,7 @@
     "fieldUpdated": "更新了 <v>{field}</v>",
     "fieldSet": "将 <v>{field}</v> 设为 <v>{value}</v>",
     "fieldCleared": "清除了 <v>{field}</v>",
-    "archived": "归档了工作项",
+    "archived": "已归档的活动",
     "restored": "恢复了工作项",
     "pullRequestMerged": "合并了拉取请求 <v>{pr}</v>",
     "pullRequestOpened": "打开了拉取请求 <v>{pr}</v>",

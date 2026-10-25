@@ -1,6 +1,6 @@
 {
   "title": "MCP 伺服器",
-  "description": "透過 Model Context Protocol 將 AI 代理連線到本專案。代理能看到的範圍由所用 API 金鑰決定。",
+  "description": "透過 Model Context Protocol 將 MCP 用戶端連線到本專案。用戶端能看到的範圍由所用 API 金鑰決定。",
   "disabled": "已停用",
   "offForTeam": "團隊 {team} 的 MCP 已關閉。",
   "offForProject": "團隊 {team} 已開啟 MCP，但本專案未開啟。",

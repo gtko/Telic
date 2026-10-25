@@ -9,7 +9,7 @@
   },
   "report": {
     "title": "Ce qui a changé dans vos données",
-    "subtitle": "Les projets appartiennent désormais à une équipe, et une équipe partage une seule liste de rôles, de compétences, d'agents et d'identifiants d'intégration.",
+    "subtitle": "Les projets appartiennent désormais à une équipe, et une équipe partage une seule liste de rôles et d'identifiants d'intégration.",
     "teamsHeading": "Les équipes et leurs projets",
     "renamedRoles": "Rôles renommés",
     "renamedCredentials": "Identifiants d'intégration renommés",

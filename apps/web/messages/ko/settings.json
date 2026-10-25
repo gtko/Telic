@@ -211,11 +211,6 @@
     "options": "옵션",
     "optionsHint": "여러 항목은 쉼표로 구분하세요.",
     "type": "유형",
-    "memberScope": "선택 대상",
-    "memberScopes": {
-      "all": "모두",
-      "humans": "사용자만"
-    },
     "mainInfo": "주요 정보",
     "mainInfoTooltip": "속성이 아닌 이슈 본문에 표시됩니다",
     "mainInfoMeta": "주요 정보",
@@ -239,8 +234,7 @@
     "importedWithTypes": "사용자 지정 필드 적용 완료: {created}개 생성, 이슈 유형 {types}개 추가.",
     "removeOption": "{value} 옵션 제거",
     "typeChangeWarning": "유형을 변경하면 이 필드에 저장된 기존 이슈의 값이 모두 삭제됩니다.",
-    "optionsRemovedWarning": "옵션을 제거하면 해당 옵션을 사용하는 이슈에서 값이 삭제됩니다.",
-    "memberScopeWarning": "새 선택 대상에 포함되지 않는 멤버는 이 필드에서 제거됩니다."
+    "optionsRemovedWarning": "옵션을 제거하면 해당 옵션을 사용하는 이슈에서 값이 삭제됩니다."
   },
   "actions": {
     "new": "새 액션",

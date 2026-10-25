@@ -34,7 +34,7 @@
     },
     "mcp": {
       "title": "MCP",
-      "description": "Quais projetos do time os clientes de IA podem alcançar."
+      "description": "Quais projetos do time os clientes MCP podem alcançar."
     }
   },
   "info": {
@@ -52,7 +52,7 @@
     "delete": {
       "action": "Excluir equipe",
       "hint": "Seus membros, funções, convites, habilidades, ferramentas e integrações são excluídos com ela. As pessoas mantêm suas contas e suas outras equipes.",
-      "blocked": "Exclua primeiro os projetos e os agentes de IA da equipe.",
+      "blocked": "Exclua primeiro os projetos da equipe.",
       "title": "Excluir {name}?",
       "description": "<strong>{name}</strong> é excluída com seus membros, funções, convites, habilidades, ferramentas e integrações. As pessoas mantêm suas contas e suas outras equipes. Isso não pode ser desfeito.",
       "deleted": "Equipe excluída"
@@ -250,7 +250,7 @@
     "rail": "Workspaces",
     "create": "Novo workspace",
     "createUnavailableTitle": "Mais workspaces",
-    "createUnavailableHint": "Mais workspaces por pessoa estão disponíveis no Cloud e no Pro auto-hospedado.",
+    "createUnavailableHint": "Criar mais workspaces não está disponível nesta instância.",
     "general": "Geral",
     "roles": {
       "owner": "Proprietário",
@@ -345,7 +345,7 @@
     "delete": {
       "action": "Excluir workspace",
       "hint": "Os times dele são excluídos junto. As pessoas mantêm suas contas e seus outros times.",
-      "blocked": "Exclua primeiro os projetos e os agentes de IA dos times dele.",
+      "blocked": "Exclua primeiro os projetos dos times dele.",
       "title": "Excluir {name}?",
       "description": "<strong>{name}</strong> e os times dele são excluídos. As pessoas mantêm suas contas e seus outros times. Isso não pode ser desfeito.",
       "deleted": "Workspace excluído"

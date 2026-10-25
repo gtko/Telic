@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "General",
-      "description": "Espacios de trabajo personales, valores por defecto para los proyectos nuevos, y trazas y duración de las ejecuciones de agentes."
+      "description": "Espacios de trabajo personales y valores por defecto para los proyectos nuevos."
     },
     "authentication": {
       "label": "Autenticación",
@@ -109,7 +109,7 @@
     }
   },
   "previews": {
-    "available": "Disponible en Cloud y en Pro autoalojado.",
+    "available": "Disponible en esta instancia.",
     "dashboard": {
       "title": "Panel",
       "description": "La actividad de los equipos y proyectos de este espacio de trabajo.",
