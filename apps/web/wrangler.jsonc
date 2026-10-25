@@ -13,8 +13,10 @@
   },
   "images": { "binding": "IMAGES" },
   "observability": { "enabled": true },
-  // API_URL (the public origin of telic-api) is passed on the deploy command line
-  // (--var API_URL:https://...); PRIVACY_URL and TERMS_URL are optional. Local preview reads
-  // them from .dev.vars (see .dev.vars.example).
-  "vars": {},
+  // API_URL is the public origin of telic-api; PRIVACY_URL and TERMS_URL are optional. Local
+  // preview reads them from .dev.vars (see .dev.vars.example).
+  "vars": {
+    "API_URL": "https://telic-api.gtux-prog.workers.dev",
+  },
+  "upload_source_maps": false,
 }
