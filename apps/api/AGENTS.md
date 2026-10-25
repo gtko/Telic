@@ -9,25 +9,16 @@ Rules and invariants for this package below; read the code for the walkthrough.
 - Feature-based: one folder per domain under `src/modules/`, three files —
   `index.ts` (controller), `model.ts` (schemas), `service.ts` (Drizzle). Cross-cutting
   code in `shared/`. See `src/modules/` for the current set.
-- Features nest one level deeper only where they already call each other:
-  `modules/agents/{core,chat,runner,schedules,skills,tools}`, where `core` holds the
-  agent itself and its runtime. A feature whose links to its neighbours run one way
-  stays flat. A schema several of the nested features share sits in the parent's
-  `model.ts` and is re-exported from each child's (`agentParams`).
 - `src/app.ts` assembles and exports the app (`export const app`).
-  `src/worker.ts` is the Worker entry: `fetch` serves the app, `scheduled` runs the cron
-  jobs of `src/scheduled.ts`, `queue` consumes the agent run queue (`src/queue.ts`).
+  `src/worker.ts` is the Worker entry: `fetch` serves the app, `scheduled` runs the hourly
+  cron jobs of `src/scheduled.ts`.
   `export type App = typeof app` types the Eden Treaty client (web + tests).
-  Handlers read bindings (`DB`, `BUCKET`, `RUN_QUEUE`) and variables from the request
+  Handlers read bindings (`DB`, `BUCKET`) and variables from the request
   context (`shared/context.ts`, type `Env` in `src/env.ts`).
 - **Background work is driven by the platform, never assembled into the app**, so
-  importing the app in a test starts nothing. A Queue (`telic-agent-runs`) carries the
-  agent runs, and `src/scheduled.ts` holds the two Cron Triggers: every minute is the
-  catch-up for the queue and the external agents, every hour is the auto-archive sweep
-  and the trace retention. Runs are claimed with a lease, and the sweep only touches
-  rows it has not archived yet, so a repeated or concurrent trigger does no harm. An
-  agent run is built from the queue row alone — the project it works in and the bot user
-  it acts as are read there, never handed in.
+  importing the app in a test starts nothing. `src/scheduled.ts` holds the hourly Cron
+  Trigger: the auto-archive sweep and the SCIM reconcile. The sweep only touches rows it
+  has not archived yet, so a repeated or concurrent trigger does no harm.
 - `index.ts`: `new Elysia({ name: "<feature>", detail: { tags: ["<Tag>"] } })` —
   routes chained directly on it, each route sets `detail.summary`. Handlers only;
   the schemas they reference come from `model.ts`.
@@ -92,8 +83,8 @@ Rules and invariants for this package below; read the code for the walkthrough.
   service takes a required `{ limit, offset }` and returns `{ items, total }`, counted
   beside the window so a page past the end still reports how many there are. A list a
   picker needs entire gets an `/options` route of its own returning a plain array
-  (`/teams/:teamId/agent-skills/options`), and a whole-list read only the server needs
-  is a service function of its own (`listAllAgentSchedules`). A query flag that
+  (`/teams/:teamId/roles/options`), and a whole-list read only the server needs
+  is a service function of its own (`listAllIssueTypes`). A query flag that
   switches one route between the two makes every caller check which it got.
 - **A feed pages by cursor, not by offset**: `limit` + `cursor`/`before` →
   `{ items, nextCursor }`. Rows arrive at its head while a reader is paging, which
@@ -433,28 +424,6 @@ channel and is read only for a claim, not for authentication. Both funnel into
 `syncEmbeddedGroups`, the same additive-only join a group pushed through `POST /Groups`
 gets — a name missing from a later sync is never removed by this path, only by an explicit
 `PATCH /Groups/:id` or an unmapping in the workspace settings.
-
-## Issue agent runs
-
-`GET /issues/:issueId/agent-runs` reads triggered runs with cursor pagination. Both
-`work_items read` and `ai_agents read` in the issue's current project are required.
-Runs keep their original project, so a moved issue does not expose its former project's
-prompts or traces. `/issues/:issueId/agent-runs/:runId/trace` reads the latest recorded
-attempt of that run, or the one named by `traceId`. Each trace links to the previous recorded
-attempt. A missing latest trace returns null; an unknown or unrelated `traceId` returns 404.
-Both permission checks and the read use the same resolved project id. Other people's chat
-traces stay private.
-External runners reporting run events also retain messages, tool inputs/results and a
-local Codex session link per attempt. `GET /agent-runs/:runId/trace?attempt=N` uses
-both read permissions in the original project and excludes moved issues. It also
-serves scheduled/manual runs without an issue. The latest recorded attempt is the default. The runner queue lists active and past external runs; `runId` narrows it to one authorized run for the detail pane. External transcripts follow the instance trace retention window after the run finishes; pending runs and final results are retained.
-`POST /agent-runs/:runId/events` accepts only the calling agent's current executing,
-unexpired attempt. Event offsets deduplicate retries and reject gaps. Transcripts
-stop recording after 2,000 events or 1 MB; acknowledgements continue so the runner
-can report its final result. A Codex UUID forms the local `codex://threads/` link;
-no supplied URL is accepted. The event-capable runner also sends the attempt number
-on heartbeat and result calls, so a reclaimed attempt rejects the old process.
-Legacy clients may omit this field for compatibility.
 
 ## Security
 

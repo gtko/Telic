@@ -81,7 +81,7 @@ docs and comments to describe only the current design.
 ## Layout
 
 ```
-apps/api               Elysia on a Worker: better-auth at /api/auth/*, agent runs, cron, run queue   :8787
+apps/api               Elysia on a Worker: better-auth at /api/auth/*, MCP server, cron   :8787
 apps/web               Next.js App Router, SSR on a Worker through OpenNext, shadcn, TanStack Query  :3001
 apps/worker            Worker: webhook and notification delivery, imports (cron + queue)
 apps/bot               Worker: Telegram bot webhook
@@ -101,7 +101,7 @@ Each Worker has a `wrangler.jsonc` that declares its bindings:
 
 | Worker         | D1 `DB` | R2 `BUCKET` | Queues                                   | Cron                 |
 | -------------- | ------- | ----------- | ---------------------------------------- | -------------------- |
-| `telic-api`    | yes     | yes         | produces and consumes `telic-agent-runs` | every minute, hourly |
+| `telic-api`    | yes     | yes         | none                                     | hourly               |
 | `telic-worker` | yes     | yes         | produces and consumes `telic-jobs`       | every minute         |
 | `telic-bot`    | yes     | no          | none                                     | none                 |
 | `telic-web`    | no      | no          | none                                     | none                 |
