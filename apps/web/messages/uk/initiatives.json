@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Назва",
+    "status": "Статус",
     "priority": "Пріоритет",
     "owner": "Власник",
     "target": "Ціль",

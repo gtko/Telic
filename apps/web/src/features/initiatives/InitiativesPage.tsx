@@ -144,6 +144,7 @@ export default function InitiativesPage({ tab }: { tab: InitiativesTab }) {
         project={project}
         isLoading={query.isLoading}
         canCreate={can('initiatives', 'create')}
+        canEdit={can('initiatives', 'edit')}
         onCreate={() => setCreating(true)}
         statusTab={activeTab.value === 'all' ? undefined : activeTab.value}
         sort={sort}

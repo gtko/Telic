@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Nome",
+    "status": "Status",
     "priority": "Prioridade",
     "owner": "Dono",
     "target": "Alvo",

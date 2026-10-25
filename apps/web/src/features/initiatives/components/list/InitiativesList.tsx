@@ -11,10 +11,11 @@ import InitiativeRow from './InitiativeRow';
 
 // Columns in table order. A `sort` key marks the column as sortable; progress and
 // health are derived per row and cannot be sorted server-side.
-type ColumnKey = 'name' | 'priority' | 'owner' | 'target' | 'progress' | 'health';
+type ColumnKey = 'name' | 'status' | 'priority' | 'owner' | 'target' | 'progress' | 'health';
 
 const COLUMNS: { key: ColumnKey; sort?: InitiativeSort }[] = [
   { key: 'name', sort: 'title' },
+  { key: 'status' },
   { key: 'priority', sort: 'priority' },
   { key: 'owner', sort: 'owner' },
   { key: 'target', sort: 'targetDate' },
@@ -27,6 +28,7 @@ export default function InitiativesList({
   project,
   isLoading,
   canCreate,
+  canEdit,
   onCreate,
   statusTab,
   sort,
@@ -37,6 +39,7 @@ export default function InitiativesList({
   project: ProjectDetail;
   isLoading: boolean;
   canCreate: boolean;
+  canEdit: boolean;
   onCreate: () => void;
   // The open status tab, absent on the tab that lists every status. An empty
   // status tab is a filtered view, not a first run, so it says so.
@@ -71,9 +74,10 @@ export default function InitiativesList({
     <div className="min-w-0 px-4 pb-2">
       <Table className="min-w-[880px] table-fixed">
         <colgroup>
-          <col className="w-[34%]" />
+          <col className="w-[28%]" />
+          <col className="w-[12%]" />
           <col className="w-[10%]" />
-          <col className="w-[22%]" />
+          <col className="w-[16%]" />
           <col className="w-[12%]" />
           <col className="w-[12%]" />
           <col className="w-[10%]" />
@@ -109,6 +113,7 @@ export default function InitiativesList({
               key={it.id}
               initiative={it}
               projectKey={project.project.ref}
+              canEdit={canEdit}
               owner={it.ownerUserId ? (ownerById.get(it.ownerUserId) ?? null) : null}
             />
           ))}

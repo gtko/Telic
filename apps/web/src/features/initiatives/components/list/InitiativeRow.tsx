@@ -11,6 +11,8 @@ import { PriorityIcon } from '@/features/issue/components/shared/IssueIcons';
 import { usePriorityLabel } from '@/hooks/usePriorityLabel';
 import { colorDot } from '@/components/common/fields/colorDot';
 import { TableCell, TableRow } from '@/components/ui/table';
+import InitiativeStatusSelect from '@/components/common/fields/InitiativeStatusSelect';
+import { useUpdateInitiative } from '@/services/initiatives.service';
 import { STATUS_META } from '@/utils/initiativeMeta';
 import HealthBadge from '../shared/HealthBadge';
 import ProgressBar from '@/components/common/ProgressBar';
@@ -20,13 +22,17 @@ import ProgressBar from '@/components/common/ProgressBar';
 export default function InitiativeRow({
   initiative,
   projectKey,
+  canEdit,
   owner,
 }: {
   initiative: Initiative;
   projectKey: string;
+  canEdit: boolean;
   owner: Assignee | null;
 }) {
   const t = useTranslations('initiatives');
+  const tStatus = useTranslations('initiatives.status');
+  const update = useUpdateInitiative(projectKey);
   const priorityLabel = usePriorityLabel();
   const router = useRouter();
   const href = initiativePath(projectKey, initiative.id);
@@ -44,6 +50,24 @@ export default function InitiativeRow({
             {initiative.title}
           </Link>
         </div>
+      </TableCell>
+
+      {/* Popover clicks bubble through the React portal; keep them from opening the row. */}
+      <TableCell className="px-3 py-2.5 align-middle" onClick={(e) => e.stopPropagation()}>
+        {canEdit ? (
+          <InitiativeStatusSelect
+            value={initiative.status}
+            onChange={(status) => {
+              if (status !== initiative.status)
+                update.mutate({ id: initiative.id, patch: { status } });
+            }}
+          />
+        ) : (
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            {colorDot(STATUS_META[initiative.status].color)}
+            {tStatus(initiative.status)}
+          </span>
+        )}
       </TableCell>
 
       <TableCell className="px-3 py-2.5 align-middle">

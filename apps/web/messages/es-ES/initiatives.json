@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Nombre",
+    "status": "Estado",
     "priority": "Prioridad",
     "owner": "Propietario",
     "target": "Objetivo",
