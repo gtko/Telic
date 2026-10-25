@@ -53,4 +53,6 @@ jobs:
 
       - name: Deploy the Workers
         if: steps.token.outputs.present == 'true'
+        env:
+          API_URL: https://telic-api.gtux-prog.workers.dev
         run: bun run deploy

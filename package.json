@@ -18,8 +18,8 @@
   "packageManager": "bun@1.4.3",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
+    "dev": "turbo run dev --filter=!@repo/desktop",
+    "build": "turbo run build --filter=!@repo/desktop",
     "lint": "turbo run lint",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

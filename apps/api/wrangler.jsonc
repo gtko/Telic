@@ -32,15 +32,17 @@
     ],
   },
 
-  // Public variables. APP_URL (the web origin, comma-separated for several) and API_URL (this
-  // Worker's public origin) differ per environment and have no usable localhost fallback, so they
-  // are passed on the deploy command line (--var APP_URL:https://... --var API_URL:https://...);
-  // locally they come from .dev.vars. The web and the API are on different sites on workers.dev,
-  // so use a custom domain pair, or set COOKIE_DOMAIN.
-  // Optional, see src/env.ts: COOKIE_DOMAIN, PASSKEY_RP_ID, PASSKEY_RP_NAME, CLIENT_IP_HEADER,
-  // TRUSTED_PROXIES, SSRF_ALLOWED_HOSTS, EMAIL_FROM, NOTIFICATIONS_EMAIL_FROM,
+  // Public variables. APP_URL is the web origin (comma-separated for several) and API_URL this
+  // Worker's public origin. Replace both when the Workers move to a custom domain. The web and the
+  // API are two subdomains of the same workers.dev account, so the session cookie is shared through
+  // the parent domain. Optional, see src/env.ts: COOKIE_DOMAIN, PASSKEY_RP_ID, PASSKEY_RP_NAME,
+  // CLIENT_IP_HEADER, TRUSTED_PROXIES, SSRF_ALLOWED_HOSTS, EMAIL_FROM, NOTIFICATIONS_EMAIL_FROM,
   // GIT_WEBHOOK_BASE_URL. Never put a secret here.
-  "vars": {},
+  "vars": {
+    "APP_URL": "https://telic-web.gtux-prog.workers.dev",
+    "API_URL": "https://telic-api.gtux-prog.workers.dev",
+  },
+  "upload_source_maps": false,
 
   // Secrets, never in this file. Production: `wrangler secret put <NAME>`; local: copy
   // .dev.vars.example to .dev.vars (git-ignored).

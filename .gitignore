@@ -50,3 +50,7 @@ coverage
 .wrangler
 # opennext / wrangler (apps/web)
 .open-next
+
+# tauri
+target/
+apps/desktop/src-tauri/gen/
