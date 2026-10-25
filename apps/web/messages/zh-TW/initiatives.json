@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "名稱",
+    "status": "狀態",
     "priority": "優先順序",
     "owner": "負責人",
     "target": "目標日期",

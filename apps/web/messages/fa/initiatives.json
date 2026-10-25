@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "نام",
+    "status": "وضعیت",
     "priority": "اولویت",
     "owner": "مسئول",
     "target": "هدف",

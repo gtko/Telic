@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Ad",
+    "status": "Durum",
     "priority": "Öncelik",
     "owner": "Sahip",
     "target": "Hedef",

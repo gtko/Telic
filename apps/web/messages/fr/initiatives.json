@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Nom",
+    "status": "Statut",
     "priority": "Priorité",
     "owner": "Responsable",
     "target": "Cible",

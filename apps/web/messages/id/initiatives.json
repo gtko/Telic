@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Nama",
+    "status": "Status",
     "priority": "Prioritas",
     "owner": "Pemilik",
     "target": "Target",

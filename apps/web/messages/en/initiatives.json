@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "Name",
+    "status": "Status",
     "priority": "Priority",
     "owner": "Owner",
     "target": "Target",

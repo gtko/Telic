@@ -36,6 +36,7 @@
   },
   "columns": {
     "name": "이름",
+    "status": "상태",
     "priority": "우선순위",
     "owner": "소유자",
     "target": "목표일",
