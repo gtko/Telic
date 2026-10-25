@@ -183,7 +183,7 @@ export function useActivityText() {
         };
       }
       default:
-        return { line: isArchivedActivity(a.action) ? t('archived') : a.action };
+        return { line: isArchivedActivity(a.action ?? '') ? t('archived') : (a.action ?? '') };
     }
   };
 }
