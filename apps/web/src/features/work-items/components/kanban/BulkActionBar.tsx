@@ -1,7 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { Archive, CircleDashed, RefreshCw, Tag, Target, Trash2, User, X } from 'lucide-react';
+import {
+  Archive,
+  CircleDashed,
+  RefreshCw,
+  Shapes,
+  Tag,
+  Target,
+  Trash2,
+  User,
+  X,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -95,6 +105,24 @@ export function BulkActionBar({ project }: { project: ProjectDetail }) {
                   </DropdownMenuItem>
                 ))}
               </BarMenu>
+
+              {project.issueTypes.length > 0 && (
+                <BarMenu icon={<Shapes className="size-4" />} label={t('type')} disabled={disabled}>
+                  <DropdownMenuItem onSelect={() => void bulk.patch(ids, { typeId: null })}>
+                    <CircleDashed />
+                    <span className="flex-1">{t('noType')}</span>
+                  </DropdownMenuItem>
+                  {project.issueTypes.map((type) => (
+                    <DropdownMenuItem
+                      key={type.id}
+                      onSelect={() => void bulk.patch(ids, { typeId: type.id })}
+                    >
+                      {colorDot(type.color)}
+                      <span className="flex-1 truncate">{type.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </BarMenu>
+              )}
 
               {members.length > 0 && (
                 <BarMenu

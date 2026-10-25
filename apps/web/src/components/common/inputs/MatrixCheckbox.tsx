@@ -6,10 +6,8 @@ import { CheckIcon, MinusIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // A checkbox with a distinct indeterminate state — a filled box with a minus, the
-// same as checked but for the icon. Used by the permission matrix for cells and for
-// the per-column and per-group "select all" masters (which go indeterminate on a
-// partial selection). It is a self-contained copy of the shadcn `ui/checkbox` so a
-// future `shadcn add checkbox` re-scaffold cannot silently drop the indeterminate
+// same as checked but for the icon. It is a self-contained copy of the shadcn
+// `ui/checkbox` so a future `shadcn add checkbox` re-scaffold cannot silently drop the indeterminate
 // rendering the matrix depends on. Pass `checked={boolean | 'indeterminate'}`.
 export function MatrixCheckbox({
   className,

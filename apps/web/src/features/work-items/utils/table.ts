@@ -198,6 +198,9 @@ const MARKDOWN_COLUMN_WIDTH = 'minmax(280px,480px)';
 // table when few columns are shown; leftover width stays to the right.
 const TITLE_COLUMN_WIDTH = 'minmax(220px,520px)';
 
+// The leading checkbox column, present while the table can change issues.
+export const SELECT_COLUMN_WIDTH = '16px';
+
 // A resolved Table column, either a built-in property or a custom field. The
 // order of these follows settings.properties (reorderable in the Display panel).
 export type OrderedColumn =
@@ -235,9 +238,9 @@ function minTableWidth(tracks: string[]): number {
 
 // The table layout derived from the display settings: the ordered columns (each
 // enabled built-in — except 'id', which lives in the title cell — or existing
-// custom field, in settings.properties order), the CSS grid template, the
-// scroll min-width, and whether cells should top-align (a markdown column can
-// make a row tall).
+// custom field, in settings.properties order), the CSS grid template (led by the
+// select column when `selectable`), the scroll min-width, and whether cells should
+// top-align (a markdown column can make a row tall).
 interface TableLayout {
   columns: OrderedColumn[];
   gridTemplate: string;
@@ -249,6 +252,7 @@ export function resolveColumns(
   properties: PropertyKey[],
   customFields: CustomField[],
   widths: ColumnWidths,
+  selectable: boolean,
 ): TableLayout {
   const builtins = new Set<string>(Object.keys(COLUMN_META));
   const fieldById = new Map(customFields.map((f) => [f.id, f]));
@@ -260,6 +264,7 @@ export function resolveColumns(
     return builtins.has(p) ? [{ kind: 'builtin', col: p as TableColumn }] : [];
   });
   const tracks = [
+    ...(selectable ? [SELECT_COLUMN_WIDTH] : []),
     trackWidth(TITLE_COLUMN_KEY, TITLE_COLUMN_WIDTH, widths),
     ...columns.map((c) => trackWidth(columnKey(c), defaultColumnWidth(c), widths)),
   ];
@@ -267,4 +272,22 @@ export function resolveColumns(
   const minWidth = minTableWidth(tracks);
   const alignTop = columns.some((c) => c.kind === 'custom' && c.field.fieldType === 'markdown');
   return { columns, gridTemplate, minWidth, alignTop };
+}
+
+// The ids from the anchor row to the clicked one, inclusive, in visible order: what
+// a Shift-click on a row's checkbox selects. Without a visible anchor only the
+// clicked row is taken.
+export function rangeIds(visibleIds: number[], anchorId: number | null, id: number): number[] {
+  const from = anchorId == null ? -1 : visibleIds.indexOf(anchorId);
+  const to = visibleIds.indexOf(id);
+  if (from === -1 || to === -1) return [id];
+  return visibleIds.slice(Math.min(from, to), Math.max(from, to) + 1);
+}
+
+// Checked state of a select-all box over `ids`: all selected, some (indeterminate),
+// or none.
+export function selectedState(ids: number[], selected: Set<number>): boolean | 'indeterminate' {
+  const count = ids.filter((id) => selected.has(id)).length;
+  if (count === 0) return false;
+  return count === ids.length ? true : 'indeterminate';
 }
