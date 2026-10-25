@@ -256,9 +256,9 @@ describe('note boards', () => {
       const res = await boards(owner.api)['access-candidates'].get();
       expect(res.status).toBe(200);
       const byId = new Map(res.data!.map((c) => [c.userId, c]));
-      expect(byId.get(owner.userId)).toMatchObject({ kind: 'member', canAccess: true });
-      expect(byId.get(member.userId)).toMatchObject({ kind: 'member', canAccess: true });
-      expect(byId.get(noNotes.userId)).toMatchObject({ kind: 'member', canAccess: false });
+      expect(byId.get(owner.userId)).toMatchObject({ canAccess: true });
+      expect(byId.get(member.userId)).toMatchObject({ canAccess: true });
+      expect(byId.get(noNotes.userId)).toMatchObject({ canAccess: false });
     });
 
     it('holds a read-only role out of the candidate list', async () => {

@@ -23,7 +23,7 @@ import { scimRoutes } from './modules/scim';
 import { currentUserRoutes } from './modules/current-user';
 import { syncOidcGroupsAfterCallback } from './modules/scim/oidc-sync';
 import { normalizeOpenApiResponse } from './openapi';
-import { requestTracking } from './shared/request-tracker';
+import { requestTracking, UNREAD_BODY } from './shared/request-tracker';
 import pkg from '../../../package.json';
 
 // The public URLs the OpenAPI document quotes. The document is built once per isolate, so this
@@ -103,9 +103,14 @@ const dynamicAdapter = { ...CloudflareAdapter, beforeCompile: undefined };
 // Two things the composed handler does that the dynamic one does not. A JSON request with an empty body
 // (a bodiless POST from a client that sends a JSON content type) is read as an empty object instead of
 // failing. And `parse: 'none'` is not honoured, so the body of /api/auth/* is left unread here for
-// better-auth.
+// better-auth. Likewise `parse: 'text'` is not honoured: the repository webhooks verify a signature
+// over the exact bytes, so their body stays text.
+const REPOSITORY_WEBHOOK_PATH = /^\/webhooks\/(git|github)\//;
+
 async function readJsonBody({ request, contentType }: { request: Request; contentType: string }) {
-  if (new URL(request.url).pathname.startsWith('/api/auth/')) return true;
+  const { pathname } = new URL(request.url);
+  if (pathname.startsWith('/api/auth/')) return UNREAD_BODY;
+  if (REPOSITORY_WEBHOOK_PATH.test(pathname)) return request.text();
   if (contentType !== 'application/json') return undefined;
   const text = await request.text();
   return text ? (JSON.parse(text) as unknown) : {};

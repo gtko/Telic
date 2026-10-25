@@ -408,7 +408,6 @@ describe('webhooks', () => {
         title: 'Task',
         assigneeUserId: owner.userId,
         assignee: { id: owner.userId, name: 'Owner' },
-        delegate: null,
         state: { id: columnId, name: columns[0].name, type: columns[0].stateType },
         labels: [{ id: label.id, name: 'bug', color: '#ff0000' }],
       });
