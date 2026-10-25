@@ -118,7 +118,9 @@ export function TableRow({
               e.stopPropagation();
               onSelect(e.shiftKey);
             }}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
+            }}
           />
         )}
         <div className="flex min-w-0 items-center gap-2">
