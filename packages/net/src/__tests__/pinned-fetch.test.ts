@@ -107,11 +107,11 @@ describe('pinnedFetch User-Agent', () => {
   }
 
   it('sends a default User-Agent when the caller set none', async () => {
-    expect((await headersSeenBy())['user-agent']).toBe('itsaplan/1');
+    expect((await headersSeenBy())['user-agent']).toBe('telic/1');
   });
 
   it("keeps the caller's own User-Agent", async () => {
-    const headers = await headersSeenBy({ headers: { 'User-Agent': 'itsaplan-webhooks/1' } });
-    expect(headers['user-agent']).toBe('itsaplan-webhooks/1');
+    const headers = await headersSeenBy({ headers: { 'User-Agent': 'telic-webhooks/1' } });
+    expect(headers['user-agent']).toBe('telic-webhooks/1');
   });
 });

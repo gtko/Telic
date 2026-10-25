@@ -25,7 +25,6 @@
     "workflow": "Flujo de trabajo",
     "automation": "Automatización",
     "views": "Vistas",
-    "aiTeam": "Equipo de IA",
     "knowledge": "Conocimiento"
   },
   "copyItems": {
@@ -38,14 +37,11 @@
     "documents": "Documentos",
     "actions": "Acciones",
     "configuration": "Configuración",
-    "webhooks": "Webhooks",
-    "agents": "Agentes",
-    "schedules": "Tareas programadas"
+    "webhooks": "Webhooks"
   },
   "title": "Nuevo proyecto",
   "copyTitle": "Duplicar el proyecto «{name}»",
   "create": "Crear proyecto",
   "copyAction": "Duplicar proyecto",
-  "defaultAgents": "Agentes que se añadirán a este proyecto: {names}",
   "copyName": "Copia de {name}"
 }

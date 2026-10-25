@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Kenar çubuğunu göster veya gizle"
       },
-      "chat": {
-        "toggle": "Yapay zekâ sohbetini göster veya gizle"
-      },
       "issue": {
         "new": "Yeni iş"
       },
@@ -77,50 +74,6 @@
       }
     },
     "conflict": "Zaten {command} komutu tarafından kullanılıyor"
-  },
-  "agentChat": {
-    "emptyHint": "Bu ajanın nasıl yanıt verdiğini ve hangi araçları kullandığını test etmek için bir mesaj gönderin.",
-    "messagePlaceholder": "{agent} ajanına mesaj gönderin…",
-    "reset": "Sohbeti sıfırla",
-    "send": "Gönder",
-    "sendHint": "Göndermek için Enter, yeni satır için ⌘/Ctrl+Enter",
-    "stop": "Durdur",
-    "stopped": "Durduruldu",
-    "loadingEarlier": "Önceki mesajlar yükleniyor…",
-    "messages": "Sohbet mesajları",
-    "usingTool": "{tool} aracı kullanılıyor…",
-    "usedTool": "{tool} aracı kullanıldı",
-    "usedTools": "{count, plural, one {# araç kullanıldı} other {# araç kullanıldı}}",
-    "toolInput": "Girdi",
-    "toolOutput": "Çıktı",
-    "thinking": "Düşünüyor…",
-    "waitingForRunner": "Runner bekleniyor…",
-    "waitingToSend": "Gönderilmek üzere bekliyor",
-    "removePending": "Mesajı kaldır",
-    "title": "{agent} ile sohbet",
-    "unreachable": "Ajana ulaşılamadı. Tekrar deneyin.",
-    "runnerOffline": "Runner çevrimdışı",
-    "runnerOfflineHint": "Bu ajanla sohbet etmek için makinenizde runner'ı başlatın.",
-    "attachFile": "Ajanın okuması için bir tablo, belge, PDF veya metin dosyası ekleyin",
-    "removeAttachment": "Eki kaldır",
-    "uploadFailed": "Dosya yüklenemedi.",
-    "tooManyAttachments": "Bir mesaja en fazla {max} dosya ekleyebilirsiniz.",
-    "importRows": "{count, plural, one {# satır} other {# satır}}",
-    "confirmImport": "İçe aktarmayı onayla",
-    "cancelImport": "İptal",
-    "importWorking": "İşler oluşturuluyor…",
-    "importShowAllRows": "Tüm {count} satırı göster",
-    "importShowFewerRows": "İlk {count} satırı göster",
-    "importRowState": "İçe aktar",
-    "importRowNew": "Oluşturulacak",
-    "importSkipHint": "✕ ile işaretlenen satırlar onay sırasında atlanır.",
-    "importAdjustHint": "Bir şey yanlış görünüyorsa ajandan eşlemeyi düzeltmesini isteyin.",
-    "importCanceled": "Bu içe aktarma işlemi iptal edildi. Hiçbir iş oluşturulmadı.",
-    "importFailed": "İçe aktarma başarısız oldu.",
-    "importConfirmed": "{count, plural, one {# iş oluşturuldu} other {# iş oluşturuldu}}",
-    "importSkippedRow": "Satır {row} atlandı: {reason}",
-    "contextSize": "Sohbet bağlamı: {count, plural, one {# token} other {# token}}",
-    "contextUnavailable": "Bu ajan için bağlam boyutu mevcut değil"
   },
   "share": {
     "createFailed": "Bağlantı oluşturulamadı. Tekrar deneyin.",
@@ -182,7 +135,7 @@
     "openPreviewLink": "{name} bağlantısını yeni sekmede aç",
     "loadingPreview": "Önizleme yükleniyor…",
     "previewUnavailable": "Önizleme mevcut değil. Sayfayı görüntülemek için bağlantıyı açın.",
-    "internalPage": "ItsAPlan sayfası",
+    "internalPage": "Telic sayfası",
     "internalPreviewUnavailable": "Bu sayfa mevcut değil veya erişiminiz yok.",
     "previewNoteCount": "{count, plural, one {# not} other {# not}}",
     "previewCustomField": "Özel alan",
@@ -205,13 +158,11 @@
     "download": "Grafiği kaydet",
     "downloadFailed": "Grafik kaydedilemedi"
   },
-  "agent": "Ajan",
   "pager": {
     "previous": "Önceki sayfa",
     "next": "Sonraki sayfa",
     "page": "Sayfa {number}",
     "perPage": "/ sayfa",
     "range": "{total} kayıttan {first}-{last} arası"
-  },
-  "aboutCloudAndPro": "Cloud ve Pro hakkında bilgi edinin"
+  }
 }

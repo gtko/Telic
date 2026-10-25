@@ -1,6 +1,6 @@
 {
   "title": "MCP Sunucusu",
-  "description": "Yapay zekâ ajanlarını Model Context Protocol üzerinden bu projeye bağlayın. Ajan, yalnızca API anahtarının izin verdiği verileri görür.",
+  "description": "MCP istemcilerini Model Context Protocol üzerinden bu projeye bağlayın. İstemci, yalnızca API anahtarının izin verdiği verileri görür.",
   "disabled": "Devre dışı",
   "offForTeam": "{team} takımı için MCP kapalı.",
   "offForProject": "{team} takımında MCP açık, ancak bu proje için kapalı.",
@@ -24,15 +24,15 @@
     "methodTabsAria": "Bağlantı yöntemi",
     "method": "OAuth",
     "personalKey": "API anahtarı",
-    "description": "Bunu ChatGPT veya Claude gibi OAuth destekleyen herhangi bir MCP istemcisi için kullanın. Itsaplan hesabınızla giriş yaparsınız; istemciye hiçbir zaman API anahtarı iletilmez.",
+    "description": "Bunu ChatGPT veya Claude gibi OAuth destekleyen herhangi bir MCP istemcisi için kullanın. Telic hesabınızla giriş yaparsınız; istemciye hiçbir zaman API anahtarı iletilmez.",
     "discovery": "OAuth keşfi",
     "steps": {
       "add": "İstemcinize bir MCP uygulaması ekleyin.",
       "paste": "MCP uç noktasını yapıştırın.",
       "choose": "İstemci giriş yöntemi sorduğunda OAuth'u seçin.",
-      "signIn": "Itsaplan'a giriş yapın ve erişimi onaylayın."
+      "signIn": "Telic'a giriş yapın ve erişimi onaylayın."
     },
-    "security": "OAuth; PKCE (S256), dinamik istemci kaydı ve Itsaplan hesabınızla sınırlı erişim belirteçleri kullanır.",
+    "security": "OAuth; PKCE (S256), dinamik istemci kaydı ve Telic hesabınızla sınırlı erişim belirteçleri kullanır.",
     "consent": {
       "title": "{client} hesabınıza bağlanmak istiyor",
       "titleUnnamed": "Bir MCP istemcisi hesabınıza bağlanmak istiyor",

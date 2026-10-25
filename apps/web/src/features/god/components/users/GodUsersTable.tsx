@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, Pencil, Shield } from 'lucide-react';
+import { Pencil, Shield } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { InstanceUser } from '@/lib/api/endpoints/god';
 import { formatShortDate } from '@/utils/dates';
@@ -106,12 +106,6 @@ export default function GodUsersTable({
                 ) : (
                   <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
                     {t('roleUser')}
-                  </Badge>
-                )}
-                {u.isAgent && (
-                  <Badge variant="secondary" className="gap-1 px-1.5 py-0 text-[10px] font-medium">
-                    <Bot className="size-3" />
-                    {t('agent')}
                   </Badge>
                 )}
               </div>

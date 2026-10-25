@@ -14,8 +14,8 @@ const fieldType = t.Union([
   t.Literal('member'),
 ]);
 
-// Who a member field may hold: every candidate, the people only, or the agents only.
-const memberScope = t.Union([t.Literal('all'), t.Literal('humans'), t.Literal('agents')]);
+// Who a member field may hold: every candidate or the people only.
+const memberScope = t.Union([t.Literal('all'), t.Literal('humans')]);
 
 export const fieldParams = t.Object({ projectKey: t.String(), fieldId: t.Numeric() });
 

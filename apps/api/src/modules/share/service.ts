@@ -38,8 +38,6 @@ export interface ShareScaffold {
     userId: string;
     name: string;
     image: string | null;
-    kind: 'member' | 'agent';
-    agentKind: 'external' | 'internal' | null;
   }>;
   customFields: Awaited<ReturnType<typeof listCustomFields>>;
 }
@@ -96,8 +94,6 @@ async function buildScaffold(
       userId: a.userId,
       name: a.name,
       image: a.image,
-      kind: a.kind,
-      agentKind: a.agentKind,
     })),
     customFields,
   };
@@ -113,7 +109,6 @@ function redactIssue<T extends IssueRow>(row: T): T {
     initiative: null,
     cycle: null,
     assigneeUserId: null,
-    delegateUserId: null,
     labelIds: [],
     fieldValues: [],
   };

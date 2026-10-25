@@ -53,7 +53,7 @@ export function useRoleUsageQuery(teamId: number, roleId: number) {
 }
 
 // A role belongs to the team, so a write to it changes what every project of that
-// team offers and what its members, agents and pending invites resolve to.
+// team offers and what its members and pending invites resolve to.
 function useRoleMutation<TInput, TResult>(
   teamId: number,
   mutationFn: (input: TInput) => Promise<TResult>,
@@ -67,7 +67,6 @@ function useRoleMutation<TInput, TResult>(
       qc.invalidateQueries({ queryKey: qk.teams });
       qc.invalidateQueries({ queryKey: qk.anyRoleUsage });
       qc.invalidateQueries({ queryKey: qk.anyMembers });
-      qc.invalidateQueries({ queryKey: qk.anyAiAgents });
       qc.invalidateQueries({ queryKey: qk.anyInvites });
       qc.invalidateQueries({ queryKey: qk.anyTeamInvites });
     },
@@ -88,7 +87,7 @@ export function useUpdateRole(teamId: number) {
   );
 }
 
-// targetRoleId is where the members, agents and pending invites on the role are
+// targetRoleId is where the members and pending invites on the role are
 // moved; the API refuses to delete a role in use without it.
 export function useDeleteRole(teamId: number) {
   return useRoleMutation(

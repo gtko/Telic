@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "General",
-      "description": "Espacios de trabajo personales, valores por defecto para los proyectos nuevos, y trazas y duración de las ejecuciones de agentes."
+      "description": "Espacios de trabajo personales y valores por defecto para los proyectos nuevos."
     },
     "authentication": {
       "label": "Autenticación",
@@ -95,10 +95,6 @@
       "label": "Acciones",
       "description": "Botones en un ticket que definen campos con un clic."
     },
-    "schedules": {
-      "label": "Tareas programadas",
-      "description": "Ejecutar tareas programadas con agentes"
-    },
     "webhooks": {
       "label": "Webhooks",
       "description": "Enviar eventos del proyecto a URLs externas, firmados con un secreto para cada webhook."
@@ -110,18 +106,10 @@
     "import-export": {
       "label": "Importar/Exportar",
       "description": "Traer tickets, comentarios y etiquetas desde una instancia autoalojada de Plane, o exportar los datos de este proyecto como JSON."
-    },
-    "ai-agents": {
-      "label": "Agentes de IA",
-      "description": "Agentes de IA que trabajan en este proyecto."
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
-    "available": "Disponible en Cloud y en Pro autoalojado.",
+    "available": "Disponible en esta instancia.",
     "dashboard": {
       "title": "Panel",
       "description": "La actividad de los equipos y proyectos de este espacio de trabajo.",
@@ -129,33 +117,14 @@
         "teams": "Equipos",
         "projects": "Proyectos",
         "people": "Personas",
-        "agents": "Agentes de IA",
         "openIssues": "Tickets abiertos",
         "storage": "Almacenamiento"
       },
       "blocks": {
-        "agents": "Agentes de IA",
-        "schedules": "Ejecuciones programadas",
         "time": "Tiempo registrado",
         "flow": "Flujo de tickets",
         "projects": "Proyectos activos",
         "teams": "Equipos activos"
-      }
-    },
-    "agentBudgets": {
-      "title": "Presupuestos de IA",
-      "description": "Límites a lo que gastan los agentes en modelos.",
-      "workspace": "Todo el espacio",
-      "figures": {
-        "spent": "Gastado",
-        "limit": "Límite",
-        "left": "Queda",
-        "forecast": "Previsión para el periodo"
-      },
-      "list": "Presupuestos",
-      "columns": {
-        "budget": "Presupuesto",
-        "spent": "Gastado"
       }
     },
     "auditLog": {

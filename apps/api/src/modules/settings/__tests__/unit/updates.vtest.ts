@@ -47,14 +47,14 @@ describe('compareVersions', () => {
 });
 
 function feed(entries: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n<title>Release notes from itsaplan</title>\n${entries}\n</feed>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n<title>Release notes from Telic</title>\n${entries}\n</feed>`;
 }
 
 function entry(tag: string, updated: string, content: string): string {
   return `  <entry>
     <id>tag:github.com,2008:Repository/1/${tag}</id>
     <updated>${updated}</updated>
-    <link rel="alternate" type="text/html" href="https://github.com/croffasia/itsaplan/releases/tag/${tag}"/>
+    <link rel="alternate" type="text/html" href="https://github.com/gtko/Telic/releases/tag/${tag}"/>
     <title>${tag}</title>
     <content type="html">${content}</content>
     <author><name>croffasia</name></author>
@@ -69,7 +69,7 @@ describe('parseReleasesAtom', () => {
         tag: 'v0.2.0',
         version: '0.2.0',
         publishedAt: '2026-07-23T10:42:42Z',
-        url: 'https://github.com/croffasia/itsaplan/releases/tag/v0.2.0',
+        url: 'https://github.com/gtko/Telic/releases/tag/v0.2.0',
         notes: '<p>Notes</p>',
         notesFormat: 'html',
       },
@@ -114,7 +114,7 @@ describe('parseReleasesAtom', () => {
 describe('parseChangelog', () => {
   const changelog = `# Changelog
 
-## [0.2.0](https://github.com/croffasia/itsaplan/compare/v0.1.0...v0.2.0) (2026-07-23)
+## [0.2.0](https://github.com/gtko/Telic/compare/v0.1.0...v0.2.0) (2026-07-23)
 
 
 ### Features

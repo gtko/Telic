@@ -9,8 +9,7 @@ import WhatsNewRenameGroup from './WhatsNewRenameGroup';
 export default function WhatsNewMigrationReport({ report }: { report: TeamsMigrationReport }) {
   const t = useTranslations('whatsNew');
   const renamed = report.renamed;
-  const hasMerged =
-    report.merged.roles > 0 || report.merged.agentTools > 0 || report.movedInvites > 0;
+  const hasMerged = report.merged.roles > 0 || report.movedInvites > 0;
 
   return (
     <div className="space-y-10">
@@ -30,8 +29,6 @@ export default function WhatsNewMigrationReport({ report }: { report: TeamsMigra
 
       <div className="grid gap-x-12 gap-y-8 sm:grid-cols-2">
         <WhatsNewRenameGroup title={t('report.renamedRoles')} items={renamed.roles ?? []} />
-        <WhatsNewRenameGroup title={t('report.renamedSkills')} items={renamed.skills ?? []} />
-        <WhatsNewRenameGroup title={t('report.renamedAgents')} items={renamed.agents ?? []} />
         <WhatsNewRenameGroup
           title={t('report.renamedCredentials')}
           items={renamed.credentials ?? []}
@@ -46,9 +43,6 @@ export default function WhatsNewMigrationReport({ report }: { report: TeamsMigra
               <ul className="space-y-1 text-sm text-muted-foreground">
                 {report.merged.roles > 0 && (
                   <li>{t('report.mergedRoles', { count: report.merged.roles })}</li>
-                )}
-                {report.merged.agentTools > 0 && (
-                  <li>{t('report.mergedTools', { count: report.merged.agentTools })}</li>
                 )}
                 {report.movedInvites > 0 && (
                   <li>{t('report.movedInvites', { count: report.movedInvites })}</li>

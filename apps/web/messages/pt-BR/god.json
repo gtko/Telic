@@ -7,12 +7,6 @@
   "users": {
     "empty": "Nenhuma conta corresponde a estes filtros.",
     "searchPlaceholder": "Buscar por nome ou e-mail",
-    "kind": "Tipo de conta",
-    "kinds": {
-      "human": "Humanos",
-      "agent": "Bots de IA",
-      "all": "Todas as contas"
-    },
     "columns": {
       "account": "Conta",
       "role": "Função",
@@ -25,7 +19,6 @@
     "registered": "entrou em {date}",
     "roleGod": "God",
     "roleUser": "Usuário",
-    "agent": "Agente",
     "noProviders": "nenhum",
     "neverSeen": "nunca",
     "verified": "Verificado",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "O proprietário da instância está sempre ativo.",
-      "agent": "A conta de um agente acompanha o agente.",
       "scim": "Seu provedor de identidade (SCIM) decide quais contas estão ativas."
     },
     "deactivateTitle": "Desativar {email}?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Dono da instância",
     "user": "Usuário",
-    "aiAgent": "Agente de IA",
     "emailVerified": "E-mail verificado",
     "unconfirmedTitle": "Endereço de e-mail não confirmado",
     "unconfirmedHint": "Confirme-o aqui quando o link nunca chegou.",
@@ -71,7 +62,7 @@
     "deleteConfirm": "Excluir conta",
     "deleteConfirmWithProjects": "{count, plural, one {Excluir conta e projeto} other {Excluir conta e projetos}}",
     "deleteMessage": "<strong>{name}</strong> perde acesso a esta instância. Issues e comentários que escreveram permanecem, com o autor desatribuído. Isso não pode ser desfeito.",
-    "deleteWorkspaceNote": "Um workspace desta conta é excluído com ela se não tiver projetos nem agentes de IA. Caso contrário, ele passa para você, com tudo o que a conta possuía sozinha nele.",
+    "deleteWorkspaceNote": "Um workspace desta conta é excluído com ela se não tiver projetos. Caso contrário, ele passa para você, com tudo o que a conta possuía sozinha nele.",
     "soleOwnerTitle": "{count, plural, one {Único dono de um projeto} other {Único dono de # projetos}}",
     "soleOwnerHint": "{count, plural, one {Quando a conta se for, ninguém poderá gerenciá-lo.} other {Quando a conta se for, ninguém poderá gerenciá-los.}}",
     "deleteWithProjects": "{count, plural, one {Excluir o projeto com a conta} other {Excluir os projetos com a conta}}",
@@ -87,7 +78,6 @@
       "project": "Projeto",
       "members": "Membros",
       "issues": "Issues",
-      "agents": "Agentes",
       "lastActivity": "Última atividade",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Iniciativas",
       "members": "Membros",
       "dashboards": "Dashboards",
-      "views": "Visões",
-      "agents": "Agentes de IA",
-      "skills": "Habilidades",
-      "tools": "Ferramentas"
+      "views": "Visões"
     },
     "members": "Membros",
     "noMembersTitle": "Sem membros",
@@ -129,7 +116,6 @@
       "projects": "Projetos",
       "members": "Membros",
       "issues": "Issues",
-      "agents": "Agentes",
       "mcp": "MCP"
     },
     "mcpEnabled": "Ativado",
@@ -146,9 +132,6 @@
       "projects": "Projetos",
       "issues": "Issues",
       "members": "Membros",
-      "agents": "Agentes de IA",
-      "skills": "Habilidades",
-      "tools": "Ferramentas",
       "roles": "Papéis de projeto"
     },
     "projects": "Projetos",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Proprietário",
       "manager": "Gerente",
-      "member": "Membro",
-      "agent": "Agente"
+      "member": "Membro"
     },
     "joined": "entrou em {date}"
   },
@@ -178,17 +160,7 @@
     "workspacesSaved": "Configurações de workspace salvas",
     "workspaces": "Workspaces",
     "personalWorkspaces": "Um workspace para cada pessoa",
-    "personalWorkspacesHint": "Cada conta recebe um workspace próprio com o nome da pessoa. Desativado, as pessoas trabalham apenas nos workspaces aos quais foram adicionadas.",
-    "agents": "Agentes",
-    "agentsSaved": "Configurações de agentes salvas",
-    "traceRetention": "Manter rastros de execução",
-    "traceRetentionHint": "Cada execução de agente registra as chamadas ao modelo e às ferramentas. Os painéis de consumo contam só as execuções mantidas.",
-    "traceDays": "{days, plural, one {# dia} other {# dias}}",
-    "traceForever": "Sempre",
-    "maxRunTime": "Tempo máximo de execução",
-    "maxRunTimeHint": "Quanto tempo uma execução de agente pode levar antes de ser interrompida e salva como falha. O limite próprio de um agente não pode ultrapassá-lo.",
-    "runMinutes": "{minutes, plural, one {# minuto} other {# minutos}}",
-    "runSeconds": "{seconds} s"
+    "personalWorkspacesHint": "Cada conta recebe um workspace próprio com o nome da pessoa. Desativado, as pessoas trabalham apenas nos workspaces aos quais foram adicionadas."
   },
   "authentication": {
     "saved": "Configurações de autenticação salvas",
@@ -239,7 +211,7 @@
     "fileSize": "Tamanho de arquivo",
     "fileSizeHint": "O maior arquivo único que um envio pode ter. Um arquivo maior é recusado antes de ser armazenado.",
     "attachmentMb": "Tamanho do anexo (MB)",
-    "attachmentHint": "Aplica-se a anexos de issue, arquivos colados em uma descrição e anexos adicionados por agentes.",
+    "attachmentHint": "Aplica-se a anexos de issue e a arquivos colados em uma descrição.",
     "avatarMb": "Tamanho do avatar (MB)",
     "avatarHint": "A foto de perfil que as pessoas enviam para sua conta.",
     "mimeTypes": "Tipos de anexo aceitos",

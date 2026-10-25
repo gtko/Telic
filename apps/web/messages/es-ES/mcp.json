@@ -1,6 +1,6 @@
 {
   "title": "Servidor MCP",
-  "description": "Conecta agentes de IA a este proyecto a través del Protocolo de Contexto de Modelo. Un agente ve lo que su clave de API permite.",
+  "description": "Conecta clientes MCP a este proyecto a través del Protocolo de Contexto de Modelo. Un cliente ve lo que su clave de API permite.",
   "disabled": "Desactivado",
   "offForTeam": "MCP está apagado para el equipo {team}.",
   "offForProject": "El equipo {team} tiene MCP activado, pero este proyecto está apagado.",
@@ -24,15 +24,15 @@
     "methodTabsAria": "Método de conexión",
     "method": "OAuth",
     "personalKey": "Clave de API",
-    "description": "Úsalo para cualquier cliente MCP que soporte OAuth, como ChatGPT o Claude. Inicias sesión con tu cuenta de Itsaplan. El cliente nunca recibe una clave de API.",
+    "description": "Úsalo para cualquier cliente MCP que soporte OAuth, como ChatGPT o Claude. Inicias sesión con tu cuenta de Telic. El cliente nunca recibe una clave de API.",
     "discovery": "Descubrimiento de OAuth",
     "steps": {
       "add": "Añade una aplicación MCP en tu cliente.",
       "paste": "Pega el endpoint de MCP.",
       "choose": "Elige OAuth cuando el cliente pregunte cómo iniciar sesión.",
-      "signIn": "Inicia sesión en Itsaplan y aprueba el acceso."
+      "signIn": "Inicia sesión en Telic y aprueba el acceso."
     },
-    "security": "OAuth usa PKCE (S256), registración dinámica de clientes y tokens de acceso acotados a tu cuenta de Itsaplan.",
+    "security": "OAuth usa PKCE (S256), registración dinámica de clientes y tokens de acceso acotados a tu cuenta de Telic.",
     "consent": {
       "title": "{client} quiere conectarse a tu cuenta",
       "titleUnnamed": "Un cliente MCP quiere conectarse a tu cuenta",

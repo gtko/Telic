@@ -1,5 +1,5 @@
 {
-  "description": "Pelacak issue sumber terbuka yang di-host sendiri dengan agen AI bawaan. Tetapkan pekerjaan kepada orang atau agen, lalu jalankan melalui API, webhook, dan MCP.",
+  "description": "Pelacak issue sumber terbuka yang di-host sendiri. Kelola proyek dan item kerja, lalu jalankan melalui API, webhook, dan MCP.",
   "screens": {
     "signIn": "Masuk",
     "signUp": "Daftar",

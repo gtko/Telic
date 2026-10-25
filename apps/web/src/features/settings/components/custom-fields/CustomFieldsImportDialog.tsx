@@ -53,7 +53,6 @@ export default function CustomFieldsImportDialog({
           issueTypeId,
           name: field.name,
           fieldType: field.fieldType,
-          memberScope: field.memberScope ?? undefined,
           showInBody: field.showInBody,
           options: field.options,
         });

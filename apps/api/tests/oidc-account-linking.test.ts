@@ -68,7 +68,7 @@ describe('OIDC sign-in to an account that has the address', () => {
     const god = authedApi((await signUpTestUser({ name: 'Root' })).cookie);
     const oidc = await god.god['oidc-settings'].put({
       discoveryUrl: `http://localhost:${provider.port}/.well-known/openid-configuration`,
-      clientId: 'itsaplan',
+      clientId: 'telic',
       clientSecret: 'client-secret',
       label: 'Test IdP',
       enabled: true,

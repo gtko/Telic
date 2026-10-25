@@ -94,7 +94,7 @@ describe('god deactivate / reactivate', () => {
     const victim = await signUpTestUser({ team: false });
     await god.api.god.users({ userId: victim.userId }).deactivate.post();
 
-    const listed = await god.api.god.users.get({ query: { kind: 'all', page: 1, pageSize: 50 } });
+    const listed = await god.api.god.users.get({ query: { page: 1, pageSize: 50 } });
 
     expect(listed.status).toBe(200);
     expect(listed.data!.items).toContainEqual(

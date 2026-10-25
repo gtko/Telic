@@ -434,7 +434,7 @@ export async function listImportRecords(
 }
 
 // The next chunk of this job's snapshot that has not been materialized yet,
-// keyset-paginated on import_record's own id — itsaplan's own position in the
+// keyset-paginated on import_record's own id — Telic's own position in the
 // snapshot list, not the source's pagination cursor (see the notes file). A
 // retried tick naturally skips rows a crashed earlier attempt already created,
 // since those no longer match "local id still null".
@@ -880,12 +880,11 @@ export interface NewLocalAttachment {
 }
 
 // The bytes a project has stored, summed in SQL across every kind that counts against its
-// quota — the same four tables projectStoredBytes reads, as a subquery the insert can
-// condition on. Four bound parameters, all the project id.
+// quota — the same three tables projectStoredBytes reads, as a subquery the insert can
+// condition on. Three bound parameters, all the project id.
 const PROJECT_STORED_BYTES_SQL = `(
     (SELECT COALESCE(SUM(a.size_bytes), 0) FROM issue_attachment a
        JOIN issue i ON i.id = a.issue_id WHERE i.project_id = ?)
-  + (SELECT COALESCE(SUM(size_bytes), 0) FROM chat_attachment WHERE project_id = ?)
   + (SELECT COALESCE(SUM(d.size_bytes), 0) FROM document_asset d
        JOIN project_document pd ON pd.id = d.document_id WHERE pd.project_id = ?)
   + (SELECT COALESCE(SUM(ia.size_bytes), 0) FROM initiative_attachment ia
@@ -961,7 +960,6 @@ export async function createLocalAttachmentAndRecord(
           input.contentType,
           input.bytes.length,
           quotaBytes,
-          input.projectId,
           input.projectId,
           input.projectId,
           input.projectId,

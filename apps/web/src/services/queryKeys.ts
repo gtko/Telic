@@ -10,11 +10,6 @@ export const qk = {
   receivedInvites: ['receivedInvites'] as const,
   receivedInvitesPage: (userId: string, email: string, params: unknown) =>
     ['receivedInvites', userId, email, params] as const,
-  externalRunTrace: (runId: number) => ['externalRunTrace', runId] as const,
-  runnerQueue: ['runnerQueue'] as const,
-  issueAgentRuns: (issueId: number) => ['issueAgentRuns', issueId] as const,
-  issueAgentRunTrace: (issueId: number, runId: number, traceId?: string) =>
-    ['issueAgentRuns', issueId, 'trace', runId, traceId ?? null] as const,
   projects: ['projects'] as const,
   // Under projects, so what refreshes the project list refreshes every search with it.
   projectSearch: (filters: unknown) => ['projects', 'search', filters] as const,
@@ -31,7 +26,6 @@ export const qk = {
   scim: scimKey,
   scimGroups: (workspaceId: number | null) => [...scimKey(workspaceId), 'groups'] as const,
   scimProjects: (workspaceId: number | null) => [...scimKey(workspaceId), 'projects'] as const,
-  teamProjectDefaults: (teamId: number) => ['team', teamId, 'project-defaults'] as const,
   // The members of a team and the projects it owns, each read by its own section. A
   // page is scoped by the search term and the window it was read with.
   teamMembers: (teamId: number, params: unknown) => ['team', teamId, 'members', params] as const,
@@ -120,15 +114,6 @@ export const qk = {
     ['noteBoards', projectKey, 'board', boardId] as const,
   noteBoardAccessCandidates: (projectKey: string) =>
     ['noteBoards', projectKey, 'accessCandidates'] as const,
-  agentAnalytics: (teamId: number, days: number, projectId: number | null) =>
-    ['agentAnalytics', teamId, days, projectId] as const,
-  workspaceAgentAnalytics: (workspaceId: number, days: number) =>
-    ['workspaceAgentAnalytics', workspaceId, days] as const,
-  // The model prices of a workspace: the models it uses, and pages of the built-in table.
-  modelPrices: (workspaceId: number) => ['modelPrices', workspaceId] as const,
-  usedModelPrices: (workspaceId: number) => ['modelPrices', workspaceId, 'used'] as const,
-  modelPriceCatalog: (workspaceId: number, params: unknown) =>
-    ['modelPrices', workspaceId, 'catalog', params] as const,
   analytics: (projectKey: string, kind: string, params?: unknown) =>
     ['analytics', projectKey, kind, params ?? {}] as const,
   analyticsForProject: (projectKey: string) => ['analytics', projectKey] as const,
@@ -156,72 +141,6 @@ export const qk = {
   roleUsage: (teamId: number, roleId: number) => ['roleUsage', teamId, roleId] as const,
   anyRoleUsage: ['roleUsage'] as const,
   permissionCatalog: ['permissionCatalog'] as const,
-  // A team's AI agents (its Agents section), and the ones working in one of its
-  // projects (the project's read-only list). The action catalog is team-scoped on the
-  // API, so it hangs off the same key with a 'tools' tail.
-  aiAgents: (teamId: number, projectId?: number) =>
-    ['aiAgents', teamId, projectId ?? 'all'] as const,
-  anyAiAgents: ['aiAgents'] as const,
-  teamAiAgents: (teamId: number) => ['aiAgents', teamId] as const,
-  agentTools: (teamId: number) => ['aiAgents', teamId, 'tools'] as const,
-  // The skills enabled on one agent (the agent editor's Skills tab).
-  agentSkillLinks: (teamId: number, agentId: number) =>
-    ['aiAgents', teamId, agentId, 'skills'] as const,
-  // An agent's triggered run history (the runs sidebar).
-  agentRuns: (teamId: number, agentId: number) => ['aiAgents', teamId, agentId, 'runs'] as const,
-  invocationSecret: (teamId: number, agentId: number) =>
-    ['aiAgents', teamId, agentId, 'invocationSecret'] as const,
-  agentSchedules: (projectKey: string) => ['agentSchedules', projectKey] as const,
-  // One page of them: the window scopes the entry.
-  agentSchedulePage: (projectKey: string, params: unknown) =>
-    ['agentSchedules', projectKey, 'page', params] as const,
-  agentScheduleRuns: (projectKey: string, scheduleId: number) =>
-    ['agentSchedules', projectKey, scheduleId, 'runs'] as const,
-  // The caller's chat threads with one agent (the AI Chat history rail) and the
-  // transcript of one thread (restored when a thread is opened). A search is a list of
-  // its own, so the unsearched list stays cached while one is typed.
-  agentThreadLists: (projectKey: string, agentId: number) =>
-    ['aiAgents', projectKey, agentId, 'threadList'] as const,
-  agentThreads: (projectKey: string, agentId: number, q = '') =>
-    ['aiAgents', projectKey, agentId, 'threadList', q] as const,
-  // The conversations starred with one agent: the group on top of the history, and what
-  // the star in the tabs bar reads its state from.
-  agentFavoriteThreads: (projectKey: string, agentId: number) =>
-    ['aiAgents', projectKey, agentId, 'favoriteThreads'] as const,
-  agentThreadMessages: (projectKey: string, agentId: number, threadId: string) =>
-    ['aiAgents', projectKey, agentId, 'threads', threadId] as const,
-  // Everything integration-scoped. A credential belongs to the team, so changing one
-  // is invalidated at this prefix: the pickers its projects fill from go stale too.
-  integrations: ['integrations'] as const,
-  // One page of the team's stored credentials (its Integrations tab); the window
-  // scopes the entry. The integration catalog and an LLM provider's models sit beside
-  // it, under the same team prefix.
-  teamCredentialPage: (teamId: number, params: unknown) =>
-    ['integrations', 'team', teamId, 'page', params] as const,
-  integrationCatalog: (teamId: number) => ['integrations', 'team', teamId, 'catalog'] as const,
-  integrationModels: (teamId: number, provider: string) =>
-    ['integrations', 'team', teamId, 'models', provider] as const,
-  // The connected integrations as picker options, under the same prefix so a
-  // credential mutation refreshes them too.
-  integrationOptions: (teamId: number, kind?: string) =>
-    ['integrations', 'team', teamId, 'options', kind ?? 'all'] as const,
-  // Everything skill-scoped in one team. A write invalidates at this prefix, so the
-  // page the section shows, the whole library the picker reads and the skill the
-  // editor has open all refresh together.
-  agentSkills: (teamId: number) => ['agentSkills', teamId] as const,
-  agentSkillPage: (teamId: number, params: unknown) =>
-    ['agentSkills', teamId, 'page', params] as const,
-  agentSkillOptions: (teamId: number) => ['agentSkills', teamId, 'options'] as const,
-  agentSkill: (teamId: number, skillId: number) =>
-    ['agentSkills', teamId, 'skill', skillId] as const,
-  // The team's configured tools (its Tools section) and the tools enabled on one agent
-  // (the agent editor's Tools section).
-  configuredTools: (teamId: number) => ['configuredTools', teamId] as const,
-  configuredToolPage: (teamId: number, params: unknown) =>
-    ['configuredTools', teamId, 'page', params] as const,
-  configuredToolOptions: (teamId: number) => ['configuredTools', teamId, 'options'] as const,
-  agentToolLinks: (teamId: number, agentId: number) =>
-    ['aiAgents', teamId, agentId, 'tool-configs'] as const,
   issue: (id: number) => ['issue', id] as const,
   issueDevelopmentRepositories: (id: number) =>
     ['issue', id, 'development', 'repositories'] as const,
@@ -313,7 +232,6 @@ export const qk = {
   instanceOidcSettings: ['instanceOidcSettings'] as const,
   instanceTelegramSettings: ['instanceTelegramSettings'] as const,
   instanceProjectDefaults: ['instanceProjectDefaults'] as const,
-  instanceAgentSettings: ['instanceAgentSettings'] as const,
   instanceStorageSettings: ['instanceStorageSettings'] as const,
   // The upload limits as read by the upload UI (open to any signed-in user).
   storageSettings: ['storageSettings'] as const,

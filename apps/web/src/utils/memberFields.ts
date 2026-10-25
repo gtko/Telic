@@ -1,20 +1,12 @@
-import type { CustomField, MemberScope } from '@/lib/api/endpoints/customFields';
-import type { Assignee } from '@/lib/api/endpoints/projects';
+import type { CustomField } from '@/lib/api/endpoints/customFields';
 import type { Issue } from '@/lib/api/endpoints/issues';
 import { customFieldId, isCustomFieldKey, type GroupField } from '@/utils/viewSettings';
 
-// The custom fields that hold one person or agent. They are offered wherever the
-// built-in assignee and delegate are: as a filter field, and as a grouping.
+// The custom fields that hold one person. They are offered wherever the
+// built-in assignee is: as a filter field, and as a grouping.
 
 export function isMemberField(field: CustomField): boolean {
   return field.fieldType === 'member';
-}
-
-// The people and agents a member field of this scope holds.
-export function memberCandidates(assignees: Assignee[], scope: MemberScope): Assignee[] {
-  if (scope === 'humans') return assignees.filter((a) => a.kind === 'member');
-  if (scope === 'agents') return assignees.filter((a) => a.kind === 'agent');
-  return assignees;
 }
 
 // The member custom field a `cf:<id>` grouping points at, or null when the grouping

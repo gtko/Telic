@@ -15,11 +15,9 @@ const TABS = [
 export default function IssueActivityToolbar({
   issueId,
   view,
-  canReadAgentRuns,
 }: {
   issueId: number;
   view: ActivityFeedView;
-  canReadAgentRuns: boolean;
 }) {
   const t = useTranslations('issue');
   const counts = useFeedCountsQuery(issueId).data;
@@ -37,37 +35,30 @@ export default function IssueActivityToolbar({
             )}
           </TabsTrigger>
         ))}
-        {canReadAgentRuns && (
-          <TabsTrigger value="agentRuns" className="text-[13px]">
-            {t('agentRuns.title')}
-          </TabsTrigger>
-        )}
       </TabsList>
-      {view.tab !== 'agentRuns' && (
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-pressed={view.grouped}
-            title={t('feedGroupByStatus')}
-            onClick={() => view.setGrouped(!view.grouped)}
-            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
-          >
-            <Layers className="size-3.5" />
-            {t('feedStatus')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            title={t('feedChangeOrder')}
-            onClick={() => view.setOrder(view.order === 'desc' ? 'asc' : 'desc')}
-            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-          >
-            <ArrowDownUp className="size-3.5" />
-            {t(view.order === 'desc' ? 'feedNewest' : 'feedOldest')}
-          </Button>
-        </>
-      )}
+      <>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={view.grouped}
+          title={t('feedGroupByStatus')}
+          onClick={() => view.setGrouped(!view.grouped)}
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+        >
+          <Layers className="size-3.5" />
+          {t('feedStatus')}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          title={t('feedChangeOrder')}
+          onClick={() => view.setOrder(view.order === 'desc' ? 'asc' : 'desc')}
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+        >
+          <ArrowDownUp className="size-3.5" />
+          {t(view.order === 'desc' ? 'feedNewest' : 'feedOldest')}
+        </Button>
+      </>
     </div>
   );
 }

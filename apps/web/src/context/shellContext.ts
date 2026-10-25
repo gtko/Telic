@@ -20,8 +20,6 @@ export type ShellContext = {
   // between the side panel and the issue page; pass it to force one of them.
   onOpenIssue: (id: number, mode?: IssueOpenMode) => void;
   onAddIssue: (defaults: NewIssueDefaults) => void;
-  // Opens the chat panel on a new conversation with the agent.
-  onChatWithAgent: (agentId: number) => void;
 };
 
 export const ShellCtx = createContext<ShellContext | null>(null);

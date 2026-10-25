@@ -109,7 +109,6 @@
       "issueSettingsDescription": "이슈를 열 때 통계와 활동 기록이 처음 표시되는 방식을 설정합니다. 이슈가 열려 있는 동안 이 설정을 변경해도 현재 열린 이슈에는 적용되지 않습니다.",
       "notifications": "알림",
       "notificationsDescription": "이슈를 구독하면 댓글과 상태 변경 알림을 받을 수 있습니다.",
-      "aiChat": "AI 채팅",
       "shortcuts": "키보드 단축키",
       "shortcutsDescription": "변경을 누른 다음 원하는 키를 입력하세요. 초기화하면 이 인스턴스에 설정된 기본 단축키로 돌아갑니다."
     },
@@ -167,8 +166,6 @@
       "grouped": "상태별"
     },
     "autoWatch": "이슈 자동 구독",
-    "autoWatchDescription": "내가 만들거나 담당자로 지정된 이슈, 댓글을 작성하거나 멘션된 이슈를 자동으로 구독합니다.",
-    "showChatByDefault": "기본으로 채팅 표시",
-    "showChatByDefaultDescription": "프로젝트 페이지를 열 때 채팅 패널도 함께 엽니다. 패널 상단이나 채팅 아이콘을 눌러 언제든 닫을 수 있습니다."
+    "autoWatchDescription": "내가 만들거나 담당자로 지정된 이슈, 댓글을 작성하거나 멘션된 이슈를 자동으로 구독합니다."
   }
 }

@@ -33,13 +33,6 @@
   },
   "profileHeading": "Perfil",
   "you": "(você)",
-  "aiAgent": "Agente de IA",
-  "tabs": {
-    "all": "Todos",
-    "people": "Pessoas",
-    "agents": "Agentes de IA",
-    "label": "Mostrar"
-  },
   "leaveProject": "Sair do projeto",
   "revokeAccess": "Revogar acesso",
   "lastOwner": "Um projeto deve manter pelo menos um dono",
@@ -89,28 +82,16 @@
   "added": "Membro adicionado",
   "provisioned": "Gerenciado por SCIM",
   "search": {
-    "all": "Buscar membros",
-    "people": "Buscar pessoas",
-    "agents": "Buscar agentes de IA"
+    "all": "Buscar membros"
   },
   "empty": {
     "all": {
       "title": "Nenhum membro ainda",
-      "description": "Pessoas e agentes de IA aparecem aqui ao entrar."
-    },
-    "human": {
-      "title": "Nenhuma pessoa ainda",
-      "description": "Pessoas aparecem aqui ao entrar."
-    },
-    "agent": {
-      "title": "Nenhum agente de IA ainda",
-      "description": "Agentes de IA aparecem aqui ao serem adicionados."
+      "description": "As pessoas aparecem aqui ao entrar."
     },
     "search": {
       "title": "Nada encontrado",
-      "all": "Nenhum membro corresponde a esta busca.",
-      "human": "Nenhuma pessoa corresponde a esta busca.",
-      "agent": "Nenhum agente de IA corresponde a esta busca."
+      "all": "Nenhum membro corresponde a esta busca."
     }
   }
 }

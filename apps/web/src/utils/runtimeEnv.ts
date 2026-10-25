@@ -11,7 +11,7 @@ export interface RuntimeEnv {
 
 declare global {
   interface Window {
-    __ITSAPLAN_ENV__?: RuntimeEnv;
+    __TELIC_ENV__?: RuntimeEnv;
   }
 }
 
@@ -33,5 +33,5 @@ export function serverRuntimeEnv(): RuntimeEnv {
 
 export function runtimeEnv(): RuntimeEnv {
   if (typeof window === 'undefined') return serverRuntimeEnv();
-  return window.__ITSAPLAN_ENV__ ?? { apiUrl: '', privacyUrl: '', termsUrl: '' };
+  return window.__TELIC_ENV__ ?? { apiUrl: '', privacyUrl: '', termsUrl: '' };
 }

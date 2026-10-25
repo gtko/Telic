@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Show or hide the sidebar"
       },
-      "chat": {
-        "toggle": "Show or hide the AI chat"
-      },
       "issue": {
         "new": "New issue"
       },
@@ -77,50 +74,6 @@
       }
     },
     "conflict": "Already used by {command}"
-  },
-  "agentChat": {
-    "emptyHint": "Send a message to test how this agent replies and which tools it uses.",
-    "messagePlaceholder": "Message {agent}…",
-    "reset": "Reset conversation",
-    "send": "Send",
-    "sendHint": "Enter to send, ⌘/Ctrl+Enter for a new line",
-    "stop": "Stop",
-    "stopped": "Stopped",
-    "loadingEarlier": "Loading earlier messages…",
-    "messages": "Conversation messages",
-    "usingTool": "Using {tool}…",
-    "usedTool": "Used {tool}",
-    "usedTools": "{count, plural, one {Used # tool} other {Used # tools}}",
-    "toolInput": "Input",
-    "toolOutput": "Output",
-    "thinking": "Thinking…",
-    "waitingForRunner": "Waiting for the runner…",
-    "waitingToSend": "Waiting to send",
-    "removePending": "Remove message",
-    "title": "Chat with {agent}",
-    "unreachable": "Could not reach the agent. Try again.",
-    "runnerOffline": "Runner offline",
-    "runnerOfflineHint": "Start the runner on your machine to chat with this agent.",
-    "attachFile": "Attach a spreadsheet, document, PDF, or text file for the agent to read",
-    "removeAttachment": "Remove attachment",
-    "uploadFailed": "Could not upload the file.",
-    "tooManyAttachments": "You can attach up to {max} files to one message.",
-    "importRows": "{count, plural, one {# row} other {# rows}}",
-    "confirmImport": "Confirm import",
-    "cancelImport": "Cancel",
-    "importWorking": "Creating issues…",
-    "importShowAllRows": "Show all {count} rows",
-    "importShowFewerRows": "Show first {count} rows",
-    "importRowState": "Import",
-    "importRowNew": "Will be created",
-    "importSkipHint": "Rows marked ✕ are skipped on confirm.",
-    "importAdjustHint": "Ask the agent to adjust the mapping if anything looks wrong.",
-    "importCanceled": "This import was canceled. Nothing was created.",
-    "importFailed": "The import failed.",
-    "importConfirmed": "{count, plural, one {Created # issue} other {Created # issues}}",
-    "importSkippedRow": "Skipped row {row}: {reason}",
-    "contextSize": "Conversation context: {count, plural, one {# token} other {# tokens}}",
-    "contextUnavailable": "The context size is not available for this agent"
   },
   "share": {
     "createFailed": "Could not create the link. Try again.",
@@ -182,7 +135,7 @@
     "openPreviewLink": "Open {name} in a new tab",
     "loadingPreview": "Loading preview…",
     "previewUnavailable": "A preview is not available. Open the link to view this page.",
-    "internalPage": "ItsAPlan page",
+    "internalPage": "Telic page",
     "internalPreviewUnavailable": "This page is unavailable or you do not have access.",
     "previewNoteCount": "{count, plural, one {# note} other {# notes}}",
     "previewCustomField": "Custom field",
@@ -205,13 +158,11 @@
     "download": "Save chart",
     "downloadFailed": "The chart could not be saved"
   },
-  "agent": "Agent",
   "pager": {
     "previous": "Previous page",
     "next": "Next page",
     "page": "Page {number}",
     "perPage": "per page",
     "range": "{first}-{last} of {total}"
-  },
-  "aboutCloudAndPro": "Learn about Cloud and Pro"
+  }
 }

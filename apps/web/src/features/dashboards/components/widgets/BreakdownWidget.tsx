@@ -8,7 +8,7 @@ import { useBreakdownQuery } from '../../services/analytics.service';
 
 // The dimensions the counts can be grouped by, in picker order. Their labels are
 // messages under `dashboards.breakdown.by`.
-export const BY_OPTIONS: BreakdownBy[] = ['status', 'priority', 'type', 'assignee', 'delegate'];
+export const BY_OPTIONS: BreakdownBy[] = ['status', 'priority', 'type', 'assignee'];
 
 // Issue counts grouped by a chosen dimension, drawn as a donut. The dimension is a
 // per-widget config choice, edited from the header settings popover (see

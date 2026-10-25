@@ -12,8 +12,7 @@ const THEMES = { light: '', dark: '.dark' } as const;
 const INITIAL_DIMENSION = { width: 320, height: 200 } as const;
 
 // The chart is re-laid out at most once per this many milliseconds. A container whose
-// width is animated (the widget grid transitions it, the sidebar and the chat panel
-// change it) would otherwise resize the chart in the ResizeObserver callback of every
+// width is animated (the widget grid transitions it, the sidebar changes it) would otherwise resize the chart in the ResizeObserver callback of every
 // frame, and each of those writes the new size into the recharts store from an effect
 // — a chain React gives up on with "Maximum update depth exceeded".
 const RESIZE_INTERVAL = 100;
@@ -66,8 +65,7 @@ function ChartContainer({
   const chartId = `chart-${id ?? uniqueId.replace(/:/g, '')}`;
   const [sized, setSized] = React.useState(false);
 
-  // A chart inside a subtree that is display:none — the closed chat panel, an inactive
-  // chat tab — measures 0x0, and recharts answers every such measurement with a
+  // A chart inside a subtree that is display:none, such as an inactive tab, measures 0x0, and recharts answers every such measurement with a
   // container error in the console. It is drawn only while its box is real.
   const measure = React.useCallback(
     (node: HTMLDivElement | null) => {

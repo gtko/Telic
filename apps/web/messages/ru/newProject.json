@@ -25,7 +25,6 @@
     "workflow": "Рабочий процесс",
     "automation": "Автоматизация",
     "views": "Представления",
-    "aiTeam": "AI-команда",
     "knowledge": "Знания"
   },
   "copyItems": {
@@ -38,14 +37,11 @@
     "documents": "Документы",
     "actions": "Действия",
     "configuration": "Конфигурация",
-    "webhooks": "Вебхуки",
-    "agents": "Агенты",
-    "schedules": "Расписания"
+    "webhooks": "Вебхуки"
   },
   "title": "Новый проект",
   "copyTitle": "Копировать проект «{name}»",
   "create": "Создать проект",
   "copyAction": "Копировать проект",
-  "defaultAgents": "В этот проект добавятся агенты: {names}",
   "copyName": "{name} — копия"
 }

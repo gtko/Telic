@@ -28,10 +28,6 @@ import {
 } from './service';
 import { GIT_SETTING_KEY } from '#modules/git/service';
 import { getProjectDefaults } from '#modules/settings/service';
-import { listAgents, updateAgent } from '#modules/agents/core/service';
-import { listAllAgentSchedules, createAgentSchedule } from '#modules/agents/schedules/service';
-import { nextCronRun } from '#modules/agents/schedules/cron';
-import { checkScheduleOptions } from '#modules/agents/schedules/extension';
 import { generateSecret } from '#modules/webhooks/service';
 import {
   assertAttachmentStorageCapacity,
@@ -46,9 +42,7 @@ import { assertValidDocumentContentJson, replaceAssetReferences } from '#modules
 // entity. Some sections depend on others (a view's filters reference
 // states/types/labels/fields); those dependencies are force-enabled in
 // normalizeInclude so a partial selection can never leave an id pointing at the
-// source project. Agents, their skills and their configured tools are not among them:
-// all three belong to the team, so a copy inside it reuses the same agents, and a copy
-// into another team carries none.
+// source project.
 export interface CopyProjectInclude {
   states: boolean;
   issueTypes: boolean;
@@ -60,8 +54,6 @@ export interface CopyProjectInclude {
   actions: boolean;
   configuration: boolean;
   webhooks: boolean;
-  agents: boolean;
-  schedules: boolean;
 }
 
 export const COPY_INCLUDE_KEYS: (keyof CopyProjectInclude)[] = [
@@ -75,8 +67,6 @@ export const COPY_INCLUDE_KEYS: (keyof CopyProjectInclude)[] = [
   'actions',
   'configuration',
   'webhooks',
-  'agents',
-  'schedules',
 ];
 
 const ALL_FALSE = Object.fromEntries(
@@ -99,8 +89,7 @@ const DEFAULT_INCLUDE: CopyProjectInclude = {
 
 // Resolves the selection and force-enables the dependencies each entity needs to be
 // copied correctly. Views/actions remap the ids of states, types, labels and fields,
-// so those must be copied too; a schedule cannot exist without its agent, and a status
-// schedule without its state.
+// so those must be copied too.
 function normalizeInclude(raw?: Partial<CopyProjectInclude>): CopyProjectInclude {
   const inc: CopyProjectInclude = raw ? { ...ALL_FALSE, ...raw } : { ...DEFAULT_INCLUDE };
   if (inc.customFields) inc.issueTypes = true;
@@ -114,10 +103,6 @@ function normalizeInclude(raw?: Partial<CopyProjectInclude>): CopyProjectInclude
     inc.states = true;
     inc.issueTypes = true;
     inc.labels = true;
-  }
-  if (inc.schedules) {
-    inc.agents = true;
-    inc.states = true;
   }
   return inc;
 }
@@ -227,8 +212,7 @@ function remapActionEffect(effect: unknown, maps: CopyIdMaps): unknown {
 // documents, actions, settings, webhooks) are copied step by step (D1 has no interactive transaction), recording
 // old id → new id so the ids that views and actions reference are remapped to the
 // copied entities. A document's assets are cloned in the object store as the copy goes and
-// removed again if it fails (the half-built project is deleted). The team's agents are attached to
-// the new project after it commits, through the same service function the UI uses.
+// removed again if it fails (the half-built project is deleted).
 // Headroom under D1's 1000 queries per invocation for the fixed reads and writes.
 const MAX_COPY_QUERIES = 850;
 
@@ -260,9 +244,6 @@ export async function copyProject(
   // What a new project starts with, set instance-wide in god mode. Read before
   // any write starts.
   const defaults = await getProjectDefaults(db);
-  // Agents, integration credentials and roles belong to the team, so what references
-  // them survives the copy only when it stays in the same team.
-  const sameTeam = ownerTeam.id === source.teamId;
   let createdProjectId: number | null = null;
   // D1 allows 1000 queries per invocation and the copy issues about one per copied row
   // (plus the fixed reads), so a source too large to fit is refused up front instead of
@@ -678,62 +659,6 @@ export async function copyProject(
         .catch(() => undefined);
     await Promise.all(copiedDocumentAssetKeys.map((key) => deleteAttachmentObject(bucket, key)));
     throw error;
-  }
-
-  // Agents: the ones working in the source project, attached to the new one as well.
-  // The team owns them and one handle is unique in it, so a second copy of the same
-  // agent cannot exist. A copy into another team carries no agent: creating one there
-  // would mean a new bot user and a new API key for something the operator did not ask
-  // for, and its skills and configured tools would be missing anyway.
-  if (inc.agents && sameTeam) {
-    for (const a of await listAgents(db, source.teamId, sourceProjectId)) {
-      // The member fields the agent reacts to, remapped onto the copies.
-      const fieldTriggers = a.fieldTriggers.flatMap((trigger) => {
-        const fieldId = maps.field.get(trigger.fieldId);
-        return fieldId == null ? [] : [{ fieldId, delaySec: trigger.delaySec }];
-      });
-      await updateAgent(
-        db,
-        a.id,
-        ownerTeam.id,
-        {
-          projectIds: [...a.projects.map((p) => p.id), newProject.id],
-          fieldTriggers: [
-            ...a.fieldTriggers.map(({ fieldId, delaySec }) => ({ fieldId, delaySec })),
-            ...fieldTriggers,
-          ],
-        },
-        ownerId,
-      );
-    }
-  }
-
-  // Schedules: re-created against the same agents, which only work in the copy when it
-  // stayed in the team. next_run_at is recomputed from the cron so the copy starts on
-  // its own cadence rather than inheriting a past due time. The options go through the
-  // extension with the id maps, for the ids they hold.
-  if (inc.schedules && sameTeam) {
-    for (const s of await listAllAgentSchedules(db, sourceProjectId, ownerId)) {
-      await createAgentSchedule(db, {
-        projectId: newProject.id,
-        agentId: s.agentId,
-        actorUserId: ownerId,
-        name: s.name,
-        type: s.type,
-        prompt: s.prompt,
-        cron: s.cron,
-        nextRunAt: s.cron === null ? null : nextCronRun(s.cron),
-        columnId: s.columnId === null ? null : maps.column.get(s.columnId)!,
-        delaySec: s.delaySec,
-        options: await checkScheduleOptions({
-          type: s.type,
-          options: s.options,
-          projectId: newProject.id,
-          copy: maps,
-        }),
-        status: s.status,
-      });
-    }
   }
 
   return newProject;

@@ -109,7 +109,6 @@
       "issueSettingsDescription": "Bir işin istatistiklerinin ve etkinlik günlüğünün başlangıç görünümü. İş açıkken bunları değiştirmek genel ayarları etkilemez.",
       "notifications": "Bildirimler",
       "notificationsDescription": "Bir işi takip etmek yorumlarını ve durum değişikliklerini size bildirir.",
-      "aiChat": "Yapay zekâ sohbeti",
       "shortcuts": "Klavye kısayolları",
       "shortcutsDescription": "Değiştir'e basıp istediğiniz tuşlara basın. Sıfırla seçeneği kısayolu bu örneklemin varsayılanına döndürür."
     },
@@ -167,8 +166,6 @@
       "grouped": "Duruma göre gruplu"
     },
     "autoWatch": "İşleri otomatik takip et",
-    "autoWatchDescription": "Oluşturduğunuz, size atanan, yorum yaptığınız veya sizden bahsedilen işler.",
-    "showChatByDefault": "Sohbeti varsayılan olarak göster",
-    "showChatByDefaultDescription": "Proje sayfasıyla birlikte sohbet paneli de açılır. Başlığından veya sohbet simgesinden dilediğiniz zaman kapatabilirsiniz."
+    "autoWatchDescription": "Oluşturduğunuz, size atanan, yorum yaptığınız veya sizden bahsedilen işler."
   }
 }

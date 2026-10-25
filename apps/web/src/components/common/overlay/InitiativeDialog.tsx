@@ -125,7 +125,7 @@ export default function InitiativeDialog({
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <InitiativeStatusSelect value={status} onChange={setStatus} />
 
-          {project?.assignees.some((a) => a.kind === 'member') && (
+          {project && project.assignees.length > 0 && (
             <AssigneeSelect
               assignees={project.assignees}
               value={ownerUserId}

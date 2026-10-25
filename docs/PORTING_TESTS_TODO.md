@@ -22,7 +22,6 @@ Status: 73 files excluded. High priority covers security and permissions.
 | `tests/mcp/structured-results.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
 | `tests/mcp/team-projects.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
 | `tests/modules/current-user/current-user.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
-| `tests/modules/god/god-agent-settings.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
 | `tests/modules/god/god-deactivate.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
 | `tests/modules/god/god-email-oauth.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
 | `tests/modules/god/god-email-verification.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | high |
@@ -51,36 +50,13 @@ Status: 73 files excluded. High priority covers security and permissions.
 | `tests/invite-forms.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/connected-apps/connected-apps.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/git/git-managed-webhooks.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
-| `tests/modules/imports/imports.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/initiatives/initiatives.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
-| `tests/modules/issues/agent-runs.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/issues/auto-archive.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/link-previews/unit/metadata.test.ts` | HTMLRewriter rejects the test Response (needs a workerd-native Response) | medium |
 | `tests/modules/projects/discovery.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/projects/personal-preferences.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/settings/whats-new.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
 | `tests/modules/telegram/telegram.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | medium |
-| `tests/modules/agents/chat/agent-chat.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/agent-analytics.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/agent-threads.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/ai-agents.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/mention-runs.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/route-tools.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/run-admission.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/run-limits.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/run-refusal.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/run-step-limit.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/run-timeout.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/core/thread-cleanup.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/invocation/agent-invocation.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/prices/model-prices.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/queue/runner-queue.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/runner/agent-runner.test.ts` | scheduled run not handed to the runner (schedules route 400) | low |
-| `tests/modules/agents/runner/run-events.test.ts` | run trace key not retained | low |
-| `tests/modules/agents/schedules/agent-schedules.test.ts` | POST schedule answers 400 (cron / agent validation on D1) | low |
-| `tests/modules/agents/schedules/schedule-extension.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/schedules/status-schedules.test.ts` | ported with explicit db but still red or not typechecking; needs `db, ` as first service argument and typed rows | low |
-| `tests/modules/agents/skills/agent-skills.test.ts` | skill creation answers 500 | low |
 
 ## Not ported yet
 

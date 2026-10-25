@@ -29,7 +29,6 @@ export const NoteBoardAccessCandidateListResponse = t.Array(
     userId: t.String(),
     name: t.String(),
     image: t.Nullable(t.String()),
-    kind: t.Union([t.Literal('member'), t.Literal('agent')]),
     canAccess: t.Boolean(),
   }),
 );

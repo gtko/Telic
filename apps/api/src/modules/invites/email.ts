@@ -19,7 +19,7 @@ export async function enqueueInviteEmail(
   if (!config || !hasEmailProvider(config)) return false;
 
   const dedupeKey = `project-invite:${invite.id}`;
-  const inviter = invite.invitedByName ?? invite.invitedByEmail ?? "An It's a Plan user";
+  const inviter = invite.invitedByName ?? invite.invitedByEmail ?? 'A Telic user';
   const role = invite.role === 'owner' ? 'owner' : (invite.roleName ?? 'member');
   const projectName = project.name.replace(/[\r\n]+/g, ' ');
   const url = new URL(`/invite/${invite.token}`, trustedOriginsOf(getEnv())[0]).toString();
@@ -27,7 +27,7 @@ export async function enqueueInviteEmail(
   // One INSERT ... WHERE NOT EXISTS: D1 runs it as a single statement, so two clicks
   // arriving together cannot both observe an empty outbox and queue the same email.
   const payload = JSON.stringify({
-    subject: `You were invited to ${projectName} on It's a Plan`,
+    subject: `You were invited to ${projectName} on Telic`,
     text:
       `${inviter} invited you to join ${projectName} as ${role}.
 
@@ -68,7 +68,7 @@ export async function sendTeamInviteEmail(
 
   const [row] = await db.select({ name: team.name }).from(team).where(eq(team.id, teamId));
   const teamName = (row?.name ?? 'a team').replace(/[\r\n]+/g, ' ');
-  const inviter = invite.invitedByName ?? invite.invitedByEmail ?? "An It's a Plan user";
+  const inviter = invite.invitedByName ?? invite.invitedByEmail ?? 'A Telic user';
   const { text, html } = emailBody(
     `${inviter} invited you to join the team ${teamName} as ${invite.teamRole}.\n\n` +
       'Open the invitation to sign in or create an account. ' +
@@ -77,7 +77,7 @@ export async function sendTeamInviteEmail(
   );
   const result = await sendEmail(config, {
     to: invite.email,
-    subject: `You were invited to ${teamName} on It's a Plan`,
+    subject: `You were invited to ${teamName} on Telic`,
     text,
     html,
   });

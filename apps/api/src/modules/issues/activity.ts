@@ -18,9 +18,6 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, sql } from 'drizzle-o
 import { HttpError, iso } from '#shared/lib';
 import { emitCommentEvent } from './webhook-payload';
 import { addedMentionHandles, parseMentionHandles, resolveMentionHandles } from '#shared/mentions';
-import { isAgentUser, listMentionTriggerAgents } from '#modules/agents/core/service';
-import { enqueueAgentRun } from '#modules/agents/core/run-queue';
-import type { RunQueueLike } from '#modules/agents/core/runtime/bindings';
 import {
   notifyComment,
   notifyEditedCommentMentions,
@@ -31,7 +28,7 @@ import { listStatusTimeline } from './status-history';
 
 // Issue timeline: comments and change-log activity in one table (issue_activity).
 // kind selects which columns a row uses. The author is the session user
-// (a member or an agent's bot user); actor_name is a snapshot taken at write time,
+// (a member); actor_name is a snapshot taken at write time,
 // so an entry keeps reading correctly after that user is renamed or deleted. The
 // issue detail panel renders the feed newest first and pages through it with a
 // (created_at, id) keyset cursor.
@@ -341,7 +338,6 @@ export async function createComment(
     // The comment being replied to. It has to be a comment on the same issue.
     replyToId?: number | null;
   },
-  queue?: RunQueueLike | null,
 ): Promise<FeedItemRow> {
   const actorUserId = input.actorUserId ?? null;
   const actorName = await userName(db, actorUserId);
@@ -374,13 +370,11 @@ export async function createComment(
   const projectId = projectRows[0]?.projectId;
   if (projectId != null) {
     await emitCommentEvent(db, projectId, 'comment.created', comment, actorUserId);
-    // Resolved once: the agent halves start runs, the member half is notified.
     const mentioned = await resolveMentionHandles(
       db,
       projectId,
       parseMentionHandles(comment.body ?? ''),
     );
-    await enqueueMentionRuns(db, projectId, comment, mentioned.agentUserIds, queue);
     await notifyComment(db, projectId, comment, mentioned);
   }
 
@@ -412,7 +406,7 @@ export async function getCommentRef(
 
 // Changes a comment's body and stamps it edited. The side effects mirror a new
 // comment, scoped to what the edit changed: a change-log entry, the comment.updated
-// webhook, and the mentions the edit newly adds (agents get a run, members a
+// webhook, and the mentions the edit newly adds (members get a
 // notification); a handle the comment already named is not told again. Who may
 // change whose is settled by the route guard.
 export async function updateComment(
@@ -421,7 +415,6 @@ export async function updateComment(
   body: string,
   actorUserId: string | null,
   projectId: number,
-  queue?: RunQueueLike | null,
 ): Promise<FeedItemRow> {
   const [before] = await db
     .select()
@@ -442,16 +435,6 @@ export async function updateComment(
   const added = addedMentionHandles(before.body ?? '', body);
   if (added.length > 0) {
     const mentioned = await resolveMentionHandles(db, projectId, added);
-    if (mentioned.agentUserIds.length > 0)
-      // replyToId is dropped: an edit reaches only the agents it newly names, not
-      // the author of the comment being answered, who a create would reach.
-      await enqueueMentionRuns(
-        db,
-        projectId,
-        { ...comment, replyToId: null },
-        mentioned.agentUserIds,
-        queue,
-      );
     await notifyEditedCommentMentions(db, projectId, comment, mentioned);
   }
   return comment;
@@ -475,53 +458,6 @@ export async function deleteComment(
   await recordActivity(db, before.issueId as number, [{ action: 'comment_deleted' }], actorUserId);
   await emitCommentEvent(db, projectId, 'comment.deleted', mapFeedItem(before), actorUserId);
   return true;
-}
-
-// If the comment reaches agents, queue a run for each so they can reply. A mention
-// reaches the agents it names; a reply reaches the author of the comment it answers,
-// so answering an agent in its own thread does not have to tag it again. Only quick
-// queries run here; the work happens later — in the poller for an internal agent, on
-// the operator's runner for an external one — so creating a comment is never blocked
-// on it. Comments authored by an agent's bot user never trigger runs, which stops
-// agents from setting each other (or themselves) off.
-async function enqueueMentionRuns(
-  db: Db,
-  projectId: number,
-  comment: FeedItemRow,
-  mentionedAgentUserIds: string[],
-  queue?: RunQueueLike | null,
-): Promise<void> {
-  if (mentionedAgentUserIds.length === 0 && comment.replyToId == null) return;
-  // A comment an agent wrote starts no run of its own, which stops agent-to-agent
-  // mention loops.
-  if (comment.actorUserId && (await isAgentUser(db, comment.actorUserId))) return;
-  const reachedUserIds = new Set(mentionedAgentUserIds);
-  if (comment.replyToId != null) {
-    const [parent] = await db
-      .select({ actorUserId: issueActivity.actorUserId })
-      .from(issueActivity)
-      .where(eq(issueActivity.id, comment.replyToId));
-    if (parent?.actorUserId) reachedUserIds.add(parent.actorUserId);
-  }
-  const agents = await listMentionTriggerAgents(
-    db,
-    projectId,
-    [...reachedUserIds],
-    comment.actorUserId,
-  );
-  for (const agent of agents) {
-    await enqueueAgentRun(
-      db,
-      {
-        agentId: agent.id,
-        projectId,
-        issueId: comment.issueId,
-        sourceActivityId: comment.id,
-        prompt: comment.body ?? '',
-      },
-      queue,
-    );
-  }
 }
 
 // --- Activity log ----------------------------------------------------------------
@@ -558,8 +494,7 @@ export interface ActivityInput extends ActivityPayload {
   action: string;
 }
 
-// The actor behind a write: the session user's id (a member or an agent's bot
-// user), null/undefined for an anonymous system write, or a named system actor
+// The actor behind a write: the session user's id (a member), null/undefined for an anonymous system write, or a named system actor
 // ({ system: 'GitHub' }) whose name is stored as the entry's actor_name without a
 // user behind it.
 export type ActivityActor = string | null | undefined | { system: string };
@@ -716,7 +651,6 @@ export interface IssueSnapshot {
   initiativeId: number | null;
   cycleId: number | null;
   assigneeUserId: string | null;
-  delegateUserId: string | null;
   priority: string | null;
   estimatePoints: number | null;
   estimateMinutes: number | null;
@@ -782,12 +716,6 @@ export async function logIssueUpdate(
       action: 'assignee',
       from: await userSide(db, before.assigneeUserId),
       to: await userSide(db, after.assigneeUserId),
-    });
-  if (before.delegateUserId !== after.delegateUserId)
-    events.push({
-      action: 'delegate',
-      from: await userSide(db, before.delegateUserId),
-      to: await userSide(db, after.delegateUserId),
     });
   if ((before.priority ?? '') !== (after.priority ?? ''))
     events.push({

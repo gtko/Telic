@@ -12,8 +12,7 @@ import { pageQueryFields, pageResponse } from '#shared/pagination';
 import { ISSUE_TYPE_PRESET_KEYS } from './service';
 import { COPY_INCLUDE_KEYS } from './copy';
 
-// The description goes into the system prompt of every agent run, where it costs
-// input tokens each time, so it is capped on the way in and cut again in the prompt.
+// The description is capped on the way in.
 export const PROJECT_DESCRIPTION_LIMIT = 2000;
 
 const projectKey = t.String({
@@ -189,17 +188,13 @@ export const ProjectListResponse = t.Array(ProjectListItemResponse);
 export const ProjectSearchPageResponse = pageResponse(ProjectListItemResponse);
 
 // An assignable candidate (AssigneeCandidate from members/service): a project
-// member or an AI agent's bot user.
+// member.
 const AssigneeCandidateResponse = t.Object({
   userId: t.String(),
   name: t.String(),
   email: t.String(),
   username: t.Nullable(t.String()),
   image: t.Nullable(t.String()),
-  kind: t.Union([t.Literal('member'), t.Literal('agent')]),
-  agentKind: t.Nullable(t.Union([t.Literal('external'), t.Literal('internal')])),
-  restrictedToUserId: t.Nullable(t.String()),
-  respondsToMention: t.Nullable(t.Boolean()),
   canReadWorkItems: t.Boolean(),
 });
 
@@ -209,11 +204,8 @@ const ViewerResponse = t.Object({
   role: t.Union([t.Literal('owner'), t.Literal('member')]),
   // The caller's standing in the team that owns the project, null when they are not
   // a member of it. An owner or manager of the team governs the project's settings
-  // alongside the project's own owner; 'agent' is a bot user reading its own board,
-  // which governs nothing.
-  teamRole: t.Nullable(
-    t.Union([t.Literal('owner'), t.Literal('manager'), t.Literal('member'), t.Literal('agent')]),
-  ),
+  // alongside the project's own owner.
+  teamRole: t.Nullable(t.Union([t.Literal('owner'), t.Literal('manager'), t.Literal('member')])),
   // 'workspace' when the caller is not a member of the project and reaches it through
   // their role in the workspace that holds it.
   via: AccessViaSchema,

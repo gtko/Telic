@@ -29,9 +29,6 @@ export interface UserPreferenceDto {
   theme: Theme;
   issueOpenMode: IssueOpenMode;
   startPage: StartPage;
-  // Keeps the floating AI chat button on screen from the start, with the chat
-  // window collapsed.
-  showChatByDefault: boolean;
   // How the status stats section of an issue starts out, and the shape the activity
   // log below it starts in. Switching either on an issue is not stored.
   issueStatsOpen: boolean;
@@ -58,7 +55,6 @@ export function defaults(locale: Locale = DEFAULT_LOCALE): UserPreferenceDto {
     theme: 'system',
     issueOpenMode: 'panel',
     startPage: 'work-items',
-    showChatByDefault: false,
     issueStatsOpen: true,
     issueStatsView: 'compact',
     issueActivityView: 'flat',
@@ -85,7 +81,6 @@ function toDto(row: {
   theme: string;
   issueOpenMode: string;
   startPage: string;
-  showChatByDefault: boolean;
   issueStatsOpen: boolean;
   issueStatsView: string;
   issueActivityView: string;
@@ -99,7 +94,6 @@ function toDto(row: {
     theme: row.theme as Theme,
     issueOpenMode: row.issueOpenMode as IssueOpenMode,
     startPage: row.startPage as StartPage,
-    showChatByDefault: row.showChatByDefault,
     issueStatsOpen: row.issueStatsOpen,
     issueStatsView: row.issueStatsView as IssueStatsView,
     issueActivityView: row.issueActivityView as IssueActivityView,
@@ -122,7 +116,6 @@ export async function getPreferences(
       theme: userPreference.theme,
       issueOpenMode: userPreference.issueOpenMode,
       startPage: userPreference.startPage,
-      showChatByDefault: userPreference.showChatByDefault,
       issueStatsOpen: userPreference.issueStatsOpen,
       issueStatsView: userPreference.issueStatsView,
       issueActivityView: userPreference.issueActivityView,

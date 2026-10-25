@@ -31,7 +31,6 @@
     "status": "状态",
     "statusType": "状态类型",
     "assignee": "负责人",
-    "delegate": "执行代理",
     "priority": "优先级",
     "type": "类型",
     "initiative": "计划",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "无负责人",
-    "delegate": "无执行代理",
     "type": "无类型",
     "initiative": "无计划",
     "cycle": "无周期",

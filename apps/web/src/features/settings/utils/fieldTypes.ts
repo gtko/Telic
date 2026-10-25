@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { CustomFieldType, MemberScope } from '@/lib/api/endpoints/customFields';
+import type { CustomFieldType } from '@/lib/api/endpoints/customFields';
 
 // Every field type, in the order the picker shows them. Also the list a pasted
 // transfer payload is validated against.
@@ -44,9 +44,6 @@ export const FIELD_TYPE_ICONS: Record<CustomFieldType, LucideIcon> = {
   multi_select: ListChecks,
   member: UserRound,
 };
-
-// Who a member field may hold, in the order the picker shows them.
-export const MEMBER_SCOPES: MemberScope[] = ['all', 'humans', 'agents'];
 
 // Display labels for the field types. The stored value stays the enum key; a few
 // read as jargon when shown raw, so they map to plain words in the messages.

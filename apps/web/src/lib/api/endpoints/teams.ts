@@ -21,8 +21,7 @@ export interface Team {
   // Whether the team is reachable over MCP at all, set in its MCP section. Off closes
   // its own resources and every project it owns.
   mcpEnabled: boolean;
-  // The caller's rank in the team. The API also answers an agent's own key, which reads
-  // 'agent' there; an agent never opens this app, so a person's rank is what arrives.
+  // The caller's rank in the team.
   role: TeamRole;
   // 'workspace' when the caller is not in the team and reaches it through their role in
   // its workspace; source and joinedAt are then the team's defaults.
@@ -35,32 +34,24 @@ export interface Team {
   memberCount: number;
   // How many of those members are owners: the last one cannot leave.
   ownerCount: number;
-  // The roles the team's projects assign from, the integration credentials they run
-  // on, the agents that work in them, and the skills and tools those agents use.
-  // Counted here so the page shows them beside the section without opening it.
+  // The roles the team's projects assign from, counted here so the page shows them
+  // beside the section without opening it.
   roleCount: number;
-  integrationCount: number;
-  agentCount: number;
-  skillCount: number;
-  toolCount: number;
   createdAt: string;
 }
 
 export type TeamRole = 'owner' | 'manager' | 'member';
 
-// One member of a team: a person, or the bot user of one of its agents. An agent's
-// standing in the team is 'agent' and says nothing about what it may do — that is the
-// role each of its project memberships carries.
+// One member of a team.
 export interface TeamMember {
   userId: string;
   name: string;
   email: string;
   image: string | null;
-  role: TeamRole | 'agent';
+  role: TeamRole;
   // 'scim' when a provisioned group granted this membership. It ends at the identity
   // provider, so the list does not remove it.
   source: 'invite' | 'scim';
-  agentId: number | null;
   username: string | null;
   joinedAt: string;
 }
@@ -138,11 +129,9 @@ export interface TeamProjectMember {
   userId: string;
   name: string;
   email: string;
-  // The handle they are mentioned by, @username. An agent's bot user carries the
-  // agent's handle.
+  // The handle they are mentioned by, @username.
   username: string | null;
   image: string | null;
-  isAgent: boolean;
   role: MemberRole;
   roleId: number | null;
   roleName: string | null;
@@ -160,10 +149,6 @@ export interface TeamMcpSettings {
   projects: { projectId: number; enabled: boolean }[];
 }
 
-export interface TeamProjectDefaults {
-  defaultAgentIds: number[];
-}
-
 // Parts of a source project the copy can carry over, one key per project settings
 // section. Passed to copyTeamProject as an include map; omitted keys are not
 // copied. The API force-enables dependencies (a view needs its
@@ -178,9 +163,7 @@ export type CopyProjectIncludeKey =
   | 'documents'
   | 'actions'
   | 'configuration'
-  | 'webhooks'
-  | 'agents'
-  | 'schedules';
+  | 'webhooks';
 
 export const listTeams = () => request<Team[]>('/teams');
 
@@ -197,8 +180,7 @@ export const listTeamProjects = (teamId: number, params: TeamProjectListParams) 
     `/teams/${teamId}/projects${pageQuery(params, { search: params.search })}`,
   );
 
-// Every project the reader has in the team, for the agent's project picker and the
-// MCP switches.
+// Every project the reader has in the team, for the MCP switches.
 export const listTeamProjectOptions = (teamId: number) =>
   request<TeamProjectOption[]>(`/teams/${teamId}/projects/options`);
 
@@ -244,15 +226,6 @@ export const updateTeamMcp = (
   request<TeamMcpSettings>(`/teams/${teamId}/mcp`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
-  });
-
-export const getTeamProjectDefaults = (teamId: number) =>
-  request<TeamProjectDefaults>(`/teams/${teamId}/project-defaults`);
-
-export const updateTeamProjectDefaults = (teamId: number, defaultAgentIds: number[]) =>
-  request<TeamProjectDefaults>(`/teams/${teamId}/project-defaults`, {
-    method: 'PATCH',
-    body: JSON.stringify({ defaultAgentIds }),
   });
 
 // The projects a team owns: created, copied, and deleted by the team's own ranks

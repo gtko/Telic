@@ -71,7 +71,7 @@ of them affect data you may not notice is missing until later.
 
 ## Reviewing the mapping before you import
 
-After you pick the source project, its states are shown with the category itsaplan would
+After you pick the source project, its states are shown with the category Telic would
 automatically map each one to (matched by name, falling back to Plane's own backlog/
 unstarted/started/completed group when no name matches). This matters because Plane's own
 state categories are not always accurate: a real workspace checked during development had a

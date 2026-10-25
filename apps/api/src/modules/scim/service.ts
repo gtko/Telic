@@ -1,5 +1,4 @@
 import {
-  aiAgent,
   project,
   projectMember,
   scimGroup,
@@ -51,29 +50,13 @@ import { mappedProjectIds, reconcileProjects } from './reconcile';
 // stay as they are.
 //
 // A create for an address that has no account inserts the `user` row directly rather
-// than going through better-auth's sign-up — the same way an agent's bot user is
-// written. That deliberately skips the instance registration gate, which is what
+// than going through better-auth's sign-up. That deliberately skips the instance registration gate, which is what
 // makes a closed instance plus SSO a working combination.
-//
-// An AI agent's bot user is an account too, but it belongs to the project that
-// created it, not to the identity provider: `notAnAgent` keeps every one of them out
-// of /Users, so a sync cannot take an agent out of its team.
 
 // What each resource can be filtered on. Advertised by ServiceProviderConfig and
 // enforced by parseFilter, so the three never drift apart.
 export const USER_FILTER_ATTRIBUTES = ['userName', 'externalId', 'emails.value'];
 export const GROUP_FILTER_ATTRIBUTES = ['displayName', 'externalId'];
-
-// True for every account that is not an AI agent's bot user. The same test the god
-// user directory uses for its `human` filter.
-function notAnAgent(db: Db) {
-  return notExists(
-    db
-      .select({ n: sql`1` })
-      .from(aiAgent)
-      .where(eq(aiAgent.userId, user.id)),
-  );
-}
 
 // A row of this provider, on a `workspace_id` column.
 export function ofProvider(column: Column, workspaceId: number | null) {
@@ -103,9 +86,8 @@ function linkOf(workspaceId: number | null) {
 // The accounts a workspace's provider sees: the ones it wrote, and the people in the
 // workspace's teams. The instance's provider, every account.
 function inWorkspace(db: Db, workspaceId: number | null) {
-  if (workspaceId === null) return notAnAgent(db);
+  if (workspaceId === null) return undefined;
   return and(
-    notAnAgent(db),
     or(
       isNotNull(scimUser.userId),
       exists(
@@ -256,7 +238,7 @@ export async function createScimUser(
     .select({ id: user.id, role: user.role, externalId: scimUser.externalId })
     .from(user)
     .leftJoin(scimUser, linkOf(workspaceId))
-    .where(and(emailEq(email), notAnAgent(db)));
+    .where(emailEq(email));
   if (existing) {
     assertNotGod(existing.role, 'provisioned');
     // A second create for an address this provider already linked is a retry, not a
@@ -370,10 +352,7 @@ async function updateAccount(
 ): Promise<void> {
   const email = patch.email?.trim().toLowerCase();
   if (email) {
-    const [clash] = await db
-      .select({ id: user.id })
-      .from(user)
-      .where(and(emailEq(email), notAnAgent(db)));
+    const [clash] = await db.select({ id: user.id }).from(user).where(emailEq(email));
     if (clash && clash.id !== id) {
       throw new ScimError(
         409,
@@ -471,7 +450,7 @@ export async function deleteScimUser(
     .from(user)
     .leftJoin(scimUser, linkOf(workspaceId))
     .where(and(eq(user.id, id), inWorkspace(db, workspaceId)));
-  // An agent's bot user and an account outside the workspace are not part of its
+  // An account outside the workspace is not part of its
   // SCIM user surface at all, so they answer the same way an unknown id does.
   if (!target) throw new ScimError(404, `User '${id}' not found`);
   assertNotGod(target.role, 'deleted');

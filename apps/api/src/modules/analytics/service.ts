@@ -1,21 +1,17 @@
 import {
   issue,
   projectColumn,
-  projectMember,
   issueActivity,
   issueType,
   user,
-  aiAgent,
-  agentRun,
   webhook,
   webhookDelivery,
   initiative,
   type ActivityPayload,
   type Db,
 } from '@repo/db';
-import { and, desc, eq, gte, inArray, isNull, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
-import type { AgentRunTrigger } from '#modules/agents/model';
 
 // Read-only project metrics for the dashboards feature. Every figure is derived
 // from the existing issue / project_column / issue_activity / issue_status tables —
@@ -112,7 +108,7 @@ export async function getStats(db: Db, projectId: number): Promise<StatsDto> {
 
 // --- Breakdown -------------------------------------------------------------------
 
-export type BreakdownBy = 'status' | 'priority' | 'type' | 'assignee' | 'delegate';
+export type BreakdownBy = 'status' | 'priority' | 'type' | 'assignee';
 
 export interface BreakdownItem {
   key: string;
@@ -188,21 +184,6 @@ export async function getBreakdown(
       count: r.count,
       color: r.color ?? null,
     }));
-  }
-
-  if (by === 'delegate') {
-    const rows = await db
-      .select({
-        key: sql<string>`COALESCE(${user.id}, 'none')`,
-        label: sql<string>`COALESCE(${user.name}, 'Not delegated')`,
-        count: sql<number>`count(${issue.id})`,
-      })
-      .from(issue)
-      .leftJoin(user, eq(user.id, issue.delegateUserId))
-      .where(eq(issue.projectId, projectId))
-      .groupBy(user.id, user.name)
-      .orderBy(desc(sql`count(${issue.id})`));
-    return rows.map((r) => ({ key: r.key, label: r.label, count: r.count, color: null }));
   }
 
   // assignee
@@ -647,101 +628,6 @@ export async function listActivity(
   };
 }
 
-// --- Agent runs (project-wide feed) ----------------------------------------------
-
-export interface AgentRunFeedItem {
-  id: number;
-  status: string;
-  trigger: AgentRunTrigger;
-  agentId: number;
-  agentName: string;
-  issueId: number | null;
-  issueSequence: number | null;
-  lastError: string | null;
-  createdAt: string;
-}
-
-// The project's agent runs, newest first, optionally narrowed to one status. A run
-// carries the project it worked in; ai_agent is joined for the agent name and issue
-// when the run is issue-triggered.
-export async function listAgentRunFeed(
-  db: Db,
-  projectId: number,
-  opts: { status?: string | null; limit?: number } = {},
-): Promise<AgentRunFeedItem[]> {
-  const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
-  const conds = [eq(agentRun.projectId, projectId)];
-  if (opts.status) conds.push(eq(agentRun.status, opts.status));
-
-  const rows = await db
-    .select({
-      id: agentRun.id,
-      status: agentRun.status,
-      trigger: agentRun.trigger,
-      agentId: agentRun.agentId,
-      agentName: aiAgent.username,
-      issueId: agentRun.issueId,
-      issueSequence: issue.sequenceNumber,
-      lastError: agentRun.lastError,
-      createdAt: agentRun.createdAt,
-    })
-    .from(agentRun)
-    .innerJoin(aiAgent, eq(aiAgent.id, agentRun.agentId))
-    .leftJoin(issue, eq(issue.id, agentRun.issueId))
-    .where(and(...conds))
-    .orderBy(desc(agentRun.id))
-    .limit(limit);
-
-  return rows.map((r) => ({
-    id: r.id,
-    status: r.status,
-    trigger: r.trigger as AgentRunFeedItem['trigger'],
-    agentId: r.agentId,
-    agentName: r.agentName,
-    issueId: r.issueId,
-    issueSequence: r.issueSequence,
-    lastError: r.lastError,
-    createdAt: iso(r.createdAt),
-  }));
-}
-
-// --- Agent run health (counts by status over a window) ---------------------------
-
-export interface AgentRunStatsDto {
-  total: number;
-  success: number;
-  failed: number;
-  pending: number;
-}
-
-// Agent run outcome counts over the last `days` days for the project. Backs the
-// agent health widget's success rate and failure count.
-export async function getAgentRunStats(
-  db: Db,
-  projectId: number,
-  days: number,
-): Promise<AgentRunStatsDto> {
-  const rows = await db
-    .select({ status: agentRun.status, count: sql<number>`count(*)` })
-    .from(agentRun)
-    .where(
-      and(
-        eq(agentRun.projectId, projectId),
-        gte(agentRun.createdAt, new Date(Date.now() - days * DAY_MS)),
-      ),
-    )
-    .groupBy(agentRun.status);
-
-  const stats: AgentRunStatsDto = { total: 0, success: 0, failed: 0, pending: 0 };
-  for (const r of rows) {
-    stats.total += r.count;
-    if (r.status === 'success') stats.success = r.count;
-    else if (r.status === 'failed') stats.failed = r.count;
-    else if (r.status === 'pending') stats.pending = r.count;
-  }
-  return stats;
-}
-
 // --- Webhook delivery health -----------------------------------------------------
 
 export interface WebhookStatsDto {
@@ -798,70 +684,4 @@ export async function getWebhookStats(
     else stats.disabledWebhooks = r.count;
   }
   return stats;
-}
-
-// --- Agent workload (per-agent delegated issues and run outcomes) ----------------
-
-export interface AgentWorkloadItem {
-  agentId: number;
-  agentName: string;
-  kind: string;
-  delegatedOpen: number;
-  runsTotal: number;
-  runsSuccess: number;
-  runsFailed: number;
-}
-
-// Per-agent workload for the project: how many open issues each agent is currently
-// delegated, and its lifetime run outcomes. Three cheap grouped reads merged in
-// memory (one per source), keyed by the agent's bot user id and agent id.
-export async function getAgentWorkload(db: Db, projectId: number): Promise<AgentWorkloadItem[]> {
-  const agents = await db
-    .select({ id: aiAgent.id, userId: aiAgent.userId, name: aiAgent.username, kind: aiAgent.kind })
-    .from(aiAgent)
-    .innerJoin(
-      projectMember,
-      and(eq(projectMember.userId, aiAgent.userId), eq(projectMember.projectId, projectId)),
-    );
-  if (agents.length === 0) return [];
-
-  const delegatedRows = await db
-    .select({ userId: issue.delegateUserId, count: sql<number>`count(*)` })
-    .from(issue)
-    .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
-    .where(and(eq(issue.projectId, projectId), isNotNull(issue.delegateUserId), OPEN_STATES))
-    .groupBy(issue.delegateUserId);
-  const delegatedByUser = new Map(delegatedRows.map((r) => [r.userId, r.count]));
-
-  const runRows = await db
-    .select({
-      agentId: agentRun.agentId,
-      total: sql<number>`count(*)`,
-      success: sql<number>`count(*) filter (where ${agentRun.status} = 'success')`,
-      failed: sql<number>`count(*) filter (where ${agentRun.status} = 'failed')`,
-    })
-    .from(agentRun)
-    .where(eq(agentRun.projectId, projectId))
-    .groupBy(agentRun.agentId);
-  const runsByAgent = new Map(runRows.map((r) => [r.agentId, r]));
-
-  return agents
-    .map((a) => {
-      const runs = runsByAgent.get(a.id);
-      return {
-        agentId: a.id,
-        agentName: a.name,
-        kind: a.kind,
-        delegatedOpen: delegatedByUser.get(a.userId) ?? 0,
-        runsTotal: runs?.total ?? 0,
-        runsSuccess: runs?.success ?? 0,
-        runsFailed: runs?.failed ?? 0,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.delegatedOpen - a.delegatedOpen ||
-        b.runsTotal - a.runsTotal ||
-        a.agentName.localeCompare(b.agentName),
-    );
 }

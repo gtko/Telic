@@ -15,9 +15,9 @@ function formatSize(bytes: number): string {
 export default function WhatsNewBackup({ backup }: { backup: BackupInfo }) {
   const t = useTranslations('whatsNew');
   const restore = [
-    `docker compose cp api:${backup.path} ./itsaplan-backup.dump`,
+    `docker compose cp api:${backup.path} ./telic-backup.dump`,
     'docker compose exec -T postgres pg_restore -U <user> -d <database> \\',
-    '  --clean --if-exists < ./itsaplan-backup.dump',
+    '  --clean --if-exists < ./telic-backup.dump',
   ].join('\n');
 
   return (

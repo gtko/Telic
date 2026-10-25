@@ -1,6 +1,6 @@
 {
   "title": "MCP Server",
-  "description": "Connect AI agents to this project over the Model Context Protocol. An agent sees what its API key allows.",
+  "description": "Connect MCP clients to this project over the Model Context Protocol. A client sees what its API key allows.",
   "disabled": "Disabled",
   "offForTeam": "MCP is off for the team {team}.",
   "offForProject": "The team {team} has MCP on, but this project is off.",
@@ -24,15 +24,15 @@
     "methodTabsAria": "Connection method",
     "method": "OAuth",
     "personalKey": "API key",
-    "description": "Use this for any MCP client that supports OAuth, such as ChatGPT or Claude. You sign in with your Itsaplan account. The client never receives an API key.",
+    "description": "Use this for any MCP client that supports OAuth, such as ChatGPT or Claude. You sign in with your Telic account. The client never receives an API key.",
     "discovery": "OAuth discovery",
     "steps": {
       "add": "Add an MCP app in your client.",
       "paste": "Paste the MCP endpoint.",
       "choose": "Choose OAuth when the client asks how to sign in.",
-      "signIn": "Sign in to Itsaplan and approve access."
+      "signIn": "Sign in to Telic and approve access."
     },
-    "security": "OAuth uses PKCE (S256), dynamic client registration, and access tokens scoped to your Itsaplan account.",
+    "security": "OAuth uses PKCE (S256), dynamic client registration, and access tokens scoped to your Telic account.",
     "consent": {
       "title": "{client} wants to connect to your account",
       "titleUnnamed": "An MCP client wants to connect to your account",

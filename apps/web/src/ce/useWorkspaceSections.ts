@@ -1,17 +1,9 @@
 'use client';
 
-import {
-  AtSign,
-  KeyRound,
-  LayoutDashboard,
-  ScrollText,
-  UsersRound,
-  WalletCards,
-} from 'lucide-react';
+import { AtSign, KeyRound, LayoutDashboard, ScrollText, UsersRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { WorkspaceSummary } from '@/lib/api/endpoints/workspaces';
 import type { WorkspaceSection } from '@/features/teams/types/workspaceSection';
-import WorkspaceAgentBudgetsPreview from '@/features/teams/components/workspace/preview/WorkspaceAgentBudgetsPreview';
 import WorkspaceAuditLogPreview from '@/features/teams/components/workspace/preview/WorkspaceAuditLogPreview';
 import WorkspaceDashboardPreview from '@/features/teams/components/workspace/preview/WorkspaceDashboardPreview';
 import WorkspaceEmailDomainsPreview from '@/features/teams/components/workspace/preview/WorkspaceEmailDomainsPreview';
@@ -37,13 +29,6 @@ export default function useWorkspaceSections(
       icon: LayoutDashboard,
       group: 'overview',
       Component: WorkspaceDashboardPreview,
-    },
-    {
-      id: 'agent-budgets',
-      label: t('agentBudgets.title'),
-      icon: WalletCards,
-      group: 'overview',
-      Component: WorkspaceAgentBudgetsPreview,
     },
     {
       id: 'audit-log',

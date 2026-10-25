@@ -127,8 +127,6 @@
     "ownerRemoved": "소유자 {name} 제거",
     "assigneeSet": "{name}을(를) 담당자로 지정",
     "assigneeRemoved": "담당자 {name} 제거",
-    "delegateSet": "{name}에게 위임",
-    "delegateRemoved": "위임 대상 {name} 제거",
     "targetDateSet": "목표일을 {date}(으)로 설정",
     "targetDateRemoved": "목표일 제거",
     "startDateSet": "시작일을 {date}(으)로 설정",

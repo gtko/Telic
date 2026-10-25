@@ -30,7 +30,7 @@ beforeEach(() => {
     ].map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]),
   );
   dom = new JSDOM('<!doctype html><div></div>', {
-    url: 'https://itsaplan.example/projects/API/notes',
+    url: 'https://telic.example/projects/API/notes',
   });
   Object.defineProperties(globalThis, {
     window: { configurable: true, value: dom.window },
@@ -133,7 +133,7 @@ describe('StickerEditor links', () => {
     assert.equal(opened.length, 1);
     assert.equal(
       new URL(String(opened[0]?.[0]), dom.window.location.href).href,
-      'https://itsaplan.example/projects/API/work-items',
+      'https://telic.example/projects/API/work-items',
     );
     assert.equal(opened[0]?.[1], '_blank');
     assert.equal(editor.storage.markdown.getMarkdown(), markdown);
@@ -156,7 +156,7 @@ describe('StickerEditor links', () => {
     assert.deepEqual(
       opened,
       Array.from({ length: 3 }, () => [
-        'https://itsaplan.example/projects/API/work-items',
+        'https://telic.example/projects/API/work-items',
         '_blank',
         'noopener,noreferrer',
       ]),
@@ -209,7 +209,7 @@ describe('StickerEditor links', () => {
     link.dispatchEvent(enter);
     assert.equal(enter.defaultPrevented, true);
     assert.deepEqual(opened, [
-      ['https://itsaplan.example/projects/API/work-items', '_blank', 'noopener,noreferrer'],
+      ['https://telic.example/projects/API/work-items', '_blank', 'noopener,noreferrer'],
     ]);
   });
 

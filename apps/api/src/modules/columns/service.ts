@@ -14,7 +14,6 @@ import { getIssues } from '#modules/issues/service';
 import { emitIssueEvents, issuePayloads } from '#modules/issues/webhook-payload';
 import { emitWebhookEvents, projectEventWanted } from '#modules/webhooks/emit';
 import { recordStatusChange } from '#modules/issues/status-history';
-import { hasUnfinishedStatusRuns, queueStatusRuns } from '#modules/agents/schedules/issue-runs';
 
 export interface ColumnRow {
   id: number;
@@ -249,12 +248,6 @@ export async function deleteColumn(
   const column = await getColumnById(db, columnId);
   if (!column || column.projectId !== projectId)
     throw new HttpError(404, `Column ${columnId} not found`);
-  if (await hasUnfinishedStatusRuns(db, columnId)) {
-    throw new HttpError(
-      409,
-      'Agent schedules of this column have runs in progress. End them or wait for them to finish first',
-    );
-  }
 
   let target: ColumnRow | null = null;
   if (opts.mode === 'move') {
@@ -336,7 +329,6 @@ export async function deleteColumn(
     const moved = () => getIssues(db, movedIssueIds);
     await emitIssueEvents(db, projectId, 'issue.updated', moved, actorUserId);
     await emitIssueEvents(db, projectId, 'issue.state_changed', moved, actorUserId);
-    await queueStatusRuns(db, movedIssueIds, target.id, actorUserId);
   } else {
     await emitWebhookEvents(
       db,

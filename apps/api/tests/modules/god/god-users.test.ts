@@ -5,7 +5,6 @@ import { db } from '../../helpers/db';
 import { ownWorkspaceId, createProject } from '../../helpers/app';
 import {
   addUser,
-  createAgentUser,
   joinProject,
   setup,
   type Actor,
@@ -17,7 +16,7 @@ import {
 // tables and every project's membership, which no project-scoped route may do, so the
 // whole plugin sits behind the god guard.
 
-const ALL = { kind: 'all' as const, page: 1, pageSize: 50 };
+const ALL = { page: 1, pageSize: 50 };
 
 // Moves the person's team into the owner's workspace, so what they own there is outside
 // the workspaces they own.
@@ -71,48 +70,12 @@ describe('god users', () => {
         email: 'root@example.com',
         name: 'Root',
         role: 'god',
-        isAgent: false,
         emailVerified: false,
         // Signing up links the password provider and opens a session.
         providers: ['credential'],
         projectCount: 1,
       });
       expect(res.data?.items[0].lastSeenAt).not.toBeNull();
-    });
-
-    it('lists people by default and agent bot users only when asked', async () => {
-      const { god } = await setup();
-      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
-      const agentUserId = await createAgentUser(god, 'MKT');
-
-      const humans = await god.api.god.users.get({
-        query: { kind: 'human', page: 1, pageSize: 50 },
-      });
-      const agents = await god.api.god.users.get({
-        query: { kind: 'agent', page: 1, pageSize: 50 },
-      });
-      const all = await god.api.god.users.get({ query: ALL });
-
-      expect(humans.data?.total).toBe(1);
-      expect(humans.data?.items.map((u) => u.id)).toEqual([god.id]);
-
-      expect(agents.data?.total).toBe(1);
-      expect(agents.data?.items[0]).toMatchObject({ id: agentUserId, isAgent: true });
-
-      expect(all.data?.total).toBe(2);
-      expect(all.data?.items.map((u) => u.id).sort()).toEqual([god.id, agentUserId].sort());
-    });
-
-    it('defaults to people when no kind is given', async () => {
-      const { god } = await setup();
-      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
-      await createAgentUser(god, 'MKT');
-
-      const res = await god.api.god.users.get({ query: {} });
-
-      expect(res.status).toBe(200);
-      expect(res.data?.total).toBe(1);
-      expect(res.data?.items.map((u) => u.id)).toEqual([god.id]);
     });
 
     it('matches the search term against the name or the email', async () => {
@@ -432,17 +395,6 @@ describe('god users', () => {
 
       expect(res.status).toBe(403);
       expect((await god.api.god.users({ userId: god.id }).get()).status).toBe(200);
-    });
-
-    it("refuses to delete an agent's bot user", async () => {
-      const { god } = await setup();
-      await createProject(god.api, { key: 'MKT', name: 'Marketing' });
-      const agentUserId = await createAgentUser(god, 'MKT');
-
-      const res = await god.api.god.users({ userId: agentUserId }).delete();
-
-      expect(res.status).toBe(400);
-      expect((await god.api.god.users({ userId: agentUserId }).get()).status).toBe(200);
     });
 
     it('refuses when the account is the only owner of a project', async () => {

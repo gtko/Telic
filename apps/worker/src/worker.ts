@@ -3,7 +3,6 @@ import { useR2Bucket } from '@repo/storage';
 import { workerConfig } from './config';
 import { deliver } from './delivery';
 import { equalJitterBackoffMs } from './backoff';
-import { enqueueDueSchedules } from './schedules';
 import { processImportTick } from './import-worker';
 import { hasDueImportJobs } from './import-store';
 import { hasDueNotifications, processNotificationDeliveries } from './notification-delivery';
@@ -17,8 +16,8 @@ import {
   cleanupOldDeliveries,
 } from './store';
 
-// Entry point of the Worker: a Cron Trigger every minute (webhook deliveries, agent
-// schedules, and the wake-ups of the heavy jobs) and the Queue consumer that runs
+// Entry point of the Worker: a Cron Trigger every minute (webhook deliveries
+// and the wake-ups of the heavy jobs) and the Queue consumer that runs
 // those heavy jobs (source imports, notification bursts). The queue message is only a
 // wake-up: the consumer claims the work itself, so a duplicate or late message is harmless.
 
@@ -44,8 +43,6 @@ export async function runScheduled(db: Db, env: Env, nowMs: number): Promise<voi
   const cfg = workerConfig();
   const claimed = await claimDueDeliveries(db, nowMs);
   if (claimed.length > 0) await Promise.all(claimed.map((d) => processDelivery(db, d, nowMs)));
-
-  await enqueueDueSchedules(db, nowMs);
 
   if (await hasDueNotifications(db, nowMs)) await wake(env, { kind: 'notifications' }, db);
   if (await hasDueImportJobs(db, nowMs)) await wake(env, { kind: 'import' }, db);

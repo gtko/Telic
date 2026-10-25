@@ -1,6 +1,6 @@
 import { useTranslations } from 'next-intl';
 import type { View } from '@/lib/api/endpoints/views';
-import { AI_AGENTS_SECTION, SETTINGS_SECTIONS } from '@/utils/settingsSections';
+import { SETTINGS_SECTIONS } from '@/utils/settingsSections';
 import type { ShellRoute } from '@/hooks/useShellRoute';
 import { useSettingsSectionText } from '@/hooks/useSectionLabels';
 import { titlePath, useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -29,13 +29,9 @@ export function useShellTitle(route: ShellRoute, projectName: string, views: Vie
     SETTINGS_SECTIONS.some((s) => s.slug === slug);
 
   function sectionParts(): string[] {
-    const { sub, section, aiTeamSection } = route;
+    const { sub, section } = route;
     if (sub === 'settings')
       return [tScreens('settings'), ...(known(section) ? [sectionText(section).label] : [])];
-    if (sub === 'agents') {
-      if (!aiTeamSection) return [sectionText(AI_AGENTS_SECTION.slug).label];
-      return [known(aiTeamSection) ? sectionText(aiTeamSection).label : t('aiTeam')];
-    }
     if (sub === 'view') {
       const view = views.find((v) => v.id === route.activeViewId);
       return view ? [view.name] : [];

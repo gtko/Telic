@@ -1,6 +1,5 @@
 import { forgetPersonalWorkspace, getAuthSettings } from '@repo/auth';
 import {
-  aiAgent,
   abortBatchWhen,
   batchAll,
   isGuardViolation,
@@ -13,7 +12,7 @@ import {
   type DbExecutor,
   type Db,
 } from '@repo/db';
-import { and, asc, eq, exists, like, inArray, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, exists, like, inArray, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { requireUser, type AuthUser } from '#shared/access';
 import { HttpError } from '#shared/lib';
 import { getOwnedWorkspaceLimit } from '#shared/limits';
@@ -196,7 +195,7 @@ export async function getWorkspace(db: Db, workspaceId: number, role: WorkspaceR
   };
 }
 
-// Whether a team of the workspace has a project or an AI agent: people's work, which a
+// Whether a team of the workspace has a project: people's work, which a
 // deleted workspace would take with it.
 export async function workspaceHoldsWork(db: Db, workspaceId: number): Promise<boolean> {
   const [row] = await db
@@ -205,19 +204,11 @@ export async function workspaceHoldsWork(db: Db, workspaceId: number): Promise<b
     .where(
       and(
         eq(team.workspaceId, workspaceId),
-        or(
-          exists(
-            db
-              .select({ n: sql`1` })
-              .from(project)
-              .where(eq(project.teamId, team.id)),
-          ),
-          exists(
-            db
-              .select({ n: sql`1` })
-              .from(aiAgent)
-              .where(eq(aiAgent.teamId, team.id)),
-          ),
+        exists(
+          db
+            .select({ n: sql`1` })
+            .from(project)
+            .where(eq(project.teamId, team.id)),
         ),
       ),
     )
@@ -228,7 +219,7 @@ export async function workspaceHoldsWork(db: Db, workspaceId: number): Promise<b
 export type WorkspaceDeletion = 'allowed' | 'work';
 
 // Whether the owner may delete the workspace, and if not, why: one whose teams hold work
-// keeps it until its projects and AI agents are gone.
+// keeps it until its projects are gone.
 export async function workspaceDeletion(db: Db, workspaceId: number): Promise<WorkspaceDeletion> {
   return (await workspaceHoldsWork(db, workspaceId)) ? 'work' : 'allowed';
 }
@@ -238,7 +229,7 @@ export async function workspaceDeletion(db: Db, workspaceId: number): Promise<Wo
 // else while personal workspaces are on.
 export async function deleteWorkspace(db: Db, workspaceId: number, ownerId: string): Promise<void> {
   if ((await workspaceDeletion(db, workspaceId)) === 'work') {
-    throw new HttpError(409, 'Delete the projects and AI agents of its teams first');
+    throw new HttpError(409, 'Delete the projects of its teams first');
   }
   await db.delete(workspace).where(eq(workspace.id, workspaceId));
   forgetPersonalWorkspace(ownerId);
@@ -247,17 +238,13 @@ export async function deleteWorkspace(db: Db, workspaceId: number, ownerId: stri
 export type WorkspaceCreationBlock = 'restricted' | 'limit';
 
 // Whether a person may create a workspace, and if not, why: the instance keeps
-// workspaces to its owner, or they already own as many as one person may. An agent's bot
-// user is no person and creates none. No core route calls this or createOwnWorkspace;
+// workspaces to its owner, or they already own as many as one person may. No core route calls this or createOwnWorkspace;
 // an edition that lets a person own more workspaces mounts its route on them.
 export async function workspaceCreation(
   db: Db,
   current: AuthUser,
   executor: DbExecutor = db,
 ): Promise<{ allowed: boolean; reason: WorkspaceCreationBlock | null }> {
-  if (await executor.$count(aiAgent, eq(aiAgent.userId, current.id))) {
-    return { allowed: false, reason: 'restricted' };
-  }
   if (current.role !== 'god' && !(await getAuthSettings(db)).personalWorkspaces) {
     return { allowed: false, reason: 'restricted' };
   }
@@ -402,14 +389,13 @@ export async function listManagers(db: Db, workspaceId: number) {
   return rows.map((row) => ({ ...row, role: row.role as WorkspaceRole }));
 }
 
-// People in a team of the workspace, the only ones who may be made its admin. An
-// agent's bot user is in a team but is not a person.
+// People in a team of the workspace, the only ones who may be made its admin.
 function workspacePeople(db: Db, workspaceId: number): SQL {
   return sql`${user.id} in (${db
     .select({ id: teamMember.userId })
     .from(teamMember)
     .innerJoin(team, eq(team.id, teamMember.teamId))
-    .where(and(eq(team.workspaceId, workspaceId), ne(teamMember.role, 'agent')))})`;
+    .where(eq(team.workspaceId, workspaceId))})`;
 }
 
 const CANDIDATE_LIMIT = 20;

@@ -25,7 +25,6 @@
     "workflow": "Workflow",
     "automation": "Automation",
     "views": "Views",
-    "aiTeam": "AI Team",
     "knowledge": "Knowledge"
   },
   "copyItems": {
@@ -38,14 +37,11 @@
     "documents": "Docs",
     "actions": "Actions",
     "configuration": "Configuration",
-    "webhooks": "Webhooks",
-    "agents": "Agents",
-    "schedules": "Schedules"
+    "webhooks": "Webhooks"
   },
   "title": "New project",
   "copyTitle": "Copy project \"{name}\"",
   "create": "Create project",
   "copyAction": "Copy project",
-  "defaultAgents": "Agents joining this project: {names}",
   "copyName": "{name} copy"
 }

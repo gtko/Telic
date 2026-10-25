@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="It's a Plan — open-source project management and issue tracking where people and AI agents ship together" width="100%" />
+<img src="assets/banner.png" alt="Telic — open-source project management and issue tracking on Cloudflare" width="100%" />
 
-### Project management and issue tracking where people and AI agents ship together
+### Project management and issue tracking on Cloudflare
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![CI](https://github.com/croffasia/itsaplan/actions/workflows/ci.yml/badge.svg)](https://github.com/croffasia/itsaplan/actions/workflows/ci.yml)
+[![CI](https://github.com/gtko/Telic/actions/workflows/ci.yml/badge.svg)](https://github.com/gtko/Telic/actions/workflows/ci.yml)
 
 </div>
 
-AI agents work here like any teammate. Everything is available over the REST API, webhooks, and MCP.
+Everything is available over the REST API, webhooks, and an MCP server.
 
 ## Architecture
 
@@ -17,8 +17,8 @@ The application runs on Cloudflare only: Workers, D1, R2, and Queues.
 
 | Worker         | Role                                                        | Bindings                                       |
 | -------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| `telic-api`    | Elysia API, better-auth, agent runs, cron jobs              | D1 `DB`, R2 `BUCKET`, Queue `telic-agent-runs` |
-| `telic-worker` | webhook and notification delivery, agent schedules, imports | D1 `DB`, R2 `BUCKET`, Queue `telic-jobs`       |
+| `telic-api`    | Elysia API, better-auth, MCP server, cron jobs              | D1 `DB`, R2 `BUCKET`                         |
+| `telic-worker` | webhook and notification delivery, imports                  | D1 `DB`, R2 `BUCKET`, Queue `telic-jobs`       |
 | `telic-bot`    | Telegram bot webhook                                        | D1 `DB`                                        |
 | `telic-web`    | Next.js (SSR) through OpenNext, shadcn/ui, TanStack Query   | none                                           |
 
@@ -74,10 +74,8 @@ token) are stored encrypted in D1 and edited in god mode.
 ## More
 
 - [Local development](docs/development.md) · [D1 notes](docs/dev/d1-notes.md)
-- [Coding agent setup](docs/runner.md) · [Agent endpoint](docs/agent-endpoint.md)
 - [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
 
 ## License
 
-Copyright © 2026 Andrii Poluosmak. [AGPL-3.0](LICENSE), except `packages/runner`, which is
-[Apache-2.0](packages/runner/LICENSE).
+Copyright © 2026 Andrii Poluosmak. [AGPL-3.0](LICENSE).

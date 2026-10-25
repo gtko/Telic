@@ -5,7 +5,7 @@ import { db } from '../../helpers/db';
 import { eq } from 'drizzle-orm';
 import { app, authedApi, ownWorkspaceId, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
-import { addUser, createAgentUser, joinProject, type Actor } from '../../helpers/god';
+import { addUser, joinProject, type Actor } from '../../helpers/god';
 import { setScimEmailPolicy } from '../../../src/modules/scim/email-policy';
 import { patchOps, scimUserBody, setupOtherWorkspace, setupScim } from '../../helpers/scim';
 
@@ -266,30 +266,6 @@ describe('SCIM users', () => {
       });
       expect(unsupportedAttribute.status).toBe(400);
       expect(unsupportedAttribute.error!.value).toMatchObject({ scimType: 'invalidFilter' });
-    });
-  });
-
-  describe("AI agents' accounts", () => {
-    // An agent's bot user belongs to the project that created it, not to the identity
-    // provider. Letting a sync reach it would let it rename the agent or deactivate
-    // it, which stops the agent without a trace.
-    it('leaves them out of the list, and 404s every route that names one', async () => {
-      const { god, scim } = await setupScim();
-      const project = await createProject(god.api, { name: 'Agents', key: 'AGT' });
-      const agentUserId = await createAgentUser(god, project.data!.key);
-
-      const list = await scim.scim.v2.Users.get({ query: {} });
-      expect(list.data!.Resources.map((u) => u.id)).not.toContain(agentUserId);
-
-      expect((await scim.scim.v2.Users({ id: agentUserId }).get()).status).toBe(404);
-      expect((await scim.scim.v2.Users({ id: agentUserId }).put(scimUserBody())).status).toBe(404);
-      expect(
-        (
-          await scim.scim.v2
-            .Users({ id: agentUserId })
-            .patch(patchOps([{ op: 'replace', path: 'active', value: false }]))
-        ).status,
-      ).toBe(404);
     });
   });
 
@@ -569,16 +545,6 @@ describe('SCIM users', () => {
       expect(res.error!.value).toMatchObject({
         detail: 'An instance owner cannot be deleted through SCIM',
       });
-    });
-
-    it("does not see an AI agent's account", async () => {
-      const { god, scim } = await setupScim();
-      const project = await createProject(god.api, { name: 'Agents', key: 'AGT' });
-      const agentUserId = await createAgentUser(god, project.data!.key);
-
-      const res = await scim.scim.v2.Users({ id: agentUserId }).delete();
-
-      expect(res.status).toBe(404);
     });
 
     it('deletes the owner of a project in their own workspace, which passes to the instance owner', async () => {

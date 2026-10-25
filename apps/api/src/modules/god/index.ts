@@ -1,4 +1,3 @@
-import { agentRuntime } from '#modules/agents/core/runtime/bindings';
 import type { Db } from '@repo/db';
 import { dbContext } from '#shared/db-context';
 import { Elysia, t } from 'elysia';
@@ -94,12 +93,9 @@ import {
   setHotkeySettings,
   getProjectDefaults,
   setProjectDefaults,
-  getAgentSettings,
-  setAgentSettings,
 } from '#modules/settings/service';
 import { getUpdateStatus } from '#modules/settings/updates';
 import {
-  AgentSettingsSchema,
   HotkeyCombosSchema,
   ProjectDefaultsSchema,
   StorageSettingsSchema,
@@ -133,11 +129,10 @@ async function assertUsableSignInMethod(
   }
 }
 
-// Deactivating the instance owner is how an instance locks itself out, and an agent's
-// account follows its agent; with SCIM the identity provider decides.
+// Deactivating the instance owner is how an instance locks itself out; with SCIM the
+// identity provider decides.
 function assertActiveSwitchable(lock: ActiveLock | null): void {
   if (lock === 'owner') throw new HttpError(403, 'An instance owner cannot be deactivated');
-  if (lock === 'agent') throw new HttpError(403, "An agent's account follows its agent");
   if (lock === 'scim') {
     throw new HttpError(409, 'Accounts are activated and deactivated by the SCIM provider');
   }
@@ -226,13 +221,13 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
       }
 
       const body = emailBody(
-        "This test confirms that It's a Plan can send email through the configured provider.",
+        'This test confirms that Telic can send email through the configured provider.',
       );
       const result = await sendEmail(
         { resend: config.resend, from: config.from },
         {
           to: current.email,
-          subject: "It's a Plan email test",
+          subject: 'Telic email test',
           ...body,
         },
       );
@@ -456,25 +451,6 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     },
   })
 
-  .get('/god/agent-settings', ({ db }) => getAgentSettings(db), {
-    response: { 200: AgentSettingsSchema, ...errors(401, 403) },
-    detail: {
-      summary: 'Get instance agent settings',
-      description: "Get what applies to every team's agents on this instance.",
-    },
-  })
-
-  .put('/god/agent-settings', ({ db, body }) => setAgentSettings(db, body), {
-    body: t.Partial(AgentSettingsSchema),
-    response: { 200: AgentSettingsSchema, ...errors(400, 401, 403) },
-    detail: {
-      summary: 'Update instance agent settings',
-      description:
-        "Update what applies to every team's agents. A shorter trace retention takes effect " +
-        'on the next sweep, which deletes the traces already past it.',
-    },
-  })
-
   .get('/god/hotkey-settings', ({ db }) => getHotkeySettings(db), {
     response: { 200: HotkeyCombosSchema, ...errors(401, 403) },
     detail: {
@@ -556,9 +532,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
   .get(
     '/god/users',
     ({ db, query }) =>
-      paginate(query, (window) =>
-        listInstanceUsers(db, { search: query.search, kind: query.kind ?? 'human', ...window }),
-      ),
+      paginate(query, (window) => listInstanceUsers(db, { search: query.search, ...window })),
     {
       query: listUsersQuery,
       response: { 200: InstanceUserPageResponse, ...errors(400, 401, 403) },
@@ -653,16 +627,12 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
 
   .delete(
     '/god/users/:userId',
-    async ({ db, env, auth, params, query }) => {
+    async ({ db, params, query }) => {
       const target = await getInstanceUser(db, params.userId);
       if (!target) throw new HttpError(404, 'User not found');
       // An instance owner is not removable here: the role is what grants god mode,
       // so deleting one from inside it is how an instance loses its administration.
       if (target.role === 'god') throw new HttpError(403, 'An instance owner cannot be deleted');
-      // An agent's bot user is created and removed with its AI Agent config.
-      if (target.isAgent) {
-        throw new HttpError(400, 'Delete the AI agent from its project instead');
-      }
       // Projects this user owns alone outside the workspaces they own. Their membership
       // goes with the account, so the project would be left with nobody who can manage
       // it (god mode does not bypass project membership). Either the caller takes those
@@ -678,7 +648,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         );
       }
       if (query.withProjects) {
-        for (const p of sole) await deleteProject(agentRuntime(env, auth), p.projectId);
+        for (const p of sole) await deleteProject(db, p.projectId);
       }
       await deleteInstanceUser(db, params.userId);
       return noContent();
@@ -690,7 +660,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
       detail: {
         summary: 'Delete a user',
         description:
-          'Remove an account from the instance, with its sessions, memberships and preferences. Optionally deletes the projects it owns alone; a workspace it owns goes with it while it holds no project or AI agent, and passes to the instance owner otherwise.',
+          'Remove an account from the instance, with its sessions, memberships and preferences. Optionally deletes the projects it owns alone; a workspace it owns goes with it while it holds no project, and passes to the instance owner otherwise.',
       },
     },
   )
@@ -787,7 +757,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
       response: { 200: InstanceTeamMemberPageResponse, ...commonErrors },
       detail: {
         summary: "List a team's members",
-        description: 'One page of the team members, people and agents alike, with their rank.',
+        description: 'One page of the team members, with their rank.',
       },
     },
   );

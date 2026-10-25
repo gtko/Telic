@@ -109,7 +109,6 @@
       "issueSettingsDescription": "L'état initial des statistiques et du journal d'activité d'un ticket. Les modifier alors qu'un ticket est ouvert ne change pas ces préférences.",
       "notifications": "Notifications",
       "notificationsDescription": "Suivre un ticket vous en apporte les commentaires et les changements d'état.",
-      "aiChat": "Chat IA",
       "shortcuts": "Raccourcis clavier",
       "shortcutsDescription": "Appuyez sur Modifier, puis sur les touches souhaitées. Réinitialiser rétablit le raccourci défini pour cette instance."
     },
@@ -167,8 +166,6 @@
       "grouped": "Groupée par état"
     },
     "autoWatch": "Suivre les tickets automatiquement",
-    "autoWatchDescription": "Ceux que vous créez, qui vous sont assignés, que vous commentez ou dans lesquels vous êtes mentionné.",
-    "showChatByDefault": "Afficher le chat par défaut",
-    "showChatByDefaultDescription": "Le panneau de chat s'ouvre avec une page de projet. Fermez-le à tout moment depuis son en-tête ou l'icône de chat."
+    "autoWatchDescription": "Ceux que vous créez, qui vous sont assignés, que vous commentez ou dans lesquels vous êtes mentionné."
   }
 }

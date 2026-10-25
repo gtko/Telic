@@ -1,4 +1,3 @@
-import SidebarAiTeamNav from '@/components/layout/SidebarAiTeamNav';
 import SidebarConfigNav from '@/components/layout/SidebarConfigNav';
 import SidebarWorkNav from '@/components/layout/SidebarWorkNav';
 
@@ -14,7 +13,6 @@ export default function SidebarMainNav({
   return (
     <>
       <SidebarWorkNav projectKey={projectKey} projectId={projectId} />
-      <SidebarAiTeamNav projectKey={projectKey} />
       <SidebarConfigNav projectKey={projectKey} />
     </>
   );

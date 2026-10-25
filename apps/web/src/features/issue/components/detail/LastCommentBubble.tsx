@@ -70,7 +70,6 @@ export default function LastCommentBubble({
   const shown = turn === 'running';
 
   return (
-    // z-50 and the end edge put it over the floating chat button at z-40.
     <div className="pointer-events-none sticky bottom-4 z-50 h-0" aria-hidden={!shown}>
       <div className="flex -translate-y-full justify-end">
         <div

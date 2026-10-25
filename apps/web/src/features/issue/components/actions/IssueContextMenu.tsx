@@ -4,7 +4,6 @@ import { useFormatter, useTranslations } from 'next-intl';
 import {
   Archive,
   ArchiveRestore,
-  Bot,
   CalendarClock,
   Check,
   CircleDashed,
@@ -32,8 +31,7 @@ import { usePriorityLabel } from '@/hooks/usePriorityLabel';
 import { ShellCtx } from '@/context/shellContext';
 import { useArchiveAction } from '../../hooks/useArchiveAction';
 import { ApplyActionDialog, DeleteIssueDialog, matchedActions } from './IssueActions';
-import { buildIssueBranchName, buildIssuePrompt } from '../../utils/issuePrompt';
-import { delegatableAgents } from '../../utils/delegates';
+import { buildIssueBranchName } from '../../utils/issuePrompt';
 import { useSession } from '@/lib/auth-client';
 import { toDateStr } from '@/utils/dates';
 import { colorDot } from '@/components/common/fields/colorDot';
@@ -138,8 +136,7 @@ export default function IssueContextMenu({
   const currentColumn = project.columns.find((c) => c.id === issue.columnId);
   const currentPriority =
     PRIORITY_FIELDS.find((p) => p.value === (issue.priority ?? '')) ?? PRIORITY_FIELDS[0];
-  const members = project.assignees.filter((a) => a.kind === 'member');
-  const agents = delegatableAgents(project.assignees, session?.user.id ?? null);
+  const members = project.assignees;
   const initiatives = initiativesQuery.data ?? [];
 
   return (
@@ -225,32 +222,6 @@ export default function IssueContextMenu({
                         <User />
                         <span className="flex-1 truncate">{a.name}</span>
                         <SelectedCheck selected={a.userId === issue.assigneeUserId} />
-                      </ContextMenuItem>
-                    ))}
-                  </ContextMenuSubContent>
-                </ContextMenuSub>
-              )}
-
-              {agents.length > 0 && (
-                <ContextMenuSub>
-                  <ContextMenuSubTrigger>
-                    <Bot />
-                    {t('delegate')}
-                  </ContextMenuSubTrigger>
-                  <ContextMenuSubContent className="w-56">
-                    <ContextMenuItem onSelect={() => patch({ delegateUserId: null })}>
-                      <CircleDashed />
-                      <span className="flex-1">{t('noDelegate')}</span>
-                      <SelectedCheck selected={issue.delegateUserId == null} />
-                    </ContextMenuItem>
-                    {agents.map((a) => (
-                      <ContextMenuItem
-                        key={a.userId}
-                        onSelect={() => patch({ delegateUserId: a.userId })}
-                      >
-                        <Bot />
-                        <span className="flex-1 truncate">{a.name}</span>
-                        <SelectedCheck selected={a.userId === issue.delegateUserId} />
                       </ContextMenuItem>
                     ))}
                   </ContextMenuSubContent>
@@ -406,13 +377,6 @@ export default function IssueContextMenu({
                 onSelect={() => copyText(buildIssueBranchName(issue, session?.user))}
               >
                 {t('copyBranch')}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                disabled={!copyIssue}
-                onSelect={() => copyText(buildIssuePrompt(copyIssue!, project, session?.user))}
-              >
-                {t('copyPrompt')}
               </ContextMenuItem>
             </ContextMenuSubContent>
           </ContextMenuSub>

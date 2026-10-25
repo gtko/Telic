@@ -82,10 +82,6 @@ function team(id: number, workspaceId: number): Team {
     memberCount: 1,
     ownerCount: 1,
     roleCount: 0,
-    integrationCount: 0,
-    agentCount: 0,
-    skillCount: 0,
-    toolCount: 0,
     createdAt: '2026-01-01T00:00:00Z',
   };
 }
@@ -245,7 +241,7 @@ beforeEach(async () => {
     },
     IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
-  Object.defineProperty(window, '__ITSAPLAN_ENV__', {
+  Object.defineProperty(window, '__TELIC_ENV__', {
     value: { apiUrl: 'https://api.test', privacyUrl: '', termsUrl: '' },
   });
   window.matchMedia = (query) => ({

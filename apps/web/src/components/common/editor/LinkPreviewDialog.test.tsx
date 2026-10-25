@@ -103,7 +103,7 @@ beforeEach(async () => {
       pretendToBeVisual: true,
     },
   );
-  dom.window.__ITSAPLAN_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
+  dom.window.__TELIC_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
   const globals = {
     window: dom.window,
     document: dom.window.document,
@@ -202,7 +202,7 @@ describe('explicit link preview dialog', () => {
   });
 
   it('keeps focused actions outside the scrolling metadata and URL', async () => {
-    const url = 'https://github.com/croffasia/itsaplan?tab=readme#installation';
+    const url = 'https://github.com/gtko/Telic?tab=readme#installation';
     queryClient.setQueryData(['link-preview', 'reader-1', url], {
       ...preview('A long repository title with installation, deployment and configuration details'),
       description: 'Repository documentation and installation instructions. '.repeat(12),
@@ -235,7 +235,7 @@ describe('explicit link preview dialog', () => {
         signal?.addEventListener('abort', () => reject(signal.reason));
       });
     await render(links);
-    const titles = ['github.com', 'github.com', 'ItsAPlan page', 'The project plan'];
+    const titles = ['github.com', 'github.com', 'Telic page', 'The project plan'];
     for (const [index, title] of titles.entries()) {
       const rows = [...document.querySelectorAll<HTMLButtonElement>('li button')];
       await click(rows[index]!);

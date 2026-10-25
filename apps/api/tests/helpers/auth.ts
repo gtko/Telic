@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { env } from 'cloudflare:workers';
+import { createAuth } from '@repo/auth';
 import { createDb, workspaceManager } from '@repo/db';
 import { and, eq } from 'drizzle-orm';
 import { insertOwnedTeam } from '#modules/teams/service';
@@ -69,4 +71,24 @@ export async function signUpTestUser(
     await insertOwnedTeam(db, workspaceId, username, userId);
   }
   return { cookie, userId, email, username, workspaceId };
+}
+
+// Opens a magic link for `email` as the web asks for one (errorCallbackURL on the sign-in
+// page) and returns where it redirects. The token is written straight into the
+// verification table, as better-auth stores it (`storeToken: 'hashed'`), because the
+// real one only travels in the email.
+export async function openMagicLink(email: string, token: string): Promise<URL> {
+  const context = await createAuth(env, createDb(env.DB)).$context;
+  await context.internalAdapter.createVerificationValue({
+    identifier: `magic-link:${createHash('sha256').update(token).digest('base64url')}`,
+    value: JSON.stringify({ type: 'magic-link', email }),
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+  const res = await app.handle(
+    new Request(
+      `http://localhost/api/auth/magic-link/verify?token=${token}&callbackURL=/&errorCallbackURL=/login`,
+    ),
+  );
+  if (res.status !== 302) throw new Error(`magic link answered ${res.status}`);
+  return new URL(res.headers.get('location') ?? '', 'http://localhost');
 }

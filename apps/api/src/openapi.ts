@@ -12,14 +12,12 @@ const MULTIPART_OPERATIONS = new Set([
   'POST /issues/{issueId}/attachments',
   'PUT /attachments/{publicId}',
   'POST /me/avatar',
-  'POST /teams/{teamId}/agent-skills/{skillId}/references',
 ]);
 
 const PUBLIC_GET_PATHS = [
   /^\/$/,
   /^\/auth-config$/,
   /^\/attachments\/\{publicId\}\/raw$/,
-  /^\/chat-attachments\/\{publicId\}\/raw$/,
   /^\/avatars\/\{id\}\/raw$/,
   /^\/invites\/\{token\}$/,
   /^\/share\//,

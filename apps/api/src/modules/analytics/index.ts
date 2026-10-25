@@ -7,9 +7,6 @@ import { accessErrors, commonErrors } from '#shared/responses';
 import { instantParam } from '#shared/lib';
 import {
   ActivityPage,
-  AgentRunFeedListResponse,
-  AgentRunStatsDto,
-  AgentWorkloadListResponse,
   BreakdownListResponse,
   BurnupDto,
   PulseListResponse,
@@ -17,7 +14,6 @@ import {
   ThroughputListResponse,
   WebhookStatsDto,
   activityQuery,
-  agentRunFeedQuery,
   breakdownQuery,
   burnupQuery,
   daysQuery,
@@ -31,10 +27,7 @@ import {
   getThroughput,
   getBurnup,
   listActivity,
-  listAgentRunFeed,
-  getAgentRunStats,
   getWebhookStats,
-  getAgentWorkload,
   type ActivityCursor,
   type PulseUnit,
 } from './service';
@@ -204,42 +197,6 @@ export const analyticsRoutes = new Elysia({
   )
 
   .get(
-    '/projects/:projectKey/analytics/agent-runs',
-    async ({ db, project, query }) => {
-      const limit = query.limit ?? 20;
-      return listAgentRunFeed(db, project.id, { status: query.status ?? null, limit });
-    },
-    {
-      query: agentRunFeedQuery,
-      permission: ['dashboards', 'read'],
-      response: { 200: AgentRunFeedListResponse, ...commonErrors },
-      detail: {
-        summary: 'List agent runs',
-        description: 'Project-wide feed of agent runs.',
-        ...mcpTool('list_agent_runs'),
-      },
-    },
-  )
-
-  .get(
-    '/projects/:projectKey/analytics/agent-run-stats',
-    async ({ db, project, query }) => {
-      const days = query.days != null ? Math.min(Math.max(query.days, 1), 90) : 30;
-      return getAgentRunStats(db, project.id, days);
-    },
-    {
-      query: daysQuery,
-      permission: ['dashboards', 'read'],
-      response: { 200: AgentRunStatsDto, ...commonErrors },
-      detail: {
-        summary: 'Get agent run stats',
-        description: 'Agent run outcome counts (success, failed, pending).',
-        ...mcpTool('get_agent_run_stats'),
-      },
-    },
-  )
-
-  .get(
     '/projects/:projectKey/analytics/webhook-stats',
     async ({ db, project, query }) => {
       const days = query.days != null ? Math.min(Math.max(query.days, 1), 90) : 30;
@@ -253,22 +210,6 @@ export const analyticsRoutes = new Elysia({
         summary: 'Get webhook stats',
         description: 'Webhook delivery outcomes and active/disabled webhook counts.',
         ...mcpTool('get_webhook_stats'),
-      },
-    },
-  )
-
-  .get(
-    '/projects/:projectKey/analytics/agent-workload',
-    async ({ db, project }) => {
-      return getAgentWorkload(db, project.id);
-    },
-    {
-      permission: ['dashboards', 'read'],
-      response: { 200: AgentWorkloadListResponse, ...accessErrors },
-      detail: {
-        summary: 'Get agent workload',
-        description: 'Per-agent open delegated issues and run outcomes.',
-        ...mcpTool('get_agent_workload'),
       },
     },
   );

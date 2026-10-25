@@ -10,8 +10,8 @@ import { app } from '../../helpers/app';
 async function storeBot(botToken: string, enabled = true): Promise<void> {
   await writeSecret(
     'telegram.bot',
-    { enabled, botToken, botUsername: 'itsaplan_bot' },
-    { enabled, botUsername: 'itsaplan_bot', hasBotToken: botToken.length > 0 },
+    { enabled, botToken, botUsername: 'telic_bot' },
+    { enabled, botUsername: 'telic_bot', hasBotToken: botToken.length > 0 },
   );
 }
 
@@ -27,7 +27,7 @@ describe('telegram', () => {
     expect(isInstanceBotUsable(await getInstanceBotConfig())).toBe(false);
     await storeBot('123:secret');
     const config = await getInstanceBotConfig();
-    expect(config).toEqual({ enabled: true, botToken: '123:secret', botUsername: 'itsaplan_bot' });
+    expect(config).toEqual({ enabled: true, botToken: '123:secret', botUsername: 'telic_bot' });
     expect(isInstanceBotUsable(config)).toBe(true);
   });
 

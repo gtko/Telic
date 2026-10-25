@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { apiKeyApi, authedApi, type Api, createProject } from '../../helpers/app';
+import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
-import { createAgent } from '../../helpers/agents';
 import type { WebhookEventType } from '../../../src/modules/webhooks/service';
 import { onProjectEvent, type ProjectEvent } from '../../../src/modules/webhooks/emit';
 
@@ -409,7 +408,6 @@ describe('webhooks', () => {
         title: 'Task',
         assigneeUserId: owner.userId,
         assignee: { id: owner.userId, name: 'Owner' },
-        delegate: null,
         state: { id: columnId, name: columns[0].name, type: columns[0].stateType },
         labels: [{ id: label.id, name: 'bug', color: '#ff0000' }],
       });
@@ -433,30 +431,6 @@ describe('webhooks', () => {
       expect(payload.data).toMatchObject({
         labels: [{ id: ui.id, name: 'ui' }],
         labelChange: { added: [{ id: ui.id, name: 'ui' }], removed: [{ id: bug.id, name: 'bug' }] },
-      });
-    });
-
-    it('marks an agent as the actor of what it does', async () => {
-      const { asOwner, columnId } = await setupOwnerProject();
-      const id = await createWebhook(asOwner, ['issue.created']);
-      const created = (
-        await createAgent(asOwner, 'MKT', {
-          name: 'Triage Bot',
-          username: 'triage',
-          kind: 'external',
-        })
-      ).data!;
-
-      const res = await apiKeyApi(created.apiKey!)
-        .projects({ projectKey: 'MKT' })
-        .issues.post({ columnId, title: 'Filed by the agent' });
-      expect(res.status).toBe(201);
-
-      const [payload] = await payloads(asOwner, id);
-      expect(payload.actor).toEqual({
-        type: 'agent',
-        id: created.agent.userId,
-        name: 'Triage Bot',
       });
     });
 

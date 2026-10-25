@@ -403,7 +403,7 @@ export async function requireTeamMembership(
 // Asserts the caller may perform the action on a resource the team owns and every
 // project of it shares. Owners and managers always may — they run the team. So does
 // an owner of one of its projects, whose project membership carries the full matrix.
-// Anyone else — a member, and an agent, whose standing in the team grants nothing on
+// Anyone else — a member, whose standing in the team grants nothing on
 // its own — may when a project role of theirs in the team grants it. Wrapped by the
 // teamPermission guard.
 export async function requireTeamPermission(

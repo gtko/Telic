@@ -7,10 +7,9 @@ import { getAppVersion, releasesSince, type Release } from './updates';
 // database dump taken before its migrations is, and what the migrations did to this
 // instance's data.
 //
-// The dump and the data report are administration: they name the projects, roles and
-// agents of the whole instance, so only its owner reads them. Team ownership is not
-// the line to draw here — nearly every account owns a team of its own, which would make
-// that everyone.
+// The dump and the data report are administration: they name the projects and roles of the whole instance, so only its owner reads
+// them. Team ownership is not the line to draw here — nearly every account owns a team of
+// its own, which would make that everyone.
 
 const MIGRATION_REPORT_KEY = 'migration.teams';
 // The migration is matched by name, not by its number: a merge from main renumbers the

@@ -31,7 +31,6 @@
     "status": "Durum",
     "statusType": "Durum türü",
     "assignee": "Sorumlu",
-    "delegate": "Temsilci",
     "priority": "Öncelik",
     "type": "Tür",
     "initiative": "Girişim",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "Sorumlu atanmamış",
-    "delegate": "Temsilci atanmamış",
     "type": "Tür yok",
     "initiative": "Girişim yok",
     "cycle": "Döngü yok",

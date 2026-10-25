@@ -38,6 +38,9 @@ export function setRequestTracker(next?: RequestTracker): void {
   tracker = next;
 }
 
+// Stands in for the body of a route whose parser leaves the request unread.
+export const UNREAD_BODY = Symbol('unread body');
+
 const pending = new WeakMap<Request, FinishTracking>();
 
 // Elysia reads a request's body only for the routes whose handler or hooks name `body`,
@@ -77,7 +80,8 @@ export const requestTracking = new Elysia({ name: 'request-tracking' })
     if (!tracker) return;
     try {
       const { request, route } = ctx;
-      const body = (ctx as Record<string, unknown>)[BODY];
+      const parsed = (ctx as Record<string, unknown>)[BODY];
+      const body = parsed === UNREAD_BODY ? undefined : parsed;
       const finish = await tracker({ request, route, params: ctx.params ?? {}, body });
       if (finish) pending.set(request, finish);
     } catch (error) {
@@ -88,7 +92,7 @@ export const requestTracking = new Elysia({ name: 'request-tracking' })
     finishTracking(
       ctx.request,
       (ctx as { user?: SessionUser | null }).user,
-      answerOf(ctx.responseValue, ctx.set.status),
+      answerOf(ctx.responseValue ?? (ctx as { response?: unknown }).response, ctx.set.status),
     ),
   )
   .onError({ as: 'global' }, (ctx) =>

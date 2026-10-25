@@ -1,6 +1,4 @@
-import { agentRuntime, runQueueOf } from '#modules/agents/core/runtime/bindings';
-import { Elysia, t, type DocumentDecoration } from 'elysia';
-import { listIssueAgentRuns, getIssueAgentRunTrace } from './agent-runs';
+import { Elysia, t } from 'elysia';
 import { mcpTool } from '#mcp/generate';
 import { noContent } from '#shared/http';
 import { guards, entityGuard, assertMcpAllowed, requiresPermission } from '#shared/guards';
@@ -96,11 +94,6 @@ import {
 
 import {
   issueParams,
-  issueAgentRunsQuery,
-  issueAgentRunParams,
-  IssueAgentRunPageResponse,
-  IssueAgentRunTraceResponse,
-  issueAgentTraceQuery,
   issueDevelopmentLinkParams,
   issueDevelopmentRepositoryParams,
   issueDevelopmentListQuery,
@@ -207,22 +200,6 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // entry and a comment belong to the issue that carries them, so they all resolve
   // to the same work_items permission.
   .macro({
-    issueAgentRuns(_enabled: boolean) {
-      return {
-        detail: requiresPermission(['ai_agents', 'read']) as DocumentDecoration,
-        async resolve({ db, params, user, request }) {
-          const projectId = await getIssueProjectId(
-            db,
-            Number((params as { issueId: string }).issueId),
-          );
-          if (projectId == null) throw new HttpError(404, 'Issue not found');
-          await assertPermission(db, projectId, user, 'work_items', 'read');
-          await assertPermission(db, projectId, user, 'ai_agents', 'read');
-          await assertMcpAllowed(db, projectId, request.headers);
-          return { projectId };
-        },
-      };
-    },
     workItem: entityGuard('work_items', 'Issue not found', (p, { db }) =>
       getIssueProjectId(db, Number(p.issueId)),
     ),
@@ -320,9 +297,9 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   })
   .post(
     '/projects/:projectKey/issues',
-    async ({ db, env, project, body, user, set }) => {
+    async ({ db, project, body, user, set }) => {
       set.status = 201;
-      return createIssue(db, project, body, requireUser(user).id, runQueueOf(env));
+      return createIssue(db, project, body, requireUser(user).id);
     },
     {
       body: createIssueBody,
@@ -481,7 +458,6 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
           cycleId: posId(query.cycleId),
           parentId: posId(query.parentId),
           assigneeUserId: str(query.assigneeUserId),
-          delegateUserId: str(query.delegateUserId),
           priority: str(query.priority),
           labelIds: labelIds && labelIds.length ? labelIds : undefined,
           dueFrom: str(query.dueFrom),
@@ -617,13 +593,11 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // a column (position).
   .patch(
     '/issues/:issueId',
-    async ({ db, env, params, body, user, projectId }) => {
+    async ({ db, params, body, user, projectId }) => {
       const actorUserId = requireUser(user).id;
       const issueId = params.issueId;
       const { labelIds, ...patch } = body;
-      const issue = await updateIssue(db, issueId, patch, actorUserId, {
-        queue: runQueueOf(env),
-      });
+      const issue = await updateIssue(db, issueId, patch, actorUserId);
       if (!issue) throw new HttpError(404, 'Issue not found');
       if (labelIds) {
         await setIssueLabels(db, projectId, issueId, labelIds, actorUserId);
@@ -929,7 +903,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // body.valueEnd.
   .put(
     '/issues/:issueId/fields/:fieldId',
-    async ({ db, env, params, body, user, projectId }) => {
+    async ({ db, params, body, user, projectId }) => {
       await setIssueFieldValue(
         db,
         projectId,
@@ -937,7 +911,6 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         params.fieldId,
         body,
         requireUser(user).id,
-        runQueueOf(env),
       );
       return { ok: true };
     },
@@ -1189,54 +1162,6 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     },
   )
 
-  .get(
-    '/issues/:issueId/agent-runs',
-    async ({ db, params, query, projectId }) =>
-      listIssueAgentRuns(db, projectId, params.issueId, query.before, query.limit),
-    {
-      params: issueParams,
-      query: issueAgentRunsQuery,
-      issueAgentRuns: true,
-      response: { 200: IssueAgentRunPageResponse, ...commonErrors },
-      detail: {
-        summary: "List an issue's agent runs",
-        description:
-          'Triggered runs in the current project, newest first, including the prompt, result and error.',
-      },
-    },
-  )
-
-  .get(
-    '/issues/:issueId/agent-runs/:runId/trace',
-    async ({ env, auth, params, user, query, projectId }) => {
-      const trace = await getIssueAgentRunTrace(
-        agentRuntime(env, auth),
-        projectId,
-        params.issueId,
-        params.runId,
-        requireUser(user).id,
-        query.traceId,
-      );
-      if (trace === undefined) throw new HttpError(404, 'Run not found');
-      return Response.json(trace);
-    },
-    {
-      params: issueAgentRunParams,
-      query: issueAgentTraceQuery,
-      issueAgentRuns: true,
-      response: {
-        200: IssueAgentRunTraceResponse,
-        ...commonErrors,
-      },
-      detail: {
-        summary: "Read an issue run's trace",
-        description:
-          'The selected or latest recorded attempt, with a link to the previous one. ' +
-          'Null when no latest trace is available.',
-      },
-    },
-  )
-
   // The time logged on the issue. The entries are their own read: the issue payload
   // carries their sum, which is what a board and the Time property show, and only
   // the section that lists them needs the entries themselves.
@@ -1357,8 +1282,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   )
 
   // Editors can curate the full watcher list when a handoff or review needs to
-  // reach someone immediately. The target must be a real project member: agents
-  // have their own delegation flow and must never receive human notifications.
+  // reach someone immediately. The target must be a real project member.
   .put(
     '/issues/:issueId/watchers/:userId',
     async ({ db, params, projectId }) => {
@@ -1506,22 +1430,17 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
     },
   })
 
-  // Post a comment on an issue. The author is the session user (a member or an
-  // agent's bot user).
+  // Post a comment on an issue. The author is the session user (a member).
   .post(
     '/issues/:issueId/comments',
-    async ({ db, env, params, body, user, set }) => {
+    async ({ db, params, body, user, set }) => {
       set.status = 201;
-      return createComment(
-        db,
-        {
-          issueId: params.issueId,
-          actorUserId: requireUser(user).id,
-          body: body.body,
-          replyToId: body.replyToId,
-        },
-        runQueueOf(env),
-      );
+      return createComment(db, {
+        issueId: params.issueId,
+        actorUserId: requireUser(user).id,
+        body: body.body,
+        replyToId: body.replyToId,
+      });
     },
     {
       body: createCommentBody,
@@ -1533,7 +1452,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         description:
           'Add a comment to an issue by its numeric id. Pass replyToId to answer an ' +
           'existing comment of that issue instead of starting a new thread. Writing ' +
-          '@username in the body notifies that member or AI agent; the handles are ' +
+          '@username in the body notifies that member; the handles are ' +
           'the usernames in get_project.assignees.',
         ...mcpTool('add_comment'),
       },
@@ -1544,15 +1463,8 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
   // the comment guard asserts; another member's only a project owner can change.
   .patch(
     '/comments/:commentId',
-    async ({ db, env, params, body, user, projectId }) =>
-      updateComment(
-        db,
-        params.commentId,
-        body.body,
-        requireUser(user).id,
-        projectId,
-        runQueueOf(env),
-      ),
+    async ({ db, params, body, user, projectId }) =>
+      updateComment(db, params.commentId, body.body, requireUser(user).id, projectId),
     {
       body: updateCommentBody,
       params: commentParams,
@@ -1562,7 +1474,7 @@ export const issueRoutes = new Elysia({ name: 'issues', detail: { tags: ['Issues
         summary: 'Edit a comment',
         description:
           'Change the text of a comment, and re-resolve its mentions: the members an ' +
-          'edit newly names are notified, the agents run. Your own comment needs ' +
+          'edit newly names are notified. Your own comment needs ' +
           "work_items edit; another member's comment only a project owner can change.",
         ...mcpTool('update_comment'),
       },

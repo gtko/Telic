@@ -7,12 +7,6 @@
   "users": {
     "empty": "Ninguna cuenta coincide con estos filtros.",
     "searchPlaceholder": "Buscar por nombre o correo",
-    "kind": "Clase de cuenta",
-    "kinds": {
-      "human": "Personas",
-      "agent": "Bots de IA",
-      "all": "Todas las cuentas"
-    },
     "columns": {
       "account": "Cuenta",
       "role": "Rol",
@@ -25,7 +19,6 @@
     "registered": "se unió el {date}",
     "roleGod": "Dios",
     "roleUser": "Usuario",
-    "agent": "Agente",
     "noProviders": "ninguno",
     "neverSeen": "nunca",
     "verified": "Verificado",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "El propietario de la instancia siempre está activo.",
-      "agent": "La cuenta de un agente sigue a su agente.",
       "scim": "Tu proveedor de identidad (SCIM) decide qué cuentas están activas."
     },
     "deactivateTitle": "¿Desactivar {email}?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Propietario de la instancia",
     "user": "Usuario",
-    "aiAgent": "Agente de IA",
     "emailVerified": "Correo verificado",
     "unconfirmedTitle": "La dirección de correo no está confirmada",
     "unconfirmedHint": "Confírmala aquí cuando el enlace nunca le llegó.",
@@ -71,7 +62,7 @@
     "deleteConfirm": "Eliminar la cuenta",
     "deleteConfirmWithProjects": "{count, plural, one {Eliminar la cuenta y el proyecto} other {Eliminar la cuenta y los proyectos}}",
     "deleteMessage": "<strong>{name}</strong> pierde el acceso a esta instancia. Los tickets y los comentarios que ha escrito se quedan, sin el autor asignado. No se puede deshacer.",
-    "deleteWorkspaceNote": "Un espacio de trabajo de esta cuenta se elimina con ella si no tiene proyectos ni agentes de IA. Si los tiene, pasa a ti, con todo lo que la cuenta tenía en exclusiva en él.",
+    "deleteWorkspaceNote": "Un espacio de trabajo de esta cuenta se elimina con ella si no tiene proyectos. Si los tiene, pasa a ti, con todo lo que la cuenta tenía en exclusiva en él.",
     "soleOwnerTitle": "{count, plural, one {Único propietario de un proyecto} other {Único propietario de # proyectos}}",
     "soleOwnerHint": "{count, plural, one {Cuando la cuenta se vaya, nadie la podrá gestionar.} other {Cuando la cuenta se vaya, nadie los podrá gestionar.}}",
     "deleteWithProjects": "{count, plural, one {Eliminar el proyecto con la cuenta} other {Eliminar los proyectos con la cuenta}}",
@@ -87,7 +78,6 @@
       "project": "Proyecto",
       "members": "Miembros",
       "issues": "Tickets",
-      "agents": "Agentes",
       "lastActivity": "Última actividad",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Iniciativas",
       "members": "Miembros",
       "dashboards": "Paneles",
-      "views": "Vistas",
-      "agents": "Agentes de IA",
-      "skills": "Habilidades",
-      "tools": "Herramientas"
+      "views": "Vistas"
     },
     "members": "Miembros",
     "noMembersTitle": "Sin miembros",
@@ -129,7 +116,6 @@
       "projects": "Proyectos",
       "members": "Miembros",
       "issues": "Tickets",
-      "agents": "Agentes",
       "mcp": "MCP"
     },
     "mcpEnabled": "Activado",
@@ -146,9 +132,6 @@
       "projects": "Proyectos",
       "issues": "Tickets",
       "members": "Miembros",
-      "agents": "Agentes de IA",
-      "skills": "Habilidades",
-      "tools": "Herramientas",
       "roles": "Roles de proyecto"
     },
     "projects": "Proyectos",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Propietario",
       "manager": "Administrador",
-      "member": "Miembro",
-      "agent": "Agente"
+      "member": "Miembro"
     },
     "joined": "Se unió {date}"
   },
@@ -178,17 +160,7 @@
     "workspacesSaved": "Ajustes de espacios de trabajo guardados",
     "workspaces": "Espacios de trabajo",
     "personalWorkspaces": "Un espacio de trabajo para cada persona",
-    "personalWorkspacesHint": "Cada cuenta recibe un espacio de trabajo propio con el nombre de la persona. Desactivado, cada persona trabaja solo en los espacios de trabajo a los que se le ha añadido.",
-    "agents": "Agentes",
-    "agentsSaved": "Ajustes de agentes guardados",
-    "traceRetention": "Conservar trazas de ejecución",
-    "traceRetentionHint": "Cada ejecución de un agente registra sus llamadas al modelo y a las herramientas. Los paneles de consumo solo cuentan las ejecuciones conservadas.",
-    "traceDays": "{days, plural, one {# día} other {# días}}",
-    "traceForever": "Siempre",
-    "maxRunTime": "Duración máxima de ejecución",
-    "maxRunTimeHint": "Cuánto puede durar una ejecución de un agente antes de detenerse y guardarse como fallida. El límite propio de un agente no puede superarlo.",
-    "runMinutes": "{minutes, plural, one {# minuto} other {# minutos}}",
-    "runSeconds": "{seconds} s"
+    "personalWorkspacesHint": "Cada cuenta recibe un espacio de trabajo propio con el nombre de la persona. Desactivado, cada persona trabaja solo en los espacios de trabajo a los que se le ha añadido."
   },
   "authentication": {
     "saved": "Los ajustes de autenticación se han guardado",
@@ -239,7 +211,7 @@
     "fileSize": "Tamaño del fichero",
     "fileSizeHint": "El fichero más grande que puede llevar una subida. Un fichero más grande se rechaza antes de que se guarde.",
     "attachmentMb": "Tamaño del adjunto (MB)",
-    "attachmentHint": "Se aplica a los adjuntos de tickets, los ficheros pegados en una descripción y los adjuntos añadidos por los agentes.",
+    "attachmentHint": "Se aplica a los adjuntos de tickets y a los ficheros pegados en una descripción.",
     "avatarMb": "Tamaño del avatar (MB)",
     "avatarHint": "La foto de perfil que las personas suben para su cuenta.",
     "mimeTypes": "Tipos de adjunto aceptados",

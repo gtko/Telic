@@ -49,10 +49,9 @@ export const TeamResponse = t.Object({
       'Whether the team is reachable over MCP. Off closes its own resources and every ' +
       'project it owns.',
   }),
-  role: t.Union(
-    [t.Literal('owner'), t.Literal('manager'), t.Literal('member'), t.Literal('agent')],
-    { description: 'Your standing in this team.' },
-  ),
+  role: t.Union([t.Literal('owner'), t.Literal('manager'), t.Literal('member')], {
+    description: 'Your standing in this team.',
+  }),
   via: t.Union([t.Literal('member'), t.Literal('workspace')], {
     description:
       "'workspace' when you are not in the team and reach it through your role in its " +
@@ -68,10 +67,6 @@ export const TeamResponse = t.Object({
   memberCount: t.Number(),
   ownerCount: t.Number({ description: 'How many members are owners; the last one cannot leave.' }),
   roleCount: t.Number({ description: "How many roles the team's projects assign from." }),
-  integrationCount: t.Number({ description: 'How many integration credentials the team holds.' }),
-  agentCount: t.Number({ description: 'How many AI agents the team owns.' }),
-  skillCount: t.Number({ description: 'How many agent skills the team library holds.' }),
-  toolCount: t.Number({ description: 'How many configured tools the team holds.' }),
   createdAt: t.String(),
 });
 
@@ -100,17 +95,10 @@ export const TeamMemberPageResponse = pageResponse(
     name: t.String(),
     email: t.String(),
     image: t.Nullable(t.String()),
-    role: t.Union([
-      t.Literal('owner'),
-      t.Literal('manager'),
-      t.Literal('member'),
-      t.Literal('agent'),
-    ]),
+    role: t.Union([t.Literal('owner'), t.Literal('manager'), t.Literal('member')]),
     source: t.Union([t.Literal('invite'), t.Literal('scim')], {
       description: "A provisioned membership is the identity provider's and is not removed here.",
     }),
-    agentId: t.Nullable(t.Number({ description: 'The AI agent this bot user backs.' })),
-    username: t.Nullable(t.String({ description: "An agent's mention handle." })),
     joinedAt: t.String(),
   }),
 );
@@ -143,8 +131,7 @@ export const TeamProjectPageResponse = pageResponse(
   }),
 );
 
-// Every project the reader has, for the pickers that need them all: the projects an
-// agent is attached to, and the MCP switch each project carries.
+// Every project the reader has, for the pickers that need them all: the MCP switch each project carries.
 export const TeamProjectOptionListResponse = t.Array(
   t.Object({
     id: t.Number(),
@@ -183,7 +170,6 @@ export const TeamProjectMemberPageResponse = pageResponse(
     email: t.String(),
     username: t.Nullable(t.String()),
     image: t.Nullable(t.String()),
-    isAgent: t.Boolean(),
     role: t.Union([t.Literal('owner'), t.Literal('member')]),
     roleId: t.Nullable(t.Number()),
     roleName: t.Nullable(t.String()),
@@ -203,12 +189,4 @@ export const TeamMcpResponse = t.Object({
 export const updateTeamMcpBody = t.Object({
   enabled: t.Optional(t.Boolean()),
   projects: t.Optional(t.Array(t.Object({ projectId: t.Number(), enabled: t.Boolean() }))),
-});
-
-export const TeamProjectDefaultsResponse = t.Object({
-  defaultAgentIds: t.Array(t.Number()),
-});
-
-export const updateTeamProjectDefaultsBody = t.Object({
-  defaultAgentIds: t.Array(t.Integer({ minimum: 1 }), { uniqueItems: true }),
 });

@@ -43,7 +43,7 @@ import {
 
 // The poll loop that drives a source import through its phases: discover ->
 // create -> link -> rewrite -> attachments -> done. Follows the same claim-a-lease,
-// bounded-chunk-per-tick shape as worker.ts and agent-worker.ts. Each tick
+// bounded-chunk-per-tick shape as worker.ts. Each tick
 // claims at most one due import_job and advances it by one bounded unit of
 // work, then reschedules — a large import interleaves across many ticks
 // rather than running to completion in one.
@@ -211,7 +211,7 @@ export async function runCreate(
   await saveImportJobCursor(db, job.id, next);
 }
 
-// stateOverrides (Plane state id -> itsaplan category) comes from the mapping review
+// stateOverrides (Plane state id -> Telic category) comes from the mapping review
 // step at job creation; only newly-created columns are affected, never a dedup-matched
 // existing one - createLocalStateAndRecord already never touches an existing match's
 // stateType.
@@ -393,7 +393,7 @@ async function createComments(
 }
 
 // --- Link: for each created issue, fetch its relations and create the ones
-// with a destination in itsaplan's issue_link.kind (see "Relations vs.
+// with a destination in Telic's issue_link.kind (see "Relations vs.
 // dependencies" in the notes file). Also gives every issue's parent link a
 // second chance to resolve: Create only knew what import_record held at the
 // moment it ran, so a sub-issue processed before its parent existed was left

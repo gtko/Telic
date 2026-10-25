@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Afficher ou masquer la barre latérale"
       },
-      "chat": {
-        "toggle": "Afficher ou masquer le chat IA"
-      },
       "issue": {
         "new": "Nouveau ticket"
       },
@@ -77,50 +74,6 @@
       }
     },
     "conflict": "Déjà utilisé par {command}"
-  },
-  "agentChat": {
-    "emptyHint": "Envoyez un message pour tester les réponses de cet agent et les outils qu'il utilise.",
-    "messagePlaceholder": "Écrire à {agent}…",
-    "reset": "Réinitialiser la conversation",
-    "send": "Envoyer",
-    "sendHint": "Entrée pour envoyer, ⌘/Ctrl+Entrée pour un retour à la ligne",
-    "stop": "Arrêter",
-    "stopped": "Arrêté",
-    "loadingEarlier": "Chargement des messages précédents…",
-    "messages": "Messages de la conversation",
-    "usingTool": "Utilisation de {tool}…",
-    "usedTool": "{tool} utilisé",
-    "usedTools": "{count, plural, one {# outil utilisé} other {# outils utilisés}}",
-    "toolInput": "Entrée",
-    "toolOutput": "Sortie",
-    "thinking": "Réflexion…",
-    "waitingForRunner": "En attente du runner…",
-    "waitingToSend": "En attente d'envoi",
-    "removePending": "Supprimer le message",
-    "title": "Discussion avec {agent}",
-    "unreachable": "Impossible de joindre l'agent. Réessayez.",
-    "runnerOffline": "Runner hors ligne",
-    "runnerOfflineHint": "Démarrez le runner sur votre machine pour discuter avec cet agent.",
-    "attachFile": "Joindre un tableur, un document, un PDF ou un fichier texte à faire lire à l'agent",
-    "removeAttachment": "Supprimer la pièce jointe",
-    "uploadFailed": "Impossible d'envoyer le fichier.",
-    "tooManyAttachments": "Vous pouvez joindre jusqu'à {max} fichiers à un même message.",
-    "importRows": "{count, plural, one {# ligne} other {# lignes}}",
-    "confirmImport": "Confirmer l'import",
-    "cancelImport": "Annuler",
-    "importWorking": "Création des tickets…",
-    "importShowAllRows": "Afficher les {count} lignes",
-    "importShowFewerRows": "Afficher les {count} premières lignes",
-    "importRowState": "Importer",
-    "importRowNew": "Sera créé",
-    "importSkipHint": "Les lignes marquées ✕ seront ignorées à la confirmation.",
-    "importAdjustHint": "Demandez à l'agent d'ajuster la correspondance si quelque chose ne va pas.",
-    "importCanceled": "Cet import a été annulé. Rien n'a été créé.",
-    "importFailed": "L'import a échoué.",
-    "importConfirmed": "{count, plural, one {# ticket créé} other {# tickets créés}}",
-    "importSkippedRow": "Ligne {row} ignorée : {reason}",
-    "contextSize": "Contexte de la conversation : {count, plural, one {# token} other {# tokens}}",
-    "contextUnavailable": "La taille du contexte n'est pas disponible pour cet agent"
   },
   "share": {
     "createFailed": "Impossible de créer le lien. Réessayez.",
@@ -182,7 +135,7 @@
     "openPreviewLink": "Open {name} in a new tab",
     "loadingPreview": "Loading preview…",
     "previewUnavailable": "A preview is not available. Open the link to view this page.",
-    "internalPage": "ItsAPlan page",
+    "internalPage": "Telic page",
     "internalPreviewUnavailable": "This page is unavailable or you do not have access.",
     "previewNoteCount": "{count, plural, one {# note} other {# notes}}",
     "previewCustomField": "Custom field",
@@ -205,13 +158,11 @@
     "download": "Enregistrer le graphique",
     "downloadFailed": "Le graphique n'a pas pu être enregistré"
   },
-  "agent": "Agent",
   "pager": {
     "previous": "Page précédente",
     "next": "Page suivante",
     "page": "Page {number}",
     "perPage": "par page",
     "range": "{first}-{last} sur {total}"
-  },
-  "aboutCloudAndPro": "En savoir plus sur Cloud et Pro"
+  }
 }

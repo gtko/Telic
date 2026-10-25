@@ -70,7 +70,7 @@ beforeEach(async () => {
     url: 'https://planner.test/god/users',
     pretendToBeVisual: true,
   });
-  dom.window.__ITSAPLAN_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
+  dom.window.__TELIC_ENV__ = { apiUrl: 'http://api.test', privacyUrl: '', termsUrl: '' };
   const globals = {
     window: dom.window,
     document: dom.window.document,

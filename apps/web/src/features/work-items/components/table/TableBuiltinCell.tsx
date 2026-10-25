@@ -7,7 +7,6 @@ import { usePriorityLabel } from '@/hooks/usePriorityLabel';
 import {
   AssigneeAvatar,
   DateBadge,
-  DelegateAvatar,
   LabelBadge,
 } from '@/features/issue/components/shared/IssueBadges';
 import { PriorityIcon, StateIcon } from '@/features/issue/components/shared/IssueIcons';
@@ -83,15 +82,6 @@ export function TableBuiltinCell({
       return (
         <div className="flex justify-end">
           {assignee ? <AssigneeAvatar name={assignee.name} image={assignee.image} /> : DASH}
-        </div>
-      );
-    }
-    case 'delegate': {
-      const delegate =
-        issue.delegateUserId != null ? maps.assigneeById.get(issue.delegateUserId) : undefined;
-      return (
-        <div className="flex justify-end">
-          {delegate ? <DelegateAvatar name={delegate.name} image={delegate.image} /> : DASH}
         </div>
       );
     }

@@ -18,20 +18,19 @@ import { apiUrlOf, appUrlOf, getEnv, type Env } from './env';
 import { requestContext } from './shared/context';
 import { planner } from './planner';
 import { mountMcp } from './mcp/mount';
-import { setMcpApp } from './mcp/app-ref';
 import { gitWebhookRoutes } from './modules/git/webhook';
 import { scimRoutes } from './modules/scim';
 import { currentUserRoutes } from './modules/current-user';
 import { syncOidcGroupsAfterCallback } from './modules/scim/oidc-sync';
 import { normalizeOpenApiResponse } from './openapi';
-import { requestTracking } from './shared/request-tracker';
+import { requestTracking, UNREAD_BODY } from './shared/request-tracker';
 import pkg from '../../../package.json';
 
 // The public URLs the OpenAPI document quotes. The document is built once per isolate, so this
 // reads the Worker's variables from the module scope (`cloudflare:workers`), not from a request.
 const apiUrl = apiUrlOf(getEnv());
 const appUrl = appUrlOf(getEnv());
-const apiDescription = `REST API for projects, work items, AI agents, Git integrations, analytics, and instance administration.
+const apiDescription = `REST API for projects, work items, Git integrations, analytics, and instance administration.
 
 ## Quick start
 
@@ -46,7 +45,7 @@ curl "${apiUrl}/projects" \\
 
 JSON errors use \`{ "error": "message" }\` and may also include a stable \`code\`. Pagination parameters and response envelopes are documented per operation.
 
-For agent clients, use the MCP endpoint at [${apiUrl}/mcp](${apiUrl}/mcp). SCIM, worker-internal routes, and repository webhooks use the separate credentials shown on their operations.`;
+For MCP clients, use the endpoint at [${apiUrl}/mcp](${apiUrl}/mcp). SCIM, worker-internal routes, and repository webhooks use the separate credentials shown on their operations.`;
 
 // better-auth serves the OIDC callback at /callback/oidc; identity providers keep the
 // redirect URI they were registered with, which is this path.
@@ -104,9 +103,14 @@ const dynamicAdapter = { ...CloudflareAdapter, beforeCompile: undefined };
 // Two things the composed handler does that the dynamic one does not. A JSON request with an empty body
 // (a bodiless POST from a client that sends a JSON content type) is read as an empty object instead of
 // failing. And `parse: 'none'` is not honoured, so the body of /api/auth/* is left unread here for
-// better-auth.
+// better-auth. Likewise `parse: 'text'` is not honoured: the repository webhooks verify a signature
+// over the exact bytes, so their body stays text.
+const REPOSITORY_WEBHOOK_PATH = /^\/webhooks\/(git|github)\//;
+
 async function readJsonBody({ request, contentType }: { request: Request; contentType: string }) {
-  if (new URL(request.url).pathname.startsWith('/api/auth/')) return true;
+  const { pathname } = new URL(request.url);
+  if (pathname.startsWith('/api/auth/')) return UNREAD_BODY;
+  if (REPOSITORY_WEBHOOK_PATH.test(pathname)) return request.text();
   if (contentType !== 'application/json') return undefined;
   const text = await request.text();
   return text ? (JSON.parse(text) as unknown) : {};
@@ -160,7 +164,7 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
       },
       documentation: {
         info: {
-          title: "It's a Plan API",
+          title: 'Telic API',
           version: pkg.version,
           description: apiDescription,
         },
@@ -175,24 +179,6 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
           { name: 'Columns', description: 'Work items columns and their order' },
           { name: 'Issue Types', description: 'Per-project issue types' },
           { name: 'Labels', description: 'Labels and label groups' },
-          { name: 'AI Agents', description: 'AI agents attached to a project' },
-          {
-            name: 'Integrations',
-            description: 'Stored integration credentials (LLM keys and tool creds)',
-          },
-          { name: 'Agent Skills', description: 'Skill library given to internal agents' },
-          {
-            name: 'Agent Runner',
-            description: "Run queue an external agent's runner drains with the agent's API key",
-          },
-          {
-            name: 'Agent Chat',
-            description: "Chat with an external agent: the member's messages and its runner's feed",
-          },
-          {
-            name: 'Agent Tools',
-            description: 'Tools configured on a credential and given to agents',
-          },
           { name: 'Custom Fields', description: 'Global and type-scoped custom fields' },
           { name: 'Issue Templates', description: 'Presets a new issue can be created from' },
           { name: 'Issues', description: 'Issues, their fields, feed, and comments' },
@@ -202,11 +188,6 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
           },
           { name: 'Cycles', description: 'Cycles (time-boxed periods of work) and their issues' },
           { name: 'Attachments', description: 'Issue attachments and raw bytes' },
-          {
-            name: 'Chat attachments',
-            description: 'Files uploaded in an agent chat and their raw bytes',
-          },
-          { name: 'Imports', description: 'Import drafts that turn an uploaded file into issues' },
           {
             name: 'Import/Export',
             description:
@@ -223,8 +204,6 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
             description:
               'Repository integration: the inbound pull request webhook and its per-project settings',
           },
-          { name: 'Agent Schedules', description: 'Recurring tasks for internal agents' },
-          { name: 'Model Prices', description: 'The prices a workspace costs model calls at' },
           { name: 'Dashboards', description: 'Saved analytics dashboards' },
           { name: 'Documents', description: 'Shared project Docs pages' },
           { name: 'Link previews', description: 'Public web link metadata' },
@@ -239,7 +218,6 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
             name: 'Analytics',
             description: 'Project metrics: stats, pulse, throughput, breakdowns, activity',
           },
-          { name: 'Charts', description: 'Chart specs an agent builds to show in a chat' },
           {
             name: 'Webhook test',
             description: 'Test receiver for inspecting webhook deliveries (dev aid)',
@@ -393,14 +371,14 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
   )
   // Root and /health are the liveness endpoints: they touch no binding, so a probe says
   // whether the Worker is up, not whether D1 is.
-  .get('/', () => ({ name: "It's a Plan api", status: 'ok' }), {
+  .get('/', () => ({ name: 'Telic api', status: 'ok' }), {
     detail: {
       tags: ['System'],
       summary: 'Check that the api is up',
       description: 'Liveness probe: returns the api name and `status: "ok"`.',
     },
   })
-  .get('/health', () => ({ name: "It's a Plan api", status: 'ok' }), {
+  .get('/health', () => ({ name: 'Telic api', status: 'ok' }), {
     detail: {
       tags: ['System'],
       summary: 'Check that the api is up',
@@ -421,11 +399,6 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
 // type) stays the REST surface; the MCP endpoint is JSON-RPC, not called via Eden.
 // Its tools are generated from the routes tagged with mcpTool().
 mountMcp(app);
-
-// Hands the assembled app to the internal agent runtime, which builds an agent's
-// tools from the same mcpTool() routes and dispatches them in process. It cannot
-// import this module without a cycle, so the reference is passed here.
-setMcpApp(app);
 
 // Two differences between the composed handler and the dynamic one, patched on each route's body
 // validator on first lookup. The dynamic one runs Check/Decode on an absent optional body and rejects

@@ -2,6 +2,7 @@
 
 import { type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { isArchivedActivity } from '../utils/archivedActivity';
 import type { FeedItem } from '@/lib/api/endpoints/activity';
 import { formatDate } from '@/utils/dates';
 import { isLinkRelation } from '@/utils/issueLinks';
@@ -64,11 +65,6 @@ export function useActivityText() {
         if (!to) return { line: rich('assigneeRemoved', { name: from ?? '' }) };
         return {
           line: rich(from ? 'assigneeChanged' : 'assigneeSet', { name: to }),
-        };
-      case 'delegate':
-        if (!to) return { line: rich('delegateRemoved', { name: from ?? '' }) };
-        return {
-          line: rich(from ? 'delegateChanged' : 'delegateSet', { name: to }),
         };
       case 'priority':
         return to
@@ -162,10 +158,6 @@ export function useActivityText() {
         return { line: line('commentEdited') };
       case 'comment_deleted':
         return { line: line('commentDeleted') };
-      case 'agent_started':
-        return { line: line('agentStarted') };
-      case 'agent_finished':
-        return { line: line(subject === 'failed' ? 'agentFailed' : 'agentFinished') };
       case 'git_pr':
       case 'github_pr': {
         // The from side is "owner/repo#42", the to side the pull request's URL.
@@ -191,7 +183,7 @@ export function useActivityText() {
         };
       }
       default:
-        return { line: a.action };
+        return { line: isArchivedActivity(a.action ?? '') ? t('archived') : (a.action ?? '') };
     }
   };
 }

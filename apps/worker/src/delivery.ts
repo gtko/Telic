@@ -45,11 +45,11 @@ export async function deliver(input: DeliverInput): Promise<DeliveryResult> {
       timeoutMs: input.timeoutMs,
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'itsaplan-webhooks/1',
-        'X-Itsaplan-Event': input.eventType,
-        'X-Itsaplan-Delivery': String(input.deliveryId),
-        'X-Itsaplan-Event-Id': input.eventId,
-        'X-Itsaplan-Signature': signature,
+        'User-Agent': 'telic-webhooks/1',
+        'X-Telic-Event': input.eventType,
+        'X-Telic-Delivery': String(input.deliveryId),
+        'X-Telic-Event-Id': input.eventId,
+        'X-Telic-Signature': signature,
       },
       body: input.body,
       // Only a prefix is kept, so the rest is never read; a UTF-8 char is at most 4 bytes.

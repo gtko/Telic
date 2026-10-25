@@ -1,5 +1,5 @@
 {
-  "description": "A self-hosted, open-source issue tracker with AI agents built in. Assign work to people or agents, and drive it through the API, webhooks and MCP.",
+  "description": "A self-hosted, open-source issue tracker. Manage projects and work items, and drive them through the API, webhooks and MCP.",
   "screens": {
     "signIn": "Sign in",
     "signUp": "Sign up",

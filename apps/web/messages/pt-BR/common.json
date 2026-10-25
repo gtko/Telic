@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Mostrar ou ocultar a barra lateral"
       },
-      "chat": {
-        "toggle": "Mostrar ou ocultar o chat da IA"
-      },
       "issue": {
         "new": "Nova issue"
       },
@@ -77,50 +74,6 @@
       }
     },
     "conflict": "Já usado por {command}"
-  },
-  "agentChat": {
-    "emptyHint": "Envie uma mensagem para testar como este agente responde e quais ferramentas ele usa.",
-    "messagePlaceholder": "Mensagem para {agent}…",
-    "reset": "Redefinir conversa",
-    "send": "Enviar",
-    "sendHint": "Enter para enviar, ⌘/Ctrl+Enter para nova linha",
-    "stop": "Parar",
-    "stopped": "Parado",
-    "loadingEarlier": "Carregando mensagens anteriores…",
-    "messages": "Mensagens da conversa",
-    "usingTool": "Usando {tool}…",
-    "usedTool": "Usou {tool}",
-    "usedTools": "{count, plural, one {Usou # ferramenta} other {Usou # ferramentas}}",
-    "toolInput": "Entrada",
-    "toolOutput": "Saída",
-    "thinking": "Pensando…",
-    "waitingForRunner": "Aguardando o runner…",
-    "waitingToSend": "Aguardando para enviar",
-    "removePending": "Remover mensagem",
-    "title": "Conversa com {agent}",
-    "unreachable": "Não foi possível contatar o agente. Tente novamente.",
-    "runnerOffline": "Runner offline",
-    "runnerOfflineHint": "Inicie o runner na sua máquina para conversar com este agente.",
-    "attachFile": "Anexe uma planilha, documento, PDF ou arquivo de texto para o agente ler",
-    "removeAttachment": "Remover anexo",
-    "uploadFailed": "Não foi possível enviar o arquivo.",
-    "tooManyAttachments": "Você pode anexar até {max} arquivos em uma mensagem.",
-    "importRows": "{count, plural, one {# linha} other {# linhas}}",
-    "confirmImport": "Confirmar importação",
-    "cancelImport": "Cancelar",
-    "importWorking": "Criando issues…",
-    "importShowAllRows": "Mostrar todas as {count} linhas",
-    "importShowFewerRows": "Mostrar as primeiras {count} linhas",
-    "importRowState": "Importar",
-    "importRowNew": "Será criado",
-    "importSkipHint": "Linhas marcadas com ✕ são ignoradas ao confirmar.",
-    "importAdjustHint": "Peça ao agente para ajustar o mapeamento se algo parecer errado.",
-    "importCanceled": "Esta importação foi cancelada. Nada foi criado.",
-    "importFailed": "A importação falhou.",
-    "importConfirmed": "{count, plural, one {Criada # issue} other {Criadas # issues}}",
-    "importSkippedRow": "Linha {row} ignorada: {reason}",
-    "contextSize": "Contexto da conversa: {count, plural, one {# token} other {# tokens}}",
-    "contextUnavailable": "O tamanho do contexto não está disponível para este agente"
   },
   "share": {
     "createFailed": "Não foi possível criar o link. Tente novamente.",
@@ -182,7 +135,7 @@
     "openPreviewLink": "Open {name} in a new tab",
     "loadingPreview": "Loading preview…",
     "previewUnavailable": "A preview is not available. Open the link to view this page.",
-    "internalPage": "ItsAPlan page",
+    "internalPage": "Telic page",
     "internalPreviewUnavailable": "This page is unavailable or you do not have access.",
     "previewNoteCount": "{count, plural, one {# note} other {# notes}}",
     "previewCustomField": "Custom field",
@@ -205,13 +158,11 @@
     "download": "Salvar gráfico",
     "downloadFailed": "Não foi possível salvar o gráfico"
   },
-  "agent": "Agente",
   "pager": {
     "previous": "Página anterior",
     "next": "Próxima página",
     "page": "Página {number}",
     "perPage": "por página",
     "range": "{first}-{last} de {total}"
-  },
-  "aboutCloudAndPro": "Saiba mais sobre Cloud e Pro"
+  }
 }

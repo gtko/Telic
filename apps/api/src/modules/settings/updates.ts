@@ -7,8 +7,7 @@ import { CHANGELOG_MARKDOWN } from './changelog.generated';
 // cannot be read.
 //
 // The feed is github.com web content, not the REST API, so no token and no
-// 60/hour limit (modules/agents/skills/skill-format.ts reads github.com atom the
-// same way).
+// 60/hour limit.
 // The feed is read at most once every FEED_TTL_MS: the what's-new screen asks on
 // every session, and a fetch per session would both be slow and hammer github.
 // "Check for updates" bypasses the cache. A failed read answers from the last
@@ -19,7 +18,7 @@ const FEED_TTL_MS = 30 * 60_000;
 
 // Fixed: an instance checks the project it is built from, so there is nothing to
 // configure.
-const FEED_URL = 'https://github.com/croffasia/itsaplan/releases.atom';
+const FEED_URL = 'https://github.com/gtko/Telic/releases.atom';
 
 export interface Release {
   tag: string;
@@ -137,7 +136,7 @@ async function localHistory(): Promise<Release[]> {
 
 async function readFeed(): Promise<Release[]> {
   const res = await fetch(FEED_URL, {
-    headers: { 'User-Agent': 'itsaplan' },
+    headers: { 'User-Agent': 'telic' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`feed returned ${res.status}`);

@@ -25,7 +25,6 @@
     "workflow": "Alur kerja",
     "automation": "Otomatisasi",
     "views": "Tampilan",
-    "aiTeam": "Tim AI",
     "knowledge": "Pengetahuan"
   },
   "copyItems": {
@@ -38,14 +37,11 @@
     "documents": "Dokumen",
     "actions": "Tindakan",
     "configuration": "Konfigurasi",
-    "webhooks": "Webhook",
-    "agents": "Agen",
-    "schedules": "Jadwal"
+    "webhooks": "Webhook"
   },
   "title": "Proyek baru",
   "copyTitle": "Salin proyek \"{name}\"",
   "create": "Buat proyek",
   "copyAction": "Salin proyek",
-  "defaultAgents": "Agen yang akan bergabung dengan proyek ini: {names}",
   "copyName": "Salinan {name}"
 }

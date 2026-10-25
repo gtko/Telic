@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "Показати або сховати бічну панель"
       },
-      "chat": {
-        "toggle": "Показати або сховати ШІ-чат"
-      },
       "issue": {
         "new": "Нова задача"
       },
@@ -77,50 +74,6 @@
       }
     },
     "conflict": "Уже використовується для «{command}»"
-  },
-  "agentChat": {
-    "emptyHint": "Надішліть повідомлення, щоб перевірити, як агент відповідає і які інструменти використовує.",
-    "messagePlaceholder": "Повідомлення для {agent}…",
-    "reset": "Скинути розмову",
-    "send": "Надіслати",
-    "sendHint": "Enter — надіслати, ⌘/Ctrl+Enter — новий рядок",
-    "stop": "Зупинити",
-    "stopped": "Зупинено",
-    "loadingEarlier": "Завантаження попередніх повідомлень…",
-    "messages": "Повідомлення розмови",
-    "usingTool": "Використовує {tool}…",
-    "usedTool": "Використано {tool}",
-    "usedTools": "{count, plural, one {Використано # інструмент} few {Використано # інструменти} many {Використано # інструментів} other {Використано # інструмента}}",
-    "toolInput": "Запит",
-    "toolOutput": "Відповідь",
-    "thinking": "Думає…",
-    "waitingForRunner": "Чекаємо на раннер…",
-    "waitingToSend": "Чекає на надсилання",
-    "removePending": "Видалити повідомлення",
-    "title": "Чат з {agent}",
-    "unreachable": "Не вдалося зв'язатися з агентом. Спробуйте ще раз.",
-    "runnerOffline": "Раннер не на зв’язку",
-    "runnerOfflineHint": "Запустіть раннер на своїй машині, щоб писати цьому агенту.",
-    "attachFile": "Прикріпити таблицю, документ, PDF або текстовий файл для агента",
-    "removeAttachment": "Вилучити вкладення",
-    "uploadFailed": "Не вдалося завантажити файл.",
-    "tooManyAttachments": "До одного повідомлення можна прикріпити не більше {max} файлів.",
-    "importRows": "{count, plural, one {# рядок} few {# рядки} many {# рядків} other {# рядка}}",
-    "confirmImport": "Підтвердити імпорт",
-    "cancelImport": "Скасувати",
-    "importWorking": "Створюємо завдання…",
-    "importShowAllRows": "Показати всі рядки ({count})",
-    "importShowFewerRows": "Показати перші {count}",
-    "importRowState": "Імпорт",
-    "importRowNew": "Буде створено",
-    "importSkipHint": "Рядки, позначені ✕, під час підтвердження пропускаються.",
-    "importAdjustHint": "Попросіть агента скоригувати зіставлення, якщо щось не так.",
-    "importCanceled": "Імпорт скасовано. Нічого не створено.",
-    "importFailed": "Не вдалося виконати імпорт.",
-    "importConfirmed": "{count, plural, one {Створено # завдання} few {Створено # завдання} many {Створено # завдань} other {Створено # завдання}}",
-    "importSkippedRow": "Рядок {row} пропущено: {reason}",
-    "contextSize": "Контекст діалогу: {count, plural, one {# токен} few {# токени} many {# токенів} other {# токена}}",
-    "contextUnavailable": "Розмір контексту для цього агента недоступний"
   },
   "share": {
     "createFailed": "Не вдалося створити посилання. Спробуйте ще раз.",
@@ -182,7 +135,7 @@
     "openPreviewLink": "Open {name} in a new tab",
     "loadingPreview": "Loading preview…",
     "previewUnavailable": "A preview is not available. Open the link to view this page.",
-    "internalPage": "ItsAPlan page",
+    "internalPage": "Telic page",
     "internalPreviewUnavailable": "This page is unavailable or you do not have access.",
     "previewNoteCount": "{count, plural, one {# note} other {# notes}}",
     "previewCustomField": "Custom field",
@@ -205,13 +158,11 @@
     "download": "Зберегти графік",
     "downloadFailed": "Не вдалося зберегти графік"
   },
-  "agent": "Агент",
   "pager": {
     "previous": "Попередня сторінка",
     "next": "Наступна сторінка",
     "page": "Сторінка {number}",
     "perPage": "на сторінці",
     "range": "{first}-{last} з {total}"
-  },
-  "aboutCloudAndPro": "Докладніше про Cloud і Pro"
+  }
 }

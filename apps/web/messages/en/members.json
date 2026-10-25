@@ -33,13 +33,6 @@
   },
   "profileHeading": "Profile",
   "you": "(you)",
-  "aiAgent": "AI Agent",
-  "tabs": {
-    "all": "All",
-    "people": "People",
-    "agents": "AI agents",
-    "label": "Show"
-  },
   "leaveProject": "Leave project",
   "revokeAccess": "Revoke access",
   "lastOwner": "A project must keep at least one owner",
@@ -89,28 +82,16 @@
   "added": "Member added",
   "provisioned": "Managed by SCIM",
   "search": {
-    "all": "Search members",
-    "people": "Search people",
-    "agents": "Search AI agents"
+    "all": "Search members"
   },
   "empty": {
     "all": {
       "title": "No members yet",
-      "description": "People and AI agents appear here once they join."
-    },
-    "human": {
-      "title": "No people yet",
       "description": "People appear here once they join."
-    },
-    "agent": {
-      "title": "No AI agents yet",
-      "description": "AI agents appear here once they are added."
     },
     "search": {
       "title": "Nothing found",
-      "all": "No member matches this search.",
-      "human": "No person matches this search.",
-      "agent": "No AI agent matches this search."
+      "all": "No member matches this search."
     }
   }
 }

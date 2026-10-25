@@ -49,9 +49,9 @@ export default function NoteBoardAccessList({
             >
               <Avatar name={person.name} image={person.image} className="size-6 text-[10px]" />
               <span className="truncate">{person.name}</span>
-              {(person.userId === ownerUserId || person.kind === 'agent') && (
+              {person.userId === ownerUserId && (
                 <Badge variant="secondary" className="ml-auto px-1.5 py-0 text-[10px]">
-                  {person.userId === ownerUserId ? tCommon('owner') : t('agent')}
+                  {tCommon('owner')}
                 </Badge>
               )}
             </li>

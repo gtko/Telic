@@ -5,8 +5,8 @@ Requirements: [Bun](https://bun.sh) 1.4+ and Git. Wrangler is a dev dependency; 
 ## Setup
 
 ```bash
-git clone https://github.com/croffasia/itsaplan.git
-cd itsaplan
+git clone https://github.com/gtko/Telic.git
+cd Telic
 bun install
 cp apps/api/.dev.vars.example apps/api/.dev.vars   # fill in BETTER_AUTH_SECRET and APP_ENCRYPTION_KEY
 cp apps/web/.dev.vars.example apps/web/.dev.vars

@@ -15,9 +15,8 @@ import { useRemoveMember } from '@/services/members.service';
 
 // One member of a project the team owns, managed from the team panel: the same card
 // the project's own members list shows, plus the role menu, the description dialog
-// and the revoke action it offers. An agent joins and leaves with its AI Agent
-// config and a provisioned membership is rewritten by the next sync, so neither is
-// re-roled or revoked here. Leaving the project yourself is the panel header's
+// and the revoke action it offers. A provisioned membership is rewritten by the
+// next sync, so it is neither re-roled nor revoked here. Leaving the project yourself is the panel header's
 // action, so the reader's own row carries no revoke.
 export default function TeamProjectMemberCard({
   projectKey,
@@ -44,14 +43,13 @@ export default function TeamProjectMemberCard({
   const removeMember = useRemoveMember(projectKey);
   const [confirming, setConfirming] = useState(false);
 
-  // An agent joins and leaves with its AI Agent config, and a provisioned membership is
-  // the identity provider's, so neither is revoked here. A provisioned role is theirs
-  // too; an agent's role is set here like a person's.
+  // A provisioned membership is the identity provider's, so it is not revoked here.
+  // A provisioned role is theirs too.
   const provisioned = member.source === 'scim';
   // The last owner cannot be demoted, so their role has nothing left to change.
   const canReassign = canEdit && !self && !provisioned && !isLastOwner;
-  const canRevoke = canDelete && !self && !member.isAgent && !provisioned && !isLastOwner;
-  const canDescribe = !member.isAgent && (self || canEdit);
+  const canRevoke = canDelete && !self && !provisioned && !isLastOwner;
+  const canDescribe = self || canEdit;
   const displayName = member.name || member.email;
 
   return (

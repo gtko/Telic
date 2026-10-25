@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   api as anonApi,
-  apiKeyApi,
   authedApi,
   type Api,
   ownWorkspaceId,
@@ -9,10 +8,7 @@ import {
 } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
 import { addProjectMember } from '../../helpers/members';
-import { createAgent } from '../../helpers/agents';
 import { clearLimits, setLimits } from '../../helpers/limits';
-import { teamSkillObjectKeys } from '#modules/agents/skills/service';
-import { getObjectText } from '@repo/storage';
 
 // The teams feature owns list, create, detail, rename, and leave. Every account is
 // given a team at registration, named after its username, so a fresh account already
@@ -44,96 +40,7 @@ async function memberRole(api: Api, teamId: number, userId: string) {
 describe('teams', () => {
   afterEach(clearLimits);
 
-  describe('project defaults', () => {
-    it('attaches selected team agents only to new projects', async () => {
-      const owner = await signUpClient();
-      const teamId = (await owner.api.teams.get()).data![0].id;
-      await createProject(owner.api, { key: 'SRC', name: 'Source' });
-      const created = await createAgent(owner.api, 'SRC', {
-        name: 'Triage',
-        username: 'triage',
-        kind: 'external',
-      });
-      const agent = created.data!.agent;
-
-      const saved = await owner.api.teams({ teamId })['project-defaults'].patch({
-        defaultAgentIds: [agent.id],
-      });
-      expect(saved.status).toBe(200);
-      await owner.api.teams({ teamId }).projects.post({ key: 'NEW', name: 'New' });
-      const members = await owner.api.projects({ projectKey: 'NEW' }).members.get();
-      expect(members.data?.items.some((member) => member.userId === agent.userId)).toBe(true);
-
-      await owner.api.teams({ teamId })['project-defaults'].patch({ defaultAgentIds: [] });
-      await owner.api.teams({ teamId }).projects.post({ key: 'NEXT', name: 'Next' });
-      const nextMembers = await owner.api.projects({ projectKey: 'NEXT' }).members.get();
-      expect(nextMembers.data?.items.some((member) => member.userId === agent.userId)).toBe(false);
-      const existingMembers = await owner.api.projects({ projectKey: 'NEW' }).members.get();
-      expect(existingMembers.data?.items.some((member) => member.userId === agent.userId)).toBe(
-        true,
-      );
-    });
-
-    it('keeps the source agents when copying a project', async () => {
-      const owner = await signUpClient();
-      const teamId = (await owner.api.teams.get()).data![0].id;
-      await createProject(owner.api, { key: 'SRC', name: 'Source' });
-      await createProject(owner.api, { key: 'OTHER', name: 'Other' });
-      const sourceAgent = await createAgent(owner.api, 'SRC', {
-        name: 'Source agent',
-        username: 'source-agent',
-        kind: 'external',
-      });
-      const defaultAgent = await createAgent(owner.api, 'OTHER', {
-        name: 'Default agent',
-        username: 'default-agent',
-        kind: 'external',
-      });
-      await owner.api.teams({ teamId })['project-defaults'].patch({
-        defaultAgentIds: [defaultAgent.data!.agent.id],
-      });
-
-      const copy = await owner.api.projects({ projectKey: 'SRC' }).copy.post({
-        key: 'DST',
-        name: 'Destination',
-        include: { agents: true },
-      });
-      expect(copy.status).toBe(201);
-      const members = await owner.api.projects({ projectKey: 'DST' }).members.get();
-      const memberIds = members.data?.items.map((member) => member.userId);
-      expect(memberIds).toContain(sourceAgent.data!.agent.userId);
-      expect(memberIds).not.toContain(defaultAgent.data!.agent.userId);
-    });
-
-    it('rejects agents from another team and member edits', async () => {
-      const owner = await signUpClient();
-      const teamId = (await owner.api.teams.get()).data![0].id;
-      const member = await addTeamMember(owner, teamId);
-      const other = await signUpClient();
-      const otherTeamId = (await other.api.teams.get()).data![0].id;
-      await other.api.teams({ teamId: otherTeamId }).projects.post({ key: 'OTH', name: 'Other' });
-      const agent = await createAgent(other.api, 'OTH', {
-        name: 'Other',
-        username: 'other',
-        kind: 'external',
-      });
-
-      expect(
-        (
-          await owner.api.teams({ teamId })['project-defaults'].patch({
-            defaultAgentIds: [agent.data!.agent.id],
-          })
-        ).status,
-      ).toBe(400);
-      expect(
-        (
-          await member.api.teams({ teamId })['project-defaults'].patch({
-            defaultAgentIds: [],
-          })
-        ).status,
-      ).toBe(403);
-    });
-  });
+  describe('project defaults', () => {});
 
   describe('list', () => {
     it('gives a new account no team, so it has nowhere to create a project', async () => {
@@ -389,9 +296,6 @@ describe('teams', () => {
 
       const found = await members.get({ query: { search: user.email } });
       expect(found.data?.items).toMatchObject([{ email: user.email }]);
-
-      expect((await members.get({ query: { kind: 'human' } })).data?.total).toBe(3);
-      expect((await members.get({ query: { kind: 'agent' } })).data?.total).toBe(0);
     });
 
     it('carries the owners and the managers of the team on its detail', async () => {
@@ -604,7 +508,7 @@ describe('teams', () => {
       expect(page.status).toBe(200);
       expect(page.data?.total).toBe(2);
       expect(page.data?.items.map((m) => m.role)).toEqual(['owner', 'member']);
-      expect(page.data?.items[0]).toMatchObject({ userId: promotedUserId, isAgent: false });
+      expect(page.data?.items[0]).toMatchObject({ userId: promotedUserId });
     });
 
     it('windows the list and reports how many there are in total', async () => {
@@ -626,20 +530,6 @@ describe('teams', () => {
       expect(second.data?.items).toHaveLength(1);
       expect(second.data?.total).toBe(3);
       expect(second.data?.items[0].role).toBe('member');
-    });
-
-    it('narrows the list to the people or to the AI agents', async () => {
-      const { api } = await signUpClient();
-      const project = await createProject(api, { key: 'MKT', name: 'Marketing' });
-      await addProjectMember(api, 'MKT');
-      const teamId = (await api.teams.get()).data![0].id;
-      const members = api.teams({ teamId }).projects({ projectId: project.data!.id }).members;
-
-      const people = await members.get({ query: { kind: 'human' } });
-      expect(people.data?.total).toBe(2);
-
-      const agents = await members.get({ query: { kind: 'agent' } });
-      expect(agents.data).toMatchObject({ items: [], total: 0 });
     });
 
     it('searches by name, address and handle', async () => {
@@ -1034,12 +924,12 @@ describe('teams', () => {
       const { api } = await signUpClient();
       const teamId = (await api.teams.get()).data![0].id;
 
-      expect((await api.teams({ teamId })['ai-agents'].get(asMcp)).status).toBe(200);
+      expect((await api.teams({ teamId }).projects.get(asMcp)).status).toBe(200);
       await api.teams({ teamId }).mcp.patch({ enabled: false });
 
       // The web app still reaches them; only the MCP surface closes.
-      expect((await api.teams({ teamId })['ai-agents'].get()).status).toBe(200);
-      const blocked = await api.teams({ teamId })['ai-agents'].get(asMcp);
+      expect((await api.teams({ teamId }).projects.get()).status).toBe(200);
+      const blocked = await api.teams({ teamId }).projects.get(asMcp);
       expect(blocked.status).toBe(403);
       expect((blocked.error?.value as { error: string }).error).toBe(
         'MCP is disabled for this team',
@@ -1393,31 +1283,9 @@ describe('teams', () => {
       expect((await owner.api.teams({ teamId }).get()).status).toBe(404);
     });
 
-    it("removes the team's skill files from the object store", async () => {
-      const { owner, teamId } = await teamOwner();
-      await owner.api
-        .teams({ teamId })
-        ['agent-skills'].post({ source: 'inline', name: 'Triage', markdown: 'Set a priority.' });
-      const keys = await teamSkillObjectKeys(teamId);
-      expect(keys).not.toHaveLength(0);
-
-      expect((await owner.api.teams({ teamId }).delete()).status).toBe(204);
-      for (const key of keys) await expect(getObjectText(key)).rejects.toThrow();
-    });
-
     it('keeps a team that holds a project', async () => {
       const { owner, teamId } = await teamOwner();
       await owner.api.teams({ teamId }).projects.post({ key: 'OPS', name: 'Operations' });
-
-      expect((await owner.api.teams({ teamId }).delete()).status).toBe(409);
-      expect((await owner.api.teams({ teamId }).get()).status).toBe(200);
-    });
-
-    it('keeps a team that holds an AI agent', async () => {
-      const { owner, teamId } = await teamOwner();
-      const created = await owner.api.teams({ teamId }).projects.post({ key: 'OPS', name: 'Ops' });
-      await createAgent(owner.api, 'OPS', { name: 'Triage', username: 'triage', kind: 'external' });
-      await owner.api.teams({ teamId }).projects({ projectId: created.data!.id }).delete();
 
       expect((await owner.api.teams({ teamId }).delete()).status).toBe(409);
       expect((await owner.api.teams({ teamId }).get()).status).toBe(200);
@@ -1487,22 +1355,6 @@ describe('teams', () => {
       const left = await member.api.teams({ teamId }).leave.post();
       expect(left.status).toBe(409);
       expect((await member.api.projects({ projectKey: 'OPS' }).get()).status).toBe(200);
-    });
-
-    it('rejects an agent leaving with its own key', async () => {
-      const owner = await signUpClient();
-      const teamId = (await owner.api.teams.get()).data![0].id;
-      await createProject(owner.api, { key: 'MKT', name: 'Marketing' });
-      const created = await createAgent(owner.api, 'MKT', {
-        name: 'Runner',
-        username: 'runner',
-        kind: 'external',
-      });
-      const agentApi = apiKeyApi(created.data!.apiKey!);
-
-      expect((await agentApi.teams({ teamId }).leave.post()).status).toBe(409);
-      const members = await owner.api.teams({ teamId }).members.get();
-      expect(members.data?.items.some((one) => one.role === 'agent')).toBe(true);
     });
   });
 });

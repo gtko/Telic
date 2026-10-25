@@ -7,12 +7,6 @@
   "users": {
     "empty": "이 필터와 일치하는 계정이 없습니다.",
     "searchPlaceholder": "이름 또는 이메일로 검색",
-    "kind": "계정 유형",
-    "kinds": {
-      "human": "사용자",
-      "agent": "AI 에이전트",
-      "all": "모든 계정"
-    },
     "columns": {
       "account": "계정",
       "role": "역할",
@@ -25,7 +19,6 @@
     "registered": "{date}에 가입",
     "roleGod": "최고 관리자",
     "roleUser": "사용자",
-    "agent": "AI 에이전트",
     "noProviders": "없음",
     "neverSeen": "없음",
     "verified": "인증됨",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "인스턴스 소유자는 항상 활성 상태입니다.",
-      "agent": "AI 에이전트 계정의 상태는 해당 에이전트를 따릅니다.",
       "scim": "ID 공급자(SCIM)가 어떤 계정을 활성 상태로 둘지 결정합니다."
     },
     "deactivateTitle": "{email} 계정을 비활성화하시겠습니까?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "인스턴스 소유자",
     "user": "사용자",
-    "aiAgent": "AI 에이전트",
     "emailVerified": "이메일 인증됨",
     "unconfirmedTitle": "이메일 주소가 인증되지 않았습니다",
     "unconfirmedHint": "인증 링크를 받지 못한 경우 여기에서 직접 인증할 수 있습니다.",
@@ -71,7 +62,7 @@
     "deleteConfirm": "계정 삭제",
     "deleteConfirmWithProjects": "{count, plural, one {계정 및 프로젝트 삭제} other {계정 및 프로젝트 삭제}}",
     "deleteMessage": "<strong>{name}</strong> 계정은 이 인스턴스에 더 이상 접근할 수 없습니다. 이 계정이 작성한 이슈와 댓글은 유지되며 작성자는 지정되지 않은 상태가 됩니다. 이 작업은 되돌릴 수 없습니다.",
-    "deleteWorkspaceNote": "이 계정이 소유한 워크스페이스에 프로젝트와 AI 에이전트가 없으면 계정과 함께 삭제됩니다. 그렇지 않으면 해당 계정이 단독으로 소유하던 항목과 함께 워크스페이스 소유권이 나에게 이전됩니다.",
+    "deleteWorkspaceNote": "이 계정이 소유한 워크스페이스에 프로젝트가 없으면 계정과 함께 삭제됩니다. 그렇지 않으면 해당 계정이 단독으로 소유하던 항목과 함께 워크스페이스 소유권이 나에게 이전됩니다.",
     "soleOwnerTitle": "{count, plural, one {프로젝트의 유일한 소유자} other {#개 프로젝트의 유일한 소유자}}",
     "soleOwnerHint": "{count, plural, one {이 계정을 삭제하면 해당 프로젝트를 관리할 수 있는 사람이 없습니다.} other {이 계정을 삭제하면 해당 프로젝트들을 관리할 수 있는 사람이 없습니다.}}",
     "deleteWithProjects": "{count, plural, one {계정과 함께 프로젝트 삭제} other {계정과 함께 프로젝트 삭제}}",
@@ -87,7 +78,6 @@
       "project": "프로젝트",
       "members": "멤버",
       "issues": "이슈",
-      "agents": "AI 에이전트",
       "lastActivity": "최근 활동",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "이니셔티브",
       "members": "멤버",
       "dashboards": "대시보드",
-      "views": "보기",
-      "agents": "AI 에이전트",
-      "skills": "스킬",
-      "tools": "도구"
+      "views": "보기"
     },
     "members": "멤버",
     "noMembersTitle": "멤버 없음",
@@ -129,7 +116,6 @@
       "projects": "프로젝트",
       "members": "멤버",
       "issues": "이슈",
-      "agents": "AI 에이전트",
       "mcp": "MCP"
     },
     "mcpEnabled": "활성화",
@@ -146,9 +132,6 @@
       "projects": "프로젝트",
       "issues": "이슈",
       "members": "멤버",
-      "agents": "AI 에이전트",
-      "skills": "스킬",
-      "tools": "도구",
       "roles": "프로젝트 역할"
     },
     "projects": "프로젝트",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "소유자",
       "manager": "관리자",
-      "member": "멤버",
-      "agent": "AI 에이전트"
+      "member": "멤버"
     },
     "joined": "{date}에 가입"
   },
@@ -178,17 +160,7 @@
     "workspacesSaved": "워크스페이스 설정이 저장되었습니다.",
     "workspaces": "워크스페이스",
     "personalWorkspaces": "모든 사용자에게 워크스페이스 제공",
-    "personalWorkspacesHint": "각 계정에 사용자 이름을 딴 개인 워크스페이스가 하나씩 생성됩니다. 끄면 사용자는 자신이 추가된 워크스페이스에서만 작업할 수 있습니다.",
-    "agents": "AI 에이전트",
-    "agentsSaved": "AI 에이전트 설정이 저장되었습니다",
-    "traceRetention": "실행 추적 기록 보관",
-    "traceRetentionHint": "각 AI 에이전트 실행에는 모델 및 도구 호출 기록이 저장됩니다. 사용량 대시보드에는 현재 보관 중인 실행 기록만 집계됩니다.",
-    "traceDays": "{days, plural, one {#일} other {#일}}",
-    "traceForever": "계속 보관",
-    "maxRunTime": "최대 실행 시간",
-    "maxRunTimeHint": "에이전트 실행 한 번이 중지되고 실패로 저장되기 전까지 걸릴 수 있는 시간입니다. 에이전트 자체 제한은 이 값을 초과할 수 없습니다.",
-    "runMinutes": "{minutes, plural, other {#분}}",
-    "runSeconds": "{seconds}초"
+    "personalWorkspacesHint": "각 계정에 사용자 이름을 딴 개인 워크스페이스가 하나씩 생성됩니다. 끄면 사용자는 자신이 추가된 워크스페이스에서만 작업할 수 있습니다."
   },
   "authentication": {
     "saved": "인증 설정이 저장되었습니다",
@@ -239,7 +211,7 @@
     "fileSize": "파일 크기",
     "fileSizeHint": "한 번에 업로드할 수 있는 파일의 최대 크기입니다. 이보다 큰 파일은 저장되기 전에 거부됩니다.",
     "attachmentMb": "첨부 파일 크기 (MB)",
-    "attachmentHint": "이슈 첨부 파일, 설명에 붙여넣은 파일 및 AI 에이전트가 추가한 첨부 파일에 적용됩니다.",
+    "attachmentHint": "이슈 첨부 파일과 설명에 붙여넣은 파일에 적용됩니다.",
     "avatarMb": "프로필 이미지 크기 (MB)",
     "avatarHint": "사용자가 계정에 업로드하는 프로필 이미지입니다.",
     "mimeTypes": "허용할 첨부 파일 유형",

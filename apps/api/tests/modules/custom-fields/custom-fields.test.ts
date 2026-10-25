@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
-import { createAgent } from '../../helpers/agents';
 
 // Custom fields belong to a project. A field with issueTypeId null is
 // project-wide; a field with issueTypeId set applies only to issues of that
@@ -153,9 +152,9 @@ describe('custom-fields', () => {
       const created = await fields(asOwner).post({
         name: 'Runner',
         fieldType: 'member',
-        memberScope: 'agents',
+        memberScope: 'humans',
       });
-      expect(created.data).toMatchObject({ memberScope: 'agents' });
+      expect(created.data).toMatchObject({ memberScope: 'humans' });
     });
 
     it('leaves memberScope null on a field of another type', async () => {
@@ -407,33 +406,6 @@ describe('custom-fields', () => {
         options: [{ value: 'Same' }, { value: 'Same' }],
       });
       expect(res.status).toBe(400);
-    });
-
-    it('narrows a member scope and clears only the members it no longer allows', async () => {
-      const { asOwner, ownerUserId, issueId } = await setupWithIssue();
-      const agent = (
-        await createAgent(asOwner, 'MKT', { name: 'Bot', username: 'bot', kind: 'external' })
-      ).data!.agent;
-      const forOwner = (
-        await fields(asOwner).post({ name: 'Reviewer', fieldType: 'member', memberScope: 'all' })
-      ).data!;
-      const forAgent = (
-        await fields(asOwner).post({ name: 'Runner', fieldType: 'member', memberScope: 'all' })
-      ).data!;
-      await asOwner
-        .issues({ issueId })
-        .fields({ fieldId: forOwner.id })
-        .put({ value: ownerUserId });
-      await asOwner
-        .issues({ issueId })
-        .fields({ fieldId: forAgent.id })
-        .put({ value: agent.userId });
-
-      await fields(asOwner)({ fieldId: forOwner.id }).patch({ memberScope: 'humans' });
-      await fields(asOwner)({ fieldId: forAgent.id }).patch({ memberScope: 'humans' });
-
-      expect((await issueValue(asOwner, issueId, forOwner.id))?.value).toBe(ownerUserId);
-      expect((await issueValue(asOwner, issueId, forAgent.id))?.value).toBeNull();
     });
 
     it('returns 404 for a missing field', async () => {

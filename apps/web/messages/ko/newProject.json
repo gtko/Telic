@@ -25,7 +25,6 @@
     "workflow": "워크플로",
     "automation": "자동화",
     "views": "보기",
-    "aiTeam": "AI 팀",
     "knowledge": "지식"
   },
   "copyItems": {
@@ -38,14 +37,11 @@
     "documents": "문서",
     "actions": "액션",
     "configuration": "설정",
-    "webhooks": "웹훅",
-    "agents": "AI 에이전트",
-    "schedules": "일정"
+    "webhooks": "웹훅"
   },
   "title": "새 프로젝트",
   "copyTitle": "\"{name}\" 프로젝트 복사",
   "create": "프로젝트 생성",
   "copyAction": "프로젝트 복사",
-  "defaultAgents": "이 프로젝트에 참여할 AI 에이전트: {names}",
   "copyName": "{name} 복사본"
 }

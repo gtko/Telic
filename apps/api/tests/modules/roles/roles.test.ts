@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { api, authedApi, createProject } from '../../helpers/app';
 import { signUpTestUser, type TestUser } from '../../helpers/auth';
 import { PERMISSION_RESOURCES, PERMISSION_ACTIONS, resourceActions } from '#shared/permissions';
-import { createAgent, setAgentProjectRole } from '../../helpers/agents';
 
 // Integration coverage for the roles feature: the static permission catalog, the
 // two ways to list roles (a team's own list, and the list a project draws on), and
@@ -411,7 +410,7 @@ describe('roles', () => {
 
       const empty = await owner.api.teams({ teamId: owner.teamId }).roles({ roleId }).usage.get();
       expect(empty.status).toBe(200);
-      expect(empty.data).toMatchObject({ members: 0, agents: 0, invites: 0 });
+      expect(empty.data).toMatchObject({ members: 0, invites: 0 });
 
       const member = await addMember(owner);
       await owner.api
@@ -420,27 +419,7 @@ describe('roles', () => {
         .patch({ role: 'member', roleId });
 
       const res = await owner.api.teams({ teamId: owner.teamId }).roles({ roleId }).usage.get();
-      expect(res.data).toMatchObject({ members: 1, agents: 0, invites: 0 });
-    });
-
-    it('counts an agent on the role once, as an agent', async () => {
-      const owner = await setupOwner();
-      const created = await owner.api
-        .teams({ teamId: owner.teamId })
-        .roles.post({ name: 'Editor', permissions: {} });
-      const roleId = created.data!.id;
-
-      // The agent's bot user holds a project_member row on the role, which must be
-      // counted as an agent rather than as a member of its own.
-      const agent = await createAgent(owner.api, 'MKT', {
-        name: 'Ext',
-        username: 'ext',
-        kind: 'external',
-      });
-      await setAgentProjectRole(owner.api, 'MKT', agent.data!.agent.userId, roleId);
-
-      const res = await owner.api.teams({ teamId: owner.teamId }).roles({ roleId }).usage.get();
-      expect(res.data).toMatchObject({ members: 0, agents: 1, invites: 0 });
+      expect(res.data).toMatchObject({ members: 1, invites: 0 });
     });
 
     it('returns 404 for a role that does not exist', async () => {

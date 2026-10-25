@@ -9,15 +9,12 @@
   },
   "report": {
     "title": "Perubahan pada data Anda",
-    "subtitle": "Proyek kini menjadi milik tim, dan sebuah tim berbagi satu daftar peran, keahlian, agen, dan kredensial integrasi.",
+    "subtitle": "Proyek kini menjadi milik tim, dan sebuah tim berbagi satu daftar peran dan kredensial integrasi.",
     "teamsHeading": "Tim dan proyeknya",
     "renamedRoles": "Peran yang diganti nama",
-    "renamedSkills": "Keahlian yang diganti nama",
-    "renamedAgents": "Handle agen yang diganti nama",
     "renamedCredentials": "Kredensial integrasi yang diberi label baru",
     "mergedHeading": "Digabung dan dipindahkan",
     "mergedRoles": "{count, plural, one {# peran bawaan duplikat digabung menjadi satu} other {# peran bawaan duplikat digabung menjadi satu}}",
-    "mergedTools": "{count, plural, one {# alat terkonfigurasi duplikat digabung menjadi satu} other {# alat terkonfigurasi duplikat digabung menjadi satu}}",
     "movedInvites": "{count, plural, one {# undangan tertunda dipindahkan ke tim} other {# undangan tertunda dipindahkan ke tim}}",
     "notificationsHeading": "Penyedia notifikasi",
     "notificationsBody": "Sebuah tim menyimpan satu konfigurasi penyedia notifikasi, sehingga konfigurasi yang terakhir disimpan tetap dipertahankan. Masukkan kembali pengaturan untuk: {projects}."

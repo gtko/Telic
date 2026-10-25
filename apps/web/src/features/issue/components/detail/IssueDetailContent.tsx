@@ -76,12 +76,6 @@ export default function IssueDetailContent({
     activityView,
   } = useIssueDetail(project, issueId, onIssueLoaded);
   const permissions = usePermissions(project);
-  const canReadAgentRuns =
-    permissions.can('ai_agents', 'read') && permissions.can('work_items', 'read');
-  const effectiveActivityView =
-    activityView.tab === 'agentRuns' && !canReadAgentRuns
-      ? { ...activityView, tab: 'all' as const }
-      : activityView;
   const canEdit = permissions.can('work_items', 'edit');
   const canManageDevelopment = permissions.can('repositories', 'edit');
   const canReadDocuments = permissions.can('documents', 'read');
@@ -277,8 +271,7 @@ export default function IssueDetailContent({
           assignees={project.assignees}
           columns={project.columns}
           imageByUserId={imageByUserId}
-          view={effectiveActivityView}
-          canReadAgentRuns={canReadAgentRuns}
+          view={activityView}
         />
       </div>
       <LastCommentBubble
@@ -286,7 +279,7 @@ export default function IssueDetailContent({
         issueId={issue.id}
         feedRef={feedRef}
         imageByUserId={imageByUserId}
-        view={effectiveActivityView}
+        view={activityView}
       />
     </>
   );

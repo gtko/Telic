@@ -1,10 +1,9 @@
-import { chunk, projectMember, user, aiAgent, type Db } from '@repo/db';
+import { chunk, projectMember, user, type Db } from '@repo/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 // Mentions in a comment, an issue description or a markdown custom field. A mention
-// is written inline as @handle: a member's username, or an agent's project-scoped
-// username. Resolving one gives the user ids the notification and agent-run fan-out
-// work with.
+// is written inline as @handle: a member's username. Resolving one gives the user ids the
+// notification fan-out works with.
 
 // A handle holds letters, digits and . _ -, and never ends on . or -, so a mention
 // that closes a sentence keeps the punctuation out of the handle. The lookbehind
@@ -40,56 +39,30 @@ export function addedMentionHandles(before: string, after: string): string[] {
   return parseMentionHandles(after).filter((handle) => !had.has(handle));
 }
 
-// Who the handles reach, kept apart because the two are used for different things:
-// a member is notified, an agent is given a run.
 export interface MentionedUsers {
   memberIds: string[];
-  agentUserIds: string[];
 }
 
 // The user ids behind the given handles: the project's members addressed by their
-// username, and its agents by theirs. A handle nobody in the project answers to is
-// dropped, an agent of the team that does not work in this project included — its
-// handle reads as plain text here. A member and an agent cannot share a handle — the
-// two are kept apart at the point either is named.
+// username. A handle nobody in the project answers to is dropped.
 export async function resolveMentionHandles(
   db: Db,
   projectId: number,
   handles: string[],
 ): Promise<MentionedUsers> {
-  if (handles.length === 0) return { memberIds: [], agentUserIds: [] };
+  if (handles.length === 0) return { memberIds: [] };
   // D1 binds at most 100 parameters per statement: long handle lists go in slices.
   const slices = chunk(handles, 80);
-  const [memberRows, agentRows] = await Promise.all([
-    Promise.all(
-      slices.map((slice) =>
-        db
-          .select({ userId: projectMember.userId })
-          .from(projectMember)
-          .innerJoin(user, eq(user.id, projectMember.userId))
-          .where(
-            and(
-              eq(projectMember.projectId, projectId),
-              inArray(sql`lower(${user.username})`, slice),
-            ),
-          ),
-      ),
-    ).then((parts) => parts.flat()),
-    Promise.all(
-      slices.map((slice) =>
-        db
-          .select({ userId: aiAgent.userId })
-          .from(aiAgent)
-          .innerJoin(
-            projectMember,
-            and(eq(projectMember.userId, aiAgent.userId), eq(projectMember.projectId, projectId)),
-          )
-          .where(inArray(sql`lower(${aiAgent.username})`, slice)),
-      ),
-    ).then((parts) => parts.flat()),
-  ]);
-  return {
-    memberIds: memberRows.map((row) => row.userId),
-    agentUserIds: agentRows.map((row) => row.userId),
-  };
+  const memberRows = await Promise.all(
+    slices.map((slice) =>
+      db
+        .select({ userId: projectMember.userId })
+        .from(projectMember)
+        .innerJoin(user, eq(user.id, projectMember.userId))
+        .where(
+          and(eq(projectMember.projectId, projectId), inArray(sql`lower(${user.username})`, slice)),
+        ),
+    ),
+  ).then((parts) => parts.flat());
+  return { memberIds: memberRows.map((row) => row.userId) };
 }

@@ -1,15 +1,10 @@
-import { everyHour, everyMinute } from './cron';
+import { everyHour } from './cron';
 import type { Env } from './env';
 
-// The cron expressions of wrangler.jsonc "triggers.crons". `scheduled` tells the two apart by
-// the expression that fired, so the two lists must change together.
-export const CRON_EVERY_MINUTE = '* * * * *';
+// The cron expression of wrangler.jsonc "triggers.crons"; the two must change together.
 export const CRON_HOURLY = '0 * * * *';
 
-// What each trigger runs: the minutely one is the catch-up for the queue and for the external
-// agents; the hourly one is housekeeping.
 const JOBS: Record<string, (env: Env) => Promise<void>> = {
-  [CRON_EVERY_MINUTE]: everyMinute,
   [CRON_HOURLY]: everyHour,
 };
 

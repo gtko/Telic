@@ -57,9 +57,6 @@
       "sidebar": {
         "toggle": "نمایش یا پنهان کردن نوار کناری"
       },
-      "chat": {
-        "toggle": "نمایش یا پنهان کردن چت هوش مصنوعی"
-      },
       "issue": {
         "new": "تسک جدید"
       },
@@ -77,50 +74,6 @@
       }
     },
     "conflict": "قبلاً توسط {command} استفاده شده است"
-  },
-  "agentChat": {
-    "emptyHint": "یک پیام بفرستید تا ببینید این ایجنت چطور پاسخ می‌دهد و از چه ابزارهایی استفاده می‌کند.",
-    "messagePlaceholder": "پیام به {agent}…",
-    "reset": "بازنشانی گفتگو",
-    "send": "ارسال",
-    "sendHint": "Enter برای ارسال، ⌘/Ctrl+Enter برای خط جدید",
-    "stop": "توقف",
-    "stopped": "متوقف شد",
-    "loadingEarlier": "در حال بارگذاری پیام‌های قبلی…",
-    "messages": "پیام‌های گفتگو",
-    "usingTool": "در حال استفاده از {tool}…",
-    "usedTool": "از {tool} استفاده شد",
-    "usedTools": "{count, plural, one {از # ابزار استفاده شد} other {از # ابزار استفاده شد}}",
-    "toolInput": "ورودی",
-    "toolOutput": "خروجی",
-    "thinking": "در حال فکر کردن…",
-    "waitingForRunner": "در انتظار رانر…",
-    "waitingToSend": "در انتظار ارسال",
-    "removePending": "حذف پیام",
-    "title": "چت با {agent}",
-    "unreachable": "دسترسی به ایجنت ممکن نشد. دوباره تلاش کنید.",
-    "runnerOffline": "رانر آفلاین است",
-    "runnerOfflineHint": "برای چت با این ایجنت، رانر را روی دستگاه خود اجرا کنید.",
-    "attachFile": "یک صفحه‌گسترده، سند، PDF یا فایل متنی برای خواندن ایجنت پیوست کنید",
-    "removeAttachment": "حذف پیوست",
-    "uploadFailed": "بارگذاری فایل ممکن نشد.",
-    "tooManyAttachments": "می‌توانید حداکثر {max} فایل به یک پیام پیوست کنید.",
-    "importRows": "{count, plural, one {# ردیف} other {# ردیف}}",
-    "confirmImport": "تأیید ورود",
-    "cancelImport": "لغو",
-    "importWorking": "در حال ایجاد تسک‌ها…",
-    "importShowAllRows": "نمایش همه {count} ردیف",
-    "importShowFewerRows": "نمایش {count} ردیف اول",
-    "importRowState": "ورود",
-    "importRowNew": "ایجاد خواهد شد",
-    "importSkipHint": "ردیف‌های علامت‌خورده با ✕ هنگام تأیید نادیده گرفته می‌شوند.",
-    "importAdjustHint": "اگر چیزی اشتباه به نظر می‌رسد، از ایجنت بخواهید نگاشت را اصلاح کند.",
-    "importCanceled": "این ورود لغو شد. چیزی ایجاد نشد.",
-    "importFailed": "ورود داده‌ها ناموفق بود.",
-    "importConfirmed": "{count, plural, one {# تسک ایجاد شد} other {# تسک ایجاد شد}}",
-    "importSkippedRow": "ردیف {row} نادیده گرفته شد: {reason}",
-    "contextSize": "زمینه گفتگو: {count, plural, one {# توکن} other {# توکن}}",
-    "contextUnavailable": "اندازه زمینه برای این ایجنت در دسترس نیست"
   },
   "share": {
     "createFailed": "ایجاد لینک ممکن نشد. دوباره تلاش کنید.",
@@ -182,7 +135,7 @@
     "openPreviewLink": "باز کردن {name} در زبانه جدید",
     "loadingPreview": "در حال بارگذاری پیش‌نمایش…",
     "previewUnavailable": "پیش‌نمایش در دسترس نیست. پیوند را باز کنید تا این صفحه را ببینید.",
-    "internalPage": "صفحه ItsAPlan",
+    "internalPage": "صفحه Telic",
     "internalPreviewUnavailable": "این صفحه در دسترس نیست یا شما دسترسی ندارید.",
     "previewNoteCount": "{count, plural, one {# یادداشت} other {# یادداشت}}",
     "previewCustomField": "فیلد سفارشی",
@@ -205,13 +158,11 @@
     "download": "ذخیره نمودار",
     "downloadFailed": "نمودار ذخیره نشد"
   },
-  "agent": "ایجنت",
   "pager": {
     "previous": "صفحه قبلی",
     "next": "صفحه بعدی",
     "page": "صفحه {number}",
     "perPage": "در هر صفحه",
     "range": "{first}-{last} از {total}"
-  },
-  "aboutCloudAndPro": "درباره Cloud و Pro"
+  }
 }

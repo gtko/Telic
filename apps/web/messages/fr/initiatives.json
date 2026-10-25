@@ -127,8 +127,6 @@
     "ownerRemoved": "a retiré {name} des responsables",
     "assigneeSet": "a assigné à {name}",
     "assigneeRemoved": "a retiré {name} de l'assignation",
-    "delegateSet": "a délégué à {name}",
-    "delegateRemoved": "a retiré la délégation à {name}",
     "targetDateSet": "a défini la date cible au {date}",
     "targetDateRemoved": "a retiré la date cible",
     "startDateSet": "a défini la date de début au {date}",

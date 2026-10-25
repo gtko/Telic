@@ -7,12 +7,6 @@
   "users": {
     "empty": "No accounts match these filters.",
     "searchPlaceholder": "Search by name or email",
-    "kind": "Account kind",
-    "kinds": {
-      "human": "Humans",
-      "agent": "AI bots",
-      "all": "All accounts"
-    },
     "columns": {
       "account": "Account",
       "role": "Role",
@@ -25,7 +19,6 @@
     "registered": "joined {date}",
     "roleGod": "God",
     "roleUser": "User",
-    "agent": "Agent",
     "noProviders": "none",
     "neverSeen": "never",
     "verified": "Verified",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "The instance owner is always active.",
-      "agent": "An agent's account follows its agent.",
       "scim": "Your identity provider (SCIM) decides which accounts are active."
     },
     "deactivateTitle": "Deactivate {email}?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Instance owner",
     "user": "User",
-    "aiAgent": "AI agent",
     "emailVerified": "Email verified",
     "unconfirmedTitle": "Email address not confirmed",
     "unconfirmedHint": "Confirm it here when the link never reached them.",
@@ -71,7 +62,7 @@
     "deleteConfirm": "Delete account",
     "deleteConfirmWithProjects": "{count, plural, one {Delete account and project} other {Delete account and projects}}",
     "deleteMessage": "<strong>{name}</strong> loses access to this instance. Issues and comments they wrote stay, with the author unassigned. This cannot be undone.",
-    "deleteWorkspaceNote": "A workspace this account owns is deleted with it while it has no projects or AI agents. Otherwise it passes to you, with everything the account owned alone in it.",
+    "deleteWorkspaceNote": "A workspace this account owns is deleted with it while it has no projects. Otherwise it passes to you, with everything the account owned alone in it.",
     "soleOwnerTitle": "{count, plural, one {Only owner of a project} other {Only owner of # projects}}",
     "soleOwnerHint": "{count, plural, one {Once the account is gone, nobody can manage it.} other {Once the account is gone, nobody can manage them.}}",
     "deleteWithProjects": "{count, plural, one {Delete the project with the account} other {Delete the projects with the account}}",
@@ -87,7 +78,6 @@
       "project": "Project",
       "members": "Members",
       "issues": "Issues",
-      "agents": "Agents",
       "lastActivity": "Last activity",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Initiatives",
       "members": "Members",
       "dashboards": "Dashboards",
-      "views": "Views",
-      "agents": "AI agents",
-      "skills": "Skills",
-      "tools": "Tools"
+      "views": "Views"
     },
     "members": "Members",
     "noMembersTitle": "No members",
@@ -129,7 +116,6 @@
       "projects": "Projects",
       "members": "Members",
       "issues": "Issues",
-      "agents": "Agents",
       "mcp": "MCP"
     },
     "mcpEnabled": "Enabled",
@@ -146,9 +132,6 @@
       "projects": "Projects",
       "issues": "Issues",
       "members": "Members",
-      "agents": "AI agents",
-      "skills": "Skills",
-      "tools": "Tools",
       "roles": "Project roles"
     },
     "projects": "Projects",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Owner",
       "manager": "Manager",
-      "member": "Member",
-      "agent": "Agent"
+      "member": "Member"
     },
     "joined": "joined {date}"
   },
@@ -178,17 +160,7 @@
     "workspacesSaved": "Workspace settings saved",
     "workspaces": "Workspaces",
     "personalWorkspaces": "A workspace for everyone",
-    "personalWorkspacesHint": "Every account gets a workspace of its own, named after the person. Off, people work only in the workspaces they are added to.",
-    "agents": "Agents",
-    "agentsSaved": "Agent settings saved",
-    "traceRetention": "Keep run traces",
-    "traceRetentionHint": "Each agent run records its model and tool calls. Usage dashboards count only the runs still kept.",
-    "traceDays": "{days, plural, one {# day} other {# days}}",
-    "traceForever": "Forever",
-    "maxRunTime": "Max run time",
-    "maxRunTimeHint": "How long one agent run may take before it is stopped and saved as failed. An agent's own limit cannot exceed it.",
-    "runMinutes": "{minutes, plural, one {# minute} other {# minutes}}",
-    "runSeconds": "{seconds} s"
+    "personalWorkspacesHint": "Every account gets a workspace of its own, named after the person. Off, people work only in the workspaces they are added to."
   },
   "authentication": {
     "saved": "Authentication settings saved",
@@ -239,7 +211,7 @@
     "fileSize": "File size",
     "fileSizeHint": "The largest single file an upload may carry. A bigger file is refused before it is stored.",
     "attachmentMb": "Attachment size (MB)",
-    "attachmentHint": "Applies to issue attachments, files pasted into a description, and attachments added by agents.",
+    "attachmentHint": "Applies to issue attachments and files pasted into a description.",
     "avatarMb": "Avatar size (MB)",
     "avatarHint": "The profile picture people upload for their account.",
     "mimeTypes": "Accepted attachment types",

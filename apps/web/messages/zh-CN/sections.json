@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "通用",
-      "description": "个人工作区、新建项目的默认设置，以及代理追踪和运行时长。"
+      "description": "个人工作区和新建项目的默认设置。"
     },
     "authentication": {
       "label": "身份验证",
@@ -95,10 +95,6 @@
       "label": "操作",
       "description": "设置工作项上的快捷操作，一次点击即可更改字段。"
     },
-    "schedules": {
-      "label": "定时任务",
-      "description": "按固定时间重复运行代理任务。"
-    },
     "webhooks": {
       "label": "Webhook",
       "description": "将项目事件发送到外部 URL，并使用每个 Webhook 独立的密钥签名。"
@@ -110,18 +106,10 @@
     "import-export": {
       "label": "导入/导出",
       "description": "从自托管的 Plane 实例导入工作项、评论和标签，或将该项目的数据导出为 JSON。"
-    },
-    "ai-agents": {
-      "label": "AI 代理",
-      "description": "在该项目中工作的 AI 代理。"
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
-    "available": "可在 Cloud 和自托管 Pro 版中使用。",
+    "available": "可在此实例中使用。",
     "dashboard": {
       "title": "仪表盘",
       "description": "此工作区中各团队和项目的动态。",
@@ -129,33 +117,14 @@
         "teams": "团队",
         "projects": "项目",
         "people": "人员",
-        "agents": "AI 代理",
         "openIssues": "未完成工作项",
         "storage": "存储"
       },
       "blocks": {
-        "agents": "AI 代理",
-        "schedules": "计划运行",
         "time": "已记录工时",
         "flow": "工作项流转",
         "projects": "活跃项目",
         "teams": "活跃团队"
-      }
-    },
-    "agentBudgets": {
-      "title": "AI 预算",
-      "description": "限制代理在模型上的花费。",
-      "workspace": "整个工作区",
-      "figures": {
-        "spent": "已用",
-        "limit": "限额",
-        "left": "剩余",
-        "forecast": "本周期预计花费"
-      },
-      "list": "预算",
-      "columns": {
-        "budget": "预算",
-        "spent": "已用"
       }
     },
     "auditLog": {

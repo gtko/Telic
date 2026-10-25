@@ -1,13 +1,11 @@
 import {
   Activity,
   BarChart3,
-  Bot,
   CalendarDays,
   Hash,
   ListChecks,
   PieChart,
   TrendingUp,
-  Users,
   Webhook,
   type LucideIcon,
 } from 'lucide-react';
@@ -25,21 +23,23 @@ export const WIDGET_ICON: Record<WidgetType, LucideIcon> = {
   throughput: BarChart3,
   burnup: TrendingUp,
   breakdown: PieChart,
-  agent_runs: Bot,
-  agent_health: Activity,
   webhook_health: Webhook,
-  agent_workload: Users,
 };
 
 // Widget types grouped by subject for the add-widget picker. The picker renders one
 // section per group, in this order.
-export const WIDGET_GROUPS: { key: 'issues' | 'agents'; types: WidgetType[] }[] = [
+export const WIDGET_GROUPS: { key: 'issues'; types: WidgetType[] }[] = [
   {
     key: 'issues',
-    types: ['stat', 'breakdown', 'throughput', 'burnup', 'pulse', 'recent_issues', 'activity_feed'],
-  },
-  {
-    key: 'agents',
-    types: ['agent_runs', 'agent_health', 'webhook_health', 'agent_workload'],
+    types: [
+      'stat',
+      'breakdown',
+      'throughput',
+      'burnup',
+      'pulse',
+      'recent_issues',
+      'activity_feed',
+      'webhook_health',
+    ],
   },
 ];

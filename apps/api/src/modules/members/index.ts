@@ -17,7 +17,6 @@ import { accessErrors, commonErrors, errors } from '#shared/responses';
 import { getDefaultRoleId, getRole } from '#modules/roles/service';
 import { getTeamMembership } from '#modules/teams/service';
 import type { ProjectRow } from '#modules/projects/service';
-import { isAgentUser } from '#modules/agents/core/service';
 import {
   MemberCandidateListResponse,
   MemberPageResponse,
@@ -48,14 +47,6 @@ async function assertNotProvisioned(db: Db, projectId: number, userId: string): 
   }
 }
 
-// An owner bypasses the permission matrix, so the standing is kept for people: an
-// agent works under a role, which is what caps what its key and its tools may do.
-async function assertAgentNotOwner(db: Db, userId: string, role: string): Promise<void> {
-  if (role === 'owner' && (await isAgentUser(db, userId))) {
-    throw new HttpError(400, 'An AI agent cannot be a project owner');
-  }
-}
-
 // Who may hand out project ownership. The member permission fills the list and
 // assigns the roles the team offers; ownership is not one of them, since an owner
 // bypasses the matrix and could hand it back. Only an owner of the project, or an
@@ -77,7 +68,7 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
   .get(
     '/projects/:projectKey/members',
     async ({ db, project, query }) => {
-      const filters = { search: query.search, kind: query.kind };
+      const filters = { search: query.search };
       const [page, ownerCount] = await Promise.all([
         paginate(query, (window) => listMembersPage(db, project.id, { ...filters, ...window })),
         countOwners(db, project.id),
@@ -92,8 +83,7 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
         summary: 'List project members',
         description:
           'One page of the project members, the newest membership first. `search` matches ' +
-          'the name, the address or the handle, and `kind` narrows the list to the people or ' +
-          'to the AI agents.',
+          'the name, the address or the handle.',
         ...mcpTool('list_members'),
       },
     },
@@ -128,7 +118,6 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
         throw new HttpError(400, "This user is not a member of the project's team");
       }
       await assertMayGrantOwner(db, project, body.role, user);
-      await assertAgentNotOwner(db, body.userId, body.role);
       // An explicit roleId must name a role of this project's team; omitting it
       // joins the member on the team's default role, as accepting an invite does.
       let roleId: number | null = null;
@@ -178,7 +167,6 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
       if (!target) throw new HttpError(404, 'Member not found');
       await assertNotProvisioned(db, project.id, params.userId);
       await assertMayGrantOwner(db, project, body.role, user);
-      await assertAgentNotOwner(db, params.userId, body.role);
       // Changing an owner's role (demoting them) is owner business: the member
       // permission that edits roles must not let a non-owner unseat an owner.
       if (target === 'owner') await assertProjectAdmin(db, project, user);
@@ -218,8 +206,7 @@ export const memberRoutes = new Elysia({ name: 'members', detail: { tags: ['Memb
     },
   )
 
-  // The description is shown on the members page and given to agents so they can
-  // pick who to tag on an unassigned issue.
+  // The description is shown on the members page.
   .patch(
     '/projects/:projectKey/members/:userId/description',
     async ({ db, project, params, body }) => {

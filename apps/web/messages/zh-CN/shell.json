@@ -3,7 +3,7 @@
   "projectUnavailable": "此项目不可用。",
   "noProjects": "暂无项目，请先新建一个项目。",
   "noTeamsTitle": "还没有团队",
-  "noTeamsHint": "创建你的团队。团队的项目、成员和智能体都在其中。",
+  "noTeamsHint": "创建你的团队。团队的项目和成员都在其中。",
   "noTeamsMemberHint": "请工作区所有者将你添加到团队中。",
   "noProjectAccessHint": "请团队所有者或管理员将你添加到项目中。",
   "noProjectAccessOwnerHint": "请团队所有者或管理员将你添加到项目中，或创建你自己的团队。",

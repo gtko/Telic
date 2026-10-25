@@ -8,7 +8,7 @@ import { serverRuntimeEnv } from '@/utils/runtimeEnv';
 // Only the api's public, unauthenticated media routes are reachable here, and no
 // request header is forwarded — this must never become a way to reach the rest of the
 // api through the web server.
-const MEDIA_ROOTS = ['avatars', 'attachments', 'chat-attachments', 'initiative-attachments'];
+const MEDIA_ROOTS = ['avatars', 'attachments', 'initiative-attachments'];
 const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Copied from the api's response, including the headers that keep attacker-controlled

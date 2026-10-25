@@ -27,7 +27,7 @@
     },
     "general": {
       "label": "عمومی",
-      "description": "فضاهای کار شخصی، پیش‌فرض‌های پروژه‌های جدید، و ردپا و زمان اجرای ایجنت‌ها."
+      "description": "فضاهای کار شخصی و پیش‌فرض‌های پروژه‌های جدید."
     },
     "authentication": {
       "label": "احراز هویت",
@@ -95,10 +95,6 @@
       "label": "اکشن‌ها",
       "description": "دکمه‌هایی روی تسک که فیلدها را با یک کلیک تنظیم می‌کنند."
     },
-    "schedules": {
-      "label": "زمان‌بندی‌ها",
-      "description": "اجرای وظیفه‌های ایجنت به‌صورت زمان‌بندی تکرارشونده."
-    },
     "webhooks": {
       "label": "وب‌هوک‌ها",
       "description": "ارسال رویدادهای پروژه به URLهای خارجی، امضاشده با یک کلید مخفی مخصوص هر وب‌هوک."
@@ -110,18 +106,10 @@
     "import-export": {
       "label": "ورود/خروج",
       "description": "واردکردن تسک‌ها، دیدگاه‌ها و برچسب‌ها از یک سامانه Plane خودمیزبان، یا خروج داده‌های این پروژه به‌صورت JSON."
-    },
-    "ai-agents": {
-      "label": "ایجنت‌های AI",
-      "description": "ایجنت‌های AI که در این پروژه کار می‌کنند."
-    },
-    "queue": {
-      "label": "Runner queue",
-      "description": "External runner tasks across all projects you can read. Running leases first; waiting tasks by due time."
     }
   },
   "previews": {
-    "available": "در Cloud و Pro خودمیزبان موجود است.",
+    "available": "در این نصب موجود است.",
     "dashboard": {
       "title": "داشبورد",
       "description": "فعالیت تیم‌ها و پروژه‌های این فضای کار.",
@@ -129,33 +117,14 @@
         "teams": "تیم‌ها",
         "projects": "پروژه‌ها",
         "people": "افراد",
-        "agents": "ایجنت‌های AI",
         "openIssues": "تسک‌های باز",
         "storage": "فضای ذخیره‌سازی"
       },
       "blocks": {
-        "agents": "ایجنت‌های AI",
-        "schedules": "اجراهای زمان‌بندی‌شده",
         "time": "زمان ثبت‌شده",
         "flow": "جریان تسک‌ها",
         "projects": "پروژه‌های فعال",
         "teams": "تیم‌های فعال"
-      }
-    },
-    "agentBudgets": {
-      "title": "بودجه‌های AI",
-      "description": "سقف هزینه ایجنت‌ها برای مدل‌ها.",
-      "workspace": "کل فضای کار",
-      "figures": {
-        "spent": "هزینه‌شده",
-        "limit": "سقف",
-        "left": "باقی‌مانده",
-        "forecast": "پیش‌بینی تا پایان دوره"
-      },
-      "list": "بودجه‌ها",
-      "columns": {
-        "budget": "بودجه",
-        "spent": "هزینه‌شده"
       }
     },
     "auditLog": {

@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../client';
 import { migrateD1 } from '../migrate';
 import {
-  chatAttachment,
   documentAsset,
   initiative,
   initiativeAttachment,
@@ -73,7 +72,7 @@ const file = (sizeBytes: number) => ({
 const pid = () => ({ publicId: crypto.randomUUID() });
 
 describe('stored bytes', () => {
-  it('sums the four attachment kinds of a project in one statement, and nothing of another', async () => {
+  it('sums the three attachment kinds of a project in one statement, and nothing of another', async () => {
     const p = await mkProject();
     const other = await mkProject();
     const [doc] = await db
@@ -85,14 +84,13 @@ describe('stored bytes', () => {
       .values({ projectId: p.projectId, title: 'I' })
       .returning({ id: initiative.id });
     await db.insert(issueAttachment).values({ ...pid(), issueId: p.issueId, ...file(1) });
-    await db.insert(chatAttachment).values({ ...pid(), projectId: p.projectId, ...file(20) });
     await db.insert(documentAsset).values({ ...pid(), documentId: doc!.id, ...file(300) });
     await db
       .insert(initiativeAttachment)
       .values({ ...pid(), initiativeId: ini!.id, ...file(4000) });
     await db.insert(issueAttachment).values({ ...pid(), issueId: other.issueId, ...file(99999) });
 
-    expect(await projectStoredBytes(db, p.projectId)).toBe(4321);
+    expect(await projectStoredBytes(db, p.projectId)).toBe(4301);
     expect(await projectStoredBytes(db, other.projectId)).toBe(99999);
     expect(await projectStoredBytes(db, 987654)).toBe(0);
   });
@@ -106,7 +104,7 @@ describe('stored bytes', () => {
     const a = await mkProject(t!.id);
     const b = await mkProject(t!.id);
     await db.insert(issueAttachment).values({ ...pid(), issueId: a.issueId, ...file(10) });
-    await db.insert(chatAttachment).values({ ...pid(), projectId: b.projectId, ...file(5) });
+    await db.insert(issueAttachment).values({ ...pid(), issueId: b.issueId, ...file(5) });
     expect(await workspaceStoredBytes(db, ws)).toBe(15);
     expect(await workspaceStoredBytes(db, workspaceId)).toBeGreaterThanOrEqual(0);
   });
@@ -133,20 +131,12 @@ describe('reserveStorage', () => {
     expect(rows).toHaveLength(2);
   });
 
-  it('treats a quota of 0 as unlimited and stores the uploader of chat and document files', async () => {
+  it('treats a quota of 0 as unlimited and stores the uploader of document files', async () => {
     const p = await mkProject();
     const [doc] = await db
       .insert(projectDocument)
       .values({ projectId: p.projectId })
       .returning({ id: projectDocument.id });
-    const chat = await reserveStorage(db, {
-      kind: 'chat',
-      projectId: p.projectId,
-      ownerId: 0,
-      quotaBytes: 0,
-      uploadedByUserId: 'u1',
-      ...file(1e9),
-    });
     const asset = await reserveStorage(db, {
       kind: 'document',
       projectId: p.projectId,
@@ -155,14 +145,9 @@ describe('reserveStorage', () => {
       uploadedByUserId: 'u1',
       ...file(5),
     });
-    expect(chat).not.toBeNull();
     expect(asset).not.toBeNull();
-    const [row] = await db.select().from(chatAttachment).where(eq(chatAttachment.id, chat!.id));
-    expect(row).toMatchObject({
-      projectId: p.projectId,
-      uploadedByUserId: 'u1',
-      publicId: chat!.publicId,
-    });
+    const [row] = await db.select().from(documentAsset).where(eq(documentAsset.id, asset!.id));
+    expect(row).toMatchObject({ uploadedByUserId: 'u1', publicId: asset!.publicId });
   });
 
   it('refuses an owner that belongs to another project (no charging a foreign quota)', async () => {

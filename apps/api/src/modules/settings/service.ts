@@ -6,7 +6,6 @@ import {
   type Db,
   type StorageSettings,
 } from '@repo/db';
-import { intEnv } from '#shared/lib';
 
 // The instance settings kept in app_setting: the upload limits and the keyboard
 // shortcuts.
@@ -61,46 +60,6 @@ export async function setProjectDefaults(
 ): Promise<ProjectDefaults> {
   const next = { ...(await getProjectDefaults(db)), ...patch };
   await setSetting(db, PROJECT_DEFAULTS_SETTING_KEY, next);
-  return next;
-}
-
-// The instance agent settings (app_setting key 'agents'): what applies to every team's
-// agents.
-
-const AGENT_SETTINGS_KEY = 'agents';
-
-export interface AgentSettings {
-  // Days the traces of an agent run are kept for; the background sweep deletes older
-  // ones (agents/core/runtime/trace-retention.ts). 0 keeps them.
-  traceRetentionDays: number;
-  // The longest one run may take. AGENT_RUN_TIMEOUT_MS sets the value used until one is saved.
-  maxRunSeconds: number;
-}
-
-export const MIN_RUN_SECONDS = 10;
-export const MAX_RUN_SECONDS = 3600;
-
-function defaultAgentSettings(): AgentSettings {
-  return {
-    traceRetentionDays: 30,
-    maxRunSeconds: Math.min(
-      Math.max(Math.round(intEnv('AGENT_RUN_TIMEOUT_MS', 240_000) / 1000), MIN_RUN_SECONDS),
-      MAX_RUN_SECONDS,
-    ),
-  };
-}
-
-export async function getAgentSettings(db: Db): Promise<AgentSettings> {
-  const stored = await getSetting<Partial<AgentSettings>>(db, AGENT_SETTINGS_KEY);
-  return { ...defaultAgentSettings(), ...(stored ?? {}) };
-}
-
-export async function setAgentSettings(
-  db: Db,
-  patch: Partial<AgentSettings>,
-): Promise<AgentSettings> {
-  const next = { ...(await getAgentSettings(db)), ...patch };
-  await setSetting(db, AGENT_SETTINGS_KEY, next);
   return next;
 }
 

@@ -2,7 +2,6 @@ import {
   type Db,
   batchAll,
   chunk,
-  agentRun,
   customField,
   customFieldOption,
   issue,
@@ -28,7 +27,6 @@ import { recordActivity, textSide } from './activity';
 import { recordStatusChange } from './status-history';
 import { recordCycleChange } from './cycle-history';
 import { emitIssueEvent } from './webhook-payload';
-import { queueStatusRuns } from '#modules/agents/schedules/issue-runs';
 
 // Moves an issue, with its subtasks, to another project of the same team. Column,
 // type, labels and custom fields belong to one project, so they are matched by name
@@ -62,7 +60,6 @@ export async function moveIssue(
       sequenceNumber: issue.sequenceNumber,
       cycleId: issue.cycleId,
       assigneeUserId: issue.assigneeUserId,
-      delegateUserId: issue.delegateUserId,
       columnName: projectColumn.name,
       stateType: projectColumn.stateType,
       typeName: issueType.name,
@@ -157,7 +154,6 @@ export async function moveIssue(
             cycleId: null,
             initiativeId: null,
             assigneeUserId: member(p.assigneeUserId),
-            delegateUserId: member(p.delegateUserId),
             position: sql`(select coalesce(max(${issue.position}), 0) + 1000 from ${issue} where ${issue.columnId} = ${p.newColumnId})`,
             updatedAt: new Date(),
           })
@@ -201,10 +197,6 @@ export async function moveIssue(
             sql`${issueWatcher.userId} NOT IN (SELECT value FROM json_each(${memberIds}))`,
           ),
         ),
-      db
-        .update(agentRun)
-        .set({ status: 'canceled', executionStartedAt: null, finishedAt: new Date() })
-        .where(and(inArray(agentRun.issueId, movedIds), eq(agentRun.status, 'pending'))),
     ]);
   } catch (error) {
     if (/NOT NULL/i.test(String(error) + String((error as Error)?.cause ?? '')))
@@ -231,7 +223,6 @@ export async function moveIssue(
     if (p.id === issueId && p.parentId !== null)
       await recordParentChange(db, p.id, p.parentId, null, actorUserId);
     await emitIssueEvent(db, 'issue.updated', after, actorUserId);
-    await queueStatusRuns(db, [p.id], p.newColumnId, actorUserId);
   }
   return (await getIssue(db, issueId))!;
 }

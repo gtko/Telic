@@ -154,7 +154,7 @@ beforeEach(async () => {
     getComputedStyle: { configurable: true, value: dom.window.getComputedStyle.bind(dom.window) },
     IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
-  dom.window.__ITSAPLAN_ENV__ = { apiUrl: 'https://example.test', privacyUrl: '', termsUrl: '' };
+  dom.window.__TELIC_ENV__ = { apiUrl: 'https://example.test', privacyUrl: '', termsUrl: '' };
   client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },

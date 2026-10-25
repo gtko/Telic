@@ -1,4 +1,3 @@
-import { agentRuntime } from '#modules/agents/core/runtime/bindings';
 import { dbContext } from '#shared/db-context';
 import type { Db } from '@repo/db';
 import { Elysia, t } from 'elysia';
@@ -28,7 +27,6 @@ import {
   TeamDetailResponse,
   TeamListResponse,
   TeamMcpResponse,
-  TeamProjectDefaultsResponse,
   TeamMemberPageResponse,
   TeamProjectDetailResponse,
   TeamProjectMemberPageResponse,
@@ -44,7 +42,6 @@ import {
   memberListQuery,
   updateTeamBody,
   updateTeamMcpBody,
-  updateTeamProjectDefaultsBody,
 } from './model';
 import {
   createTeam,
@@ -60,8 +57,6 @@ import {
   removeTeamMember,
   updateTeam,
   setTeamMcp,
-  getTeamProjectDefaults,
-  setTeamProjectDefaults,
   setTeamMemberRole,
   teamOwnsProject,
 } from './service';
@@ -124,7 +119,6 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
       paginate(query, (window) =>
         listTeamMembers(db, membership.teamId, {
           search: query.search,
-          kind: query.kind,
           ...window,
         }),
       ),
@@ -137,8 +131,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
         summary: 'List team members',
         description:
           'One page of the members of a team you belong to, by name. `search` matches the ' +
-          'name, the address or the handle, and `kind` narrows the list to the people or to ' +
-          'the AI agents.',
+          'name, the address or the handle.',
       },
     },
   )
@@ -167,8 +160,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
     },
   )
 
-  // Fills the project picker on an agent and the MCP switches, which act on every
-  // project of the team rather than on a page of them.
+  // Fills the MCP switches, which act on every project of the team rather than on a
+  // page of them.
   .get(
     '/teams/:teamId/projects/options',
     ({ db, membership }) =>
@@ -219,7 +212,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
           params.projectId,
           membership.userId,
           membership.role,
-          { search: query.search, kind: query.kind, ...window },
+          { search: query.search, ...window },
         );
         if (!page) throw new HttpError(404, 'Project not found');
         return page;
@@ -233,8 +226,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
         summary: "List a project's members",
         description:
           'One page of the members of one project of the team, owners first. `search` ' +
-          'matches the name, the address or the handle, and `kind` narrows the list to the ' +
-          'people or to the AI agents. An owner or a manager may read it for any project of ' +
+          'matches the name, the address or the handle. An owner or a manager may read it for any project of ' +
           'the team; anyone else only for one they belong to.',
       },
     },
@@ -258,30 +250,6 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
           'Switch MCP on or off for the team, and set which of its projects the reach covers. ' +
           'Each field is optional; a project of another team is ignored.',
       },
-    },
-  )
-
-  .get(
-    '/teams/:teamId/project-defaults',
-    ({ db, membership }) => getTeamProjectDefaults(db, membership.teamId),
-    {
-      teamMember: true,
-      params: teamParams,
-      response: { 200: TeamProjectDefaultsResponse, ...errors(401, 403, 404) },
-      detail: { summary: "Get a team's defaults for new projects" },
-    },
-  )
-
-  .patch(
-    '/teams/:teamId/project-defaults',
-    ({ db, body, membership }) =>
-      setTeamProjectDefaults(db, membership.teamId, body.defaultAgentIds),
-    {
-      teamManager: true,
-      params: teamParams,
-      body: updateTeamProjectDefaultsBody,
-      response: { 200: TeamProjectDefaultsResponse, ...errors(400, 401, 403, 404) },
-      detail: { summary: "Set the team's default agents for new projects" },
     },
   )
 
@@ -337,8 +305,8 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
       detail: {
         summary: 'Delete a team',
         description:
-          'Delete a team you own, with its members, roles, invites, skills, tools and ' +
-          'integrations. A team that holds a project or an AI agent is refused until those ' +
+          'Delete a team you own, with its members, roles, invites and ' +
+          'integrations. A team that holds a project is refused until those ' +
           'are gone. Irreversible.',
       },
     },
@@ -439,7 +407,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
         summary: 'Archive a project of the team',
         description:
           'Archive a project the team owns. It leaves the project lists of its members and ' +
-          'list_projects, becomes read-only, and its agent schedules stop running. Nothing ' +
+          'list_projects, becomes read-only. Nothing ' +
           'in it is deleted, and it can still be copied or deleted.',
       },
     },
@@ -463,9 +431,9 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
 
   .delete(
     '/teams/:teamId/projects/:projectId',
-    async ({ db, env, auth, membership, params }) => {
+    async ({ db, membership, params }) => {
       await requireTeamProject(db, membership.teamId, params.projectId);
-      await deleteProject(agentRuntime(env, auth), params.projectId);
+      await deleteProject(db, params.projectId);
       return noContent();
     },
     {
@@ -481,7 +449,7 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
   )
 
   // The rank a member holds in the team. Run by an owner or a manager, who run the
-  // team; an agent's rank is set with the agent, not here.
+  // team.
   .patch(
     '/teams/:teamId/members/:userId',
     async ({ db, body, membership, params }) => {
@@ -502,7 +470,6 @@ export const teamRoutes = new Elysia({ name: 'teams', detail: { tags: ['Teams'] 
     },
   )
 
-  // An agent is removed with its agent settings, not here.
   .delete(
     '/teams/:teamId/members/:userId',
     async ({ db, membership, params }) => {

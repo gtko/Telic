@@ -25,7 +25,6 @@
     "workflow": "گردش کار",
     "automation": "اتوماسیون",
     "views": "نماها",
-    "aiTeam": "تیم هوش مصنوعی",
     "knowledge": "دانش"
   },
   "copyItems": {
@@ -38,14 +37,11 @@
     "documents": "مستندات",
     "actions": "اکشن‌ها",
     "configuration": "پیکربندی",
-    "webhooks": "وب‌هوک‌ها",
-    "agents": "ایجنت‌ها",
-    "schedules": "زمان‌بندی‌ها"
+    "webhooks": "وب‌هوک‌ها"
   },
   "title": "پروژه جدید",
   "copyTitle": "کپی پروژه «{name}»",
   "create": "ایجاد پروژه",
   "copyAction": "کپی پروژه",
-  "defaultAgents": "ایجنت‌هایی که به این پروژه می‌پیوندند: {names}",
   "copyName": "کپی {name}"
 }

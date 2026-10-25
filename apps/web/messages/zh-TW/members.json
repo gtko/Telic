@@ -33,13 +33,6 @@
   },
   "profileHeading": "資料",
   "you": "（你）",
-  "aiAgent": "AI 代理",
-  "tabs": {
-    "all": "全部",
-    "people": "人員",
-    "agents": "AI 代理",
-    "label": "顯示"
-  },
   "leaveProject": "退出專案",
   "revokeAccess": "撤銷存取權限",
   "lastOwner": "專案必須至少保留一名所有者",
@@ -89,28 +82,16 @@
   "added": "已新增成員",
   "provisioned": "由 SCIM 管理",
   "search": {
-    "all": "搜尋成員",
-    "people": "搜尋人員",
-    "agents": "搜尋 AI 代理"
+    "all": "搜尋成員"
   },
   "empty": {
     "all": {
       "title": "暫無成員",
-      "description": "人員和 AI 代理加入後會顯示在這裡。"
-    },
-    "human": {
-      "title": "暫無人員",
       "description": "人員加入後會顯示在這裡。"
-    },
-    "agent": {
-      "title": "暫無 AI 代理",
-      "description": "AI 代理新增後會顯示在這裡。"
     },
     "search": {
       "title": "沒有找到結果",
-      "all": "沒有符合此搜尋的成員。",
-      "human": "沒有符合此搜尋的人員。",
-      "agent": "沒有符合此搜尋的 AI 代理。"
+      "all": "沒有符合此搜尋的成員。"
     }
   }
 }

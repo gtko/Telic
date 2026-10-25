@@ -6,7 +6,7 @@
 // Keep it short and true for every project. Anything project-specific (column
 // names, issue types, labels) is data, and the model reads it from get_project.
 export const SERVER_INSTRUCTIONS = `
-Itsaplan is a project tracker. A project holds issues, and defines its own columns
+Telic is a project tracker. A project holds issues, and defines its own columns
 (states), issue types, labels, custom fields, and members.
 
 ## Resolving ids
@@ -40,10 +40,9 @@ get_current_user for that user's id rather than matching a name or an email.
 
 ## Teams
 
-A team owns the projects, the AI agents, the skills and the configured tools. It is
-taken from your key: an agent's key acts in its own team, and so does a person who
-belongs to one team, so those tools take no teamId. A person in several teams passes
-teamId on each call and gets the ids from list_teams.
+A team owns the projects. It is taken from your key when you belong to one team, so
+those tools take no teamId. A person in several teams passes teamId on each call and
+gets the ids from list_teams.
 
 ## Columns and state
 
@@ -96,9 +95,8 @@ so view it again rather than reusing what you saw earlier.
 
 A comment or an issue description tags someone by writing @handle inline, which
 notifies them. The handle is the username of a person in get_project.assignees, which
-lists members and AI agents alike; a handle nobody in the project answers to tags
-nobody. An AI agent tagged in a comment starts a run on that issue, so tag one only
-when you want it to act.
+lists the members; a handle nobody in the project answers to tags
+nobody.
 
 ## Restraint
 

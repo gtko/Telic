@@ -20,7 +20,7 @@ import { requestContext, type RequestContext } from './context';
 // GET renders a public read-only shared issue or view, keyed by an unguessable
 // token. All ids are unguessable.
 const PUBLIC_GET =
-  /^\/attachments\/[^/]+\/raw$|^\/chat-attachments\/[^/]+\/raw$|^\/initiative-attachments\/[^/]+\/raw$|^\/avatars\/[^/]+\/raw$|^\/invites\/[^/]+$|^\/share\//;
+  /^\/attachments\/[^/]+\/raw$|^\/initiative-attachments\/[^/]+\/raw$|^\/avatars\/[^/]+\/raw$|^\/invites\/[^/]+$|^\/share\//;
 
 // The authenticated user carried on the request context.
 export type SessionUser = Session['user'];

@@ -237,19 +237,6 @@ describe('members', () => {
       expect(memberRow?.roleId).not.toBeNull();
     });
 
-    it('narrows the list to the people or to the AI agents', async () => {
-      const owner = await setupOwner();
-      await addMember(owner);
-      const members = owner.api.projects({ projectKey: 'MKT' }).members;
-
-      const people = await members.get({ query: { kind: 'human' } });
-      expect(people.data?.total).toBe(2);
-      expect(people.data?.items.every((m) => !m.isAgent)).toBe(true);
-
-      const agents = await members.get({ query: { kind: 'agent' } });
-      expect(agents.data).toMatchObject({ items: [], total: 0 });
-    });
-
     it('searches by name, address and handle', async () => {
       const owner = await setupOwner();
       const member = await addMember(owner);

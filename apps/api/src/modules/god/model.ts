@@ -2,7 +2,6 @@ import { t } from 'elysia';
 import { REGISTRATION_MODES } from '@repo/auth';
 import { pageQueryFields, pageResponse } from '#shared/pagination';
 import { PermissionMatrixSchema } from '#shared/permissions';
-import { USER_KINDS } from './service';
 
 const encryption = t.UnionEnum(['none', 'ssl', 'tls']);
 const smtpAuth = t.UnionEnum(['password', 'microsoft365']);
@@ -23,9 +22,6 @@ export const scimGroupParams = t.Object({ groupId: t.String() });
 
 export const listUsersQuery = t.Object({
   search: t.Optional(t.String()),
-  // Agent bot users are accounts too, but they are managed on a project's AI
-  // Agents screen, so the directory lists people unless asked otherwise.
-  kind: t.Optional(t.UnionEnum([...USER_KINDS])),
   ...pageQueryFields,
 });
 
@@ -184,11 +180,10 @@ const InstanceUserResponse = t.Object({
   image: t.Nullable(t.String()),
   emailVerified: t.Boolean(),
   role: t.String(),
-  isAgent: t.Boolean(),
   providers: t.Array(t.String()),
   projectCount: t.Number(),
   active: t.Boolean(),
-  activeLock: t.Nullable(t.UnionEnum(['owner', 'agent', 'scim'])),
+  activeLock: t.Nullable(t.UnionEnum(['owner', 'scim'])),
   lastSeenAt: t.Nullable(t.String()),
   createdAt: t.String(),
 });
@@ -227,9 +222,6 @@ const InstanceProjectResponse = t.Object({
   initiativeCount: t.Number(),
   dashboardCount: t.Number(),
   viewCount: t.Number(),
-  agentCount: t.Number(),
-  skillCount: t.Number(),
-  toolCount: t.Number(),
   lastActivityAt: t.Nullable(t.String()),
   createdAt: t.String(),
 });
@@ -244,7 +236,6 @@ export const InstanceProjectDetailResponse = t.Composite([
         email: t.String(),
         username: t.Nullable(t.String()),
         image: t.Nullable(t.String()),
-        isAgent: t.Boolean(),
         role: t.UnionEnum(['owner', 'member']),
         roleId: t.Nullable(t.Number()),
         roleName: t.Nullable(t.String()),
@@ -268,9 +259,6 @@ export const InstanceTeamResponse = t.Object({
   memberCount: t.Number(),
   projectCount: t.Number(),
   issueCount: t.Number(),
-  agentCount: t.Number(),
-  skillCount: t.Number(),
-  toolCount: t.Number(),
   roleCount: t.Number(),
   createdAt: t.String(),
 });
@@ -295,8 +283,7 @@ export const InstanceTeamMemberPageResponse = pageResponse(
     name: t.String(),
     email: t.String(),
     image: t.Nullable(t.String()),
-    isAgent: t.Boolean(),
-    role: t.UnionEnum(['owner', 'manager', 'member', 'agent']),
+    role: t.UnionEnum(['owner', 'manager', 'member']),
     joinedAt: t.String(),
   }),
 );

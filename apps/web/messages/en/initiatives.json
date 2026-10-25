@@ -127,8 +127,6 @@
     "ownerRemoved": "removed owner {name}",
     "assigneeSet": "assigned to {name}",
     "assigneeRemoved": "removed assignee {name}",
-    "delegateSet": "delegated to {name}",
-    "delegateRemoved": "removed delegate {name}",
     "targetDateSet": "set target date to {date}",
     "targetDateRemoved": "removed target date",
     "startDateSet": "set start date to {date}",

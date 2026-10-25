@@ -33,23 +33,17 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import type { IssueQuery } from '#modules/agents/core/issue-query';
+import type { IssueQuery } from './query';
 import { iso, num, HttpError } from '#shared/lib';
 import { escapeLike, inIds, likeText } from './sql-helpers';
 import type { ProjectRow } from '#modules/projects/service';
 import { assertProjectFeature } from '#shared/access';
-import {
-  getCustomFieldById,
-  type CustomFieldRow,
-  type CustomFieldType,
-  type MemberScope,
-} from '#modules/custom-fields/service';
+import { getCustomFieldById, type CustomFieldType } from '#modules/custom-fields/service';
 import {
   recordActivity,
   recordActivityEntries,
   logIssueUpdate,
   labelNames,
-  actorId,
   type ActivityActor,
   userName,
   rowSide,
@@ -63,17 +57,9 @@ import { recordStatusChange } from './status-history';
 import { mapAttachment, type AttachmentRow } from '#modules/attachments/service';
 import { notifyIssueChange, notifyTextMentions } from '#modules/notifications/service';
 import { emitIssueEvent } from './webhook-payload';
-import {
-  getAssignTriggerAgent,
-  getFieldTriggerAgent,
-  isProjectAgent,
-} from '#modules/agents/core/service';
 import { getInitiativeProjectId } from '#modules/initiatives/service';
 import { cycleStatus, getCycleRef, type CycleStatus } from '#modules/cycles/service';
 import { getMembership } from '#modules/members/service';
-import { enqueueAgentRun } from '#modules/agents/core/run-queue';
-import type { RunQueueLike } from '#modules/agents/core/runtime/bindings';
-import { queueStatusRuns } from '#modules/agents/schedules/issue-runs';
 import { applySubtaskAutomation } from './automation';
 import { assertWipLimit, columnAutoAssignee, wipLimitBreach } from '#modules/columns/service';
 
@@ -108,7 +94,6 @@ export interface IssueRow {
   // attachGroupings; mapIssue alone leaves it null.
   cycle: { id: number; name: string; status: CycleStatus } | null;
   assigneeUserId: string | null;
-  delegateUserId: string | null;
   columnId: number;
   // The issue this one is a subtask of, or null when it stands on its own. One
   // level deep: an issue with a parent cannot itself have subtasks.
@@ -161,7 +146,6 @@ function mapIssue(row: typeof issue.$inferSelect, projectKey: string): IssueRow 
     initiative: null,
     cycle: null,
     assigneeUserId: row.assigneeUserId,
-    delegateUserId: row.delegateUserId,
     columnId: row.columnId,
     parentId: row.parentId,
     title: row.title,
@@ -216,7 +200,6 @@ function snapshot(row: IssueRow): IssueSnapshot {
     initiativeId: row.initiative?.id ?? null,
     cycleId: row.cycle?.id ?? null,
     assigneeUserId: row.assigneeUserId,
-    delegateUserId: row.delegateUserId,
     priority: row.priority,
     estimatePoints: row.estimatePoints,
     estimateMinutes: row.estimateMinutes,
@@ -258,7 +241,7 @@ export async function listArchivedIssues(db: Db, project: ProjectRow): Promise<I
 }
 
 // A light issue result for search and list: the fields the command palette and the
-// agent's search_issues / list_issues tools need to list and open a match. No
+// MCP search_issues / list_issues tools need to list and open a match. No
 // description (which may embed large data URIs) and no field values, so the payload
 // stays small.
 export interface IssueSearchHit {
@@ -272,7 +255,6 @@ export interface IssueSearchHit {
   cycleId: number | null;
   parentId: number | null;
   assigneeUserId: string | null;
-  delegateUserId: string | null;
   priority: string | null;
   dueDate: string | null;
   labelIds: number[];
@@ -380,12 +362,6 @@ export async function searchIssues(
         ? isNull(issue.assigneeUserId)
         : eq(issue.assigneeUserId, filters.assigneeUserId),
     );
-  if (filters.delegateUserId !== undefined)
-    conds.push(
-      filters.delegateUserId === null
-        ? isNull(issue.delegateUserId)
-        : eq(issue.delegateUserId, filters.delegateUserId),
-    );
   if (filters.priority !== undefined)
     conds.push(
       filters.priority === null ? isNull(issue.priority) : eq(issue.priority, filters.priority),
@@ -427,7 +403,6 @@ export async function searchIssues(
       cycleId: issue.cycleId,
       parentId: issue.parentId,
       assigneeUserId: issue.assigneeUserId,
-      delegateUserId: issue.delegateUserId,
       columnId: issue.columnId,
       title: issue.title,
       priority: issue.priority,
@@ -453,7 +428,6 @@ export async function searchIssues(
     cycleId: r.cycleId,
     parentId: r.parentId,
     assigneeUserId: r.assigneeUserId,
-    delegateUserId: r.delegateUserId,
     priority: r.priority,
     dueDate: r.dueDate,
     labelIds: [],
@@ -470,7 +444,7 @@ export async function searchIssues(
 // the row for restore. Idempotent (archiving an archived issue is a no-op re-stamp
 // avoided by the archived_at guard). Records a feed entry. Returns the updated
 // issue, or null if it does not exist. Archiving is reversible, so nothing the issue
-// carries is dropped — the agents' conversation threads included.
+// carries is dropped.
 export async function archiveIssue(
   db: Db,
   id: number,
@@ -660,7 +634,6 @@ async function loadSnapshot(
       initiativeId: issue.initiativeId,
       cycleId: issue.cycleId,
       assigneeUserId: issue.assigneeUserId,
-      delegateUserId: issue.delegateUserId,
       priority: issue.priority,
       estimatePoints: issue.estimatePoints,
       estimateMinutes: issue.estimateMinutes,
@@ -747,7 +720,6 @@ export interface NewIssueInput {
   initiativeId?: number | null;
   cycleId?: number | null;
   assigneeUserId?: string | null;
-  delegateUserId?: string | null;
   columnId: number;
   parentId?: number | null;
   title: string;
@@ -760,21 +732,17 @@ export interface NewIssueInput {
   labelIds?: number[];
 }
 
-// Enforces that assignee holds a project member and delegate holds an agent of the
-// same project. Only checks the fields present in the patch, and only when set to a
-// non-null value (clearing a field is always allowed). Throws 400 otherwise.
+// Enforces that the assignee is a project member. Only checks when the field is present
+// in the patch and set to a non-null value (clearing it is always allowed). Throws 400
+// otherwise.
 async function assertAssignments(
   db: Db,
   projectId: number,
-  patch: { assigneeUserId?: string | null; delegateUserId?: string | null },
+  patch: { assigneeUserId?: string | null },
 ): Promise<void> {
   if (patch.assigneeUserId) {
     const role = await getMembership(db, projectId, patch.assigneeUserId);
     if (!role) throw new HttpError(400, 'Assignee must be a project member');
-  }
-  if (patch.delegateUserId) {
-    if (!(await isProjectAgent(db, projectId, patch.delegateUserId)))
-      throw new HttpError(400, 'Delegate must be an agent of this project');
   }
 }
 
@@ -906,7 +874,6 @@ export async function createIssue(
   project: ProjectRow,
   input: NewIssueInput,
   actorUserId?: string | null,
-  queue?: RunQueueLike | null,
 ): Promise<IssueRow> {
   await assertAssignments(db, project.id, input);
   await assertInitiative(db, project.id, input.initiativeId);
@@ -939,7 +906,6 @@ export async function createIssue(
         initiativeId: input.initiativeId ?? null,
         cycleId: input.cycleId ?? null,
         assigneeUserId,
-        delegateUserId: input.delegateUserId ?? null,
         columnId: input.columnId,
         parentId: input.parentId ?? null,
         title: input.title,
@@ -971,10 +937,6 @@ export async function createIssue(
   // assignment notification below, the same as a later assignment does.
   await autoWatchIssue(db, project.id, issueId, [actorUserId]);
   await emitIssueEvent(db, 'issue.created', created, actorUserId);
-  // An issue created already delegated to an agent enqueues a run, the same as
-  // delegating one later does.
-  await enqueueDelegateRun(db, created, actorUserId, queue);
-  await queueStatusRuns(db, [issueId], input.columnId, actorUserId);
   // An issue created already assigned to a member notifies them, the same as
   // assigning one later does.
   if (created.assigneeUserId) {
@@ -1054,7 +1016,6 @@ export interface IssuePatch {
   initiativeId?: number | null;
   cycleId?: number | null;
   assigneeUserId?: string | null;
-  delegateUserId?: string | null;
   title?: string;
   description?: string;
   priority?: string | null;
@@ -1078,7 +1039,7 @@ export async function updateIssue(
   id: number,
   patch: IssuePatch,
   actor?: ActivityActor,
-  opts?: { onlyIfColumnId?: number; skipIfColumnFull?: boolean; queue?: RunQueueLike | null },
+  opts?: { onlyIfColumnId?: number; skipIfColumnFull?: boolean },
 ): Promise<IssueRow | null> {
   const before = await loadSnapshot(db, id);
   if (!before) return null;
@@ -1120,7 +1081,6 @@ export async function updateIssue(
   if (patch.cycleId !== undefined) set.cycleId = patch.cycleId;
   if (patch.assigneeUserId !== undefined) set.assigneeUserId = patch.assigneeUserId;
   else if (autoAssignee) set.assigneeUserId = autoAssignee;
-  if (patch.delegateUserId !== undefined) set.delegateUserId = patch.delegateUserId;
   if (patch.title !== undefined) set.title = patch.title;
   if (patch.description !== undefined) set.description = patch.description;
   if (patch.priority !== undefined) set.priority = patch.priority;
@@ -1153,44 +1113,13 @@ export async function updateIssue(
       // Granular events fire in addition to issue.updated when their field changed.
       if (before.assigneeUserId !== after.assigneeUserId)
         await emitIssueEvent(db, 'issue.assigned', after, actor);
-      if (before.delegateUserId !== after.delegateUserId)
-        await enqueueDelegateRun(db, after, actor, opts?.queue);
       if (before.columnId !== after.columnId) {
         await emitIssueEvent(db, 'issue.state_changed', after, actor);
-        await queueStatusRuns(db, [id], after.columnId, actorId(actor));
         await applySubtaskAutomation(db, after, actor);
       }
     }
   }
   return after;
-}
-
-// If an issue's new delegate is an agent that reacts to delegation, queue a run so it
-// can act on the issue. Skipped when the agent delegated to itself (an agent setting
-// itself off). The run is executed later — by the poller or by the agent's runner —
-// so the write is never blocked on it.
-async function enqueueDelegateRun(
-  db: Db,
-  after: IssueRow,
-  actor?: ActivityActor,
-  queue?: RunQueueLike | null,
-): Promise<void> {
-  const delegate = after.delegateUserId;
-  if (!delegate || delegate === actorId(actor)) return;
-  const agent = await getAssignTriggerAgent(db, after.projectId, delegate, actorId(actor));
-  if (!agent) return;
-  await enqueueAgentRun(
-    db,
-    {
-      agentId: agent.id,
-      projectId: after.projectId,
-      issueId: after.id,
-      sourceActivityId: null,
-      prompt: `Work item ${after.identifier}: "${after.title}" has been delegated to you. Review it and take the appropriate next step.`,
-      delaySeconds: agent.delegationDelaySec,
-    },
-    queue,
-  );
 }
 
 // Deletes an issue and everything attached to it. Field options/values, labels,
@@ -1275,7 +1204,7 @@ export async function setIssueLabels(
 // --- Bulk actions ----------------------------------------------------------------
 // Board multi-select applies one change to many issues at once. Each of these runs
 // the single-issue operation per id in the request, so the per-issue side effects
-// (activity feed, webhooks, delegate runs) still fire, but the client makes one
+// (activity feed, webhooks) still fire, but the client makes one
 // request and refetches the board once instead of N times.
 
 // The subset of `ids` that belong to this project (active or archived). The bulk
@@ -1537,60 +1466,15 @@ function parseDatetime(value: unknown): Date | null {
   return date;
 }
 
-// Enforces that a member field holds someone the project offers for it: a member of
-// the project, and within the field's scope — the people only, the agents only, or
-// both. An agent's bot user also holds a project_member row, so the scope decides.
-async function assertFieldMember(
-  db: Db,
-  projectId: number,
-  scope: MemberScope | null,
-  userId: string,
-): Promise<void> {
-  const isAgent = await isProjectAgent(db, projectId, userId);
-  if (scope === 'agents') {
-    if (!isAgent) throw new HttpError(400, 'This field takes an agent of this project');
-    return;
-  }
-  if (!(await getMembership(db, projectId, userId)) || (scope === 'humans' && isAgent)) {
+// Enforces that a member field holds someone the project offers for it: a member of the
+// project.
+async function assertFieldMember(db: Db, projectId: number, userId: string): Promise<void> {
+  if (!(await getMembership(db, projectId, userId)))
     throw new HttpError(400, 'This field takes a member of this project');
-  }
-}
-
-// If the issue's new value for a member field is an agent that reacts to that field,
-// queue a run so it can act on the issue. Skipped when the agent set itself. The run
-// is executed later, so the write is never blocked on it.
-async function enqueueFieldRun(
-  db: Db,
-  projectId: number,
-  issueId: number,
-  field: CustomFieldRow,
-  userId: string,
-  actorUserId: string | null | undefined,
-  queue?: RunQueueLike | null,
-): Promise<void> {
-  if (userId === actorUserId) return;
-  const agent = await getFieldTriggerAgent(db, projectId, userId, field.id, actorUserId ?? null);
-  if (!agent) return;
-  const row = await getIssue(db, issueId);
-  if (!row) return;
-  await enqueueAgentRun(
-    db,
-    {
-      agentId: agent.id,
-      projectId,
-      issueId,
-      sourceActivityId: null,
-      trigger: 'field',
-      prompt: `Work item ${row.identifier}: "${row.title}" now has you as its "${field.name}". Review it and take the appropriate next step.`,
-      delaySeconds: agent.delaySec,
-    },
-    queue,
-  );
 }
 
 // Tells the person put into a member field about it and subscribes them to the issue,
-// the way an assignee is told. An agent is skipped: its bot user reads no inbox, and
-// its own trigger is what starts it.
+// the way an assignee is told.
 async function notifyFieldMember(
   db: Db,
   projectId: number,
@@ -1599,7 +1483,6 @@ async function notifyFieldMember(
   activityId: number | null,
   actorUserId: string | null | undefined,
 ): Promise<void> {
-  if (await isProjectAgent(db, projectId, userId)) return;
   await notifyIssueChange(db, {
     projectId,
     issueId,
@@ -1643,7 +1526,6 @@ export async function setIssueFieldValue(
     optionIds?: number[];
   },
   actorUserId?: string | null,
-  queue?: RunQueueLike | null,
 ): Promise<void> {
   const field = await getCustomFieldById(db, projectId, fieldId);
   if (!field) throw new HttpError(404, 'Custom field not found');
@@ -1660,7 +1542,7 @@ export async function setIssueFieldValue(
     field.fieldType === 'member' && typeof input.value === 'string' && input.value !== ''
       ? input.value
       : null;
-  if (memberUserId) await assertFieldMember(db, projectId, field.memberScope, memberUserId);
+  if (memberUserId) await assertFieldMember(db, projectId, memberUserId);
 
   // The markdown a field held before this write, so only the mentions the write
   // adds reach anyone.
@@ -1769,7 +1651,6 @@ export async function setIssueFieldValue(
   );
 
   if (memberUserId && memberUserId !== previousMemberUserId) {
-    await enqueueFieldRun(db, projectId, issueId, field, memberUserId, actorUserId, queue);
     await notifyFieldMember(db, projectId, issueId, memberUserId, entry?.id ?? null, actorUserId);
   }
 

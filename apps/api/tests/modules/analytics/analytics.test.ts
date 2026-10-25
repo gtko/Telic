@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser, type TestUser } from '../../helpers/auth';
 import { pulseRows } from '../../../src/modules/analytics/service';
-import { createAgent } from '../../helpers/agents';
 
 // Read-only project analytics. Every figure is derived from the issue /
 // project_column / issue_activity / issue_status tables, so the tests build state
@@ -251,27 +250,6 @@ describe('analytics', () => {
       });
       expect(res.data?.find((i) => i.key === 'none')).toMatchObject({
         label: 'Unassigned',
-        count: 1,
-      });
-    });
-
-    it('groups by delegate with a Not-delegated bucket', async () => {
-      const { asOwner, col } = await setupProject();
-      const agent = await makeAgent(asOwner, 'helperbot');
-      const delegated = await createIssue(asOwner, col.started);
-      await asOwner.issues({ issueId: delegated.id }).patch({ delegateUserId: agent.userId });
-      await createIssue(asOwner, col.started);
-
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        .analytics.breakdown.get({ query: { by: 'delegate' } });
-      expect(res.status).toBe(200);
-      expect(res.data?.find((i) => i.key === agent.userId)).toMatchObject({
-        label: 'helperbot',
-        count: 1,
-      });
-      expect(res.data?.find((i) => i.key === 'none')).toMatchObject({
-        label: 'Not delegated',
         count: 1,
       });
     });
@@ -641,55 +619,6 @@ describe('analytics', () => {
     });
   });
 
-  // Creates an agent (external by default) and returns its bot user id, so a test
-  // can delegate an issue to it or assert the workload roster.
-  async function makeAgent(
-    asOwner: Api,
-    username: string,
-    kind: 'external' | 'internal' = 'external',
-  ) {
-    const res = await createAgent(asOwner, 'MKT', { name: username, username, kind });
-    if (!res.data) throw new Error(`createAgent failed with status ${res.status}`);
-    return res.data.agent;
-  }
-
-  describe('agent runs', () => {
-    it('returns an empty feed for a project with no runs', async () => {
-      const { asOwner } = await setupProject();
-      const res = await asOwner.projects({ projectKey: 'MKT' })['analytics']['agent-runs'].get();
-      expect(res.status).toBe(200);
-      expect(res.data).toEqual([]);
-    });
-
-    it('accepts a status filter', async () => {
-      const { asOwner } = await setupProject();
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        ['analytics']['agent-runs'].get({ query: { status: 'failed' } });
-      expect(res.status).toBe(200);
-      expect(res.data).toEqual([]);
-    });
-
-    it('rejects an unknown status', async () => {
-      const { asOwner } = await setupProject();
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        ['analytics']['agent-runs'].get({ query: { status: 'nonsense' as unknown as 'failed' } });
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe('agent run stats', () => {
-    it('returns all-zero counts for a project with no runs', async () => {
-      const { asOwner } = await setupProject();
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        ['analytics']['agent-run-stats'].get();
-      expect(res.status).toBe(200);
-      expect(res.data).toEqual({ total: 0, success: 0, failed: 0, pending: 0 });
-    });
-  });
-
   describe('webhook stats', () => {
     it('returns all-zero counts for a project with no webhooks', async () => {
       const { asOwner } = await setupProject();
@@ -722,52 +651,6 @@ describe('analytics', () => {
     });
   });
 
-  describe('agent workload', () => {
-    it('returns an empty roster for a project with no agents', async () => {
-      const { asOwner } = await setupProject();
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        ['analytics']['agent-workload'].get();
-      expect(res.status).toBe(200);
-      expect(res.data).toEqual([]);
-    });
-
-    it('counts open issues delegated to an agent and reports zero runs', async () => {
-      const { asOwner, col } = await setupProject();
-      const agent = await makeAgent(asOwner, 'helperbot');
-      const issue = await createIssue(asOwner, col.started);
-      await asOwner.issues({ issueId: issue.id }).patch({ delegateUserId: agent.userId });
-
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        ['analytics']['agent-workload'].get();
-      expect(res.status).toBe(200);
-      const row = res.data?.find((r) => r.agentId === agent.id);
-      expect(row).toMatchObject({
-        agentName: 'helperbot',
-        delegatedOpen: 1,
-        runsTotal: 0,
-        runsSuccess: 0,
-        runsFailed: 0,
-      });
-    });
-
-    it('excludes completed and canceled issues from the delegated count', async () => {
-      const { asOwner, col } = await setupProject();
-      const agent = await makeAgent(asOwner, 'helperbot');
-      const open = await createIssue(asOwner, col.started);
-      const done = await createIssue(asOwner, col.completed);
-      await asOwner.issues({ issueId: open.id }).patch({ delegateUserId: agent.userId });
-      await asOwner.issues({ issueId: done.id }).patch({ delegateUserId: agent.userId });
-
-      const res = await asOwner
-        .projects({ projectKey: 'MKT' })
-        ['analytics']['agent-workload'].get();
-      const row = res.data?.find((r) => r.agentId === agent.id);
-      expect(row?.delegatedOpen).toBe(1);
-    });
-  });
-
   describe('access', () => {
     it('returns 404 for an unknown project', async () => {
       const { asOwner } = await setupProject();
@@ -788,10 +671,7 @@ describe('analytics', () => {
       expect((await scope.analytics.throughput.get()).status).toBe(403);
       expect((await scope.analytics.burnup.get()).status).toBe(403);
       expect((await scope.analytics.activity.get()).status).toBe(403);
-      expect((await scope['analytics']['agent-runs'].get()).status).toBe(403);
-      expect((await scope['analytics']['agent-run-stats'].get()).status).toBe(403);
       expect((await scope['analytics']['webhook-stats'].get()).status).toBe(403);
-      expect((await scope['analytics']['agent-workload'].get()).status).toBe(403);
     });
   });
 });

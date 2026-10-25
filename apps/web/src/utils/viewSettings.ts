@@ -10,10 +10,10 @@ import type { Sort, WorkItemsView } from '@/utils/viewTypes';
 // Field the Project columns / Table sections group by. 'none' is a single flat
 // list (Table only). Project always groups by something. `subgroup` (below) adds a
 // second level: Project swimlanes / Table sub-sections, and may be 'none'.
-// A `cf:<id>` key groups by a member custom field, which holds one person or agent
-// the way assignee and delegate do.
+// A `cf:<id>` key groups by a member custom field, which holds one person
+// the way assignee does.
 export type BuiltinGroupField =
-  'none' | 'status' | 'assignee' | 'delegate' | 'priority' | 'type' | 'initiative' | 'cycle';
+  'none' | 'status' | 'assignee' | 'priority' | 'type' | 'initiative' | 'cycle';
 export type GroupField = BuiltinGroupField | CustomFieldKey;
 
 // Issue properties that can be shown on a Project card or as a Table column.
@@ -25,7 +25,6 @@ export type DisplayProperty =
   | 'priority'
   | 'type'
   | 'assignee'
-  | 'delegate'
   | 'initiative'
   | 'cycle'
   | 'labels'
@@ -57,7 +56,6 @@ export const DISPLAY_PROPERTIES: DisplayProperty[] = [
   'priority',
   'type',
   'assignee',
-  'delegate',
   'initiative',
   'cycle',
   'labels',
@@ -214,7 +212,6 @@ const GROUP_FIELDS: BuiltinGroupField[] = [
   'none',
   'status',
   'assignee',
-  'delegate',
   'priority',
   'type',
   'initiative',

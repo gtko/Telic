@@ -31,7 +31,6 @@
     "status": "وضعیت",
     "statusType": "نوع وضعیت",
     "assignee": "مسئول",
-    "delegate": "واگذارشده",
     "priority": "اولویت",
     "type": "نوع",
     "initiative": "ابتکار",
@@ -44,7 +43,6 @@
   },
   "unset": {
     "assignee": "بدون مسئول",
-    "delegate": "بدون واگذارشده",
     "type": "بدون نوع",
     "initiative": "بدون ابتکار",
     "cycle": "بدون سیکل",

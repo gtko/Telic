@@ -127,8 +127,6 @@
     "ownerRemoved": "sahip {name} kişisini kaldırdı",
     "assigneeSet": "{name} kişisine atadı",
     "assigneeRemoved": "{name} üzerindeki atamayı kaldırdı",
-    "delegateSet": "{name} kişisini temsilci olarak belirledi",
-    "delegateRemoved": "{name} temsilcisini kaldırdı",
     "targetDateSet": "hedef tarihi {date} yaptı",
     "targetDateRemoved": "hedef tarihi kaldırdı",
     "startDateSet": "başlangıç tarihini {date} yaptı",

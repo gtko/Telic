@@ -81,9 +81,9 @@ docs and comments to describe only the current design.
 ## Layout
 
 ```
-apps/api               Elysia on a Worker: better-auth at /api/auth/*, agent runs, cron, run queue   :8787
+apps/api               Elysia on a Worker: better-auth at /api/auth/*, MCP server, cron   :8787
 apps/web               Next.js App Router, SSR on a Worker through OpenNext, shadcn, TanStack Query  :3001
-apps/worker            Worker: webhook and notification delivery, agent schedules, imports (cron + queue)
+apps/worker            Worker: webhook and notification delivery, imports (cron + queue)
 apps/bot               Worker: Telegram bot webhook
 packages/db            @repo/db          — Drizzle client for D1, schema, migrations, permission matrix, shared config readers
 packages/auth          @repo/auth        — better-auth server instance + instance auth settings
@@ -92,8 +92,6 @@ packages/storage       @repo/storage     — attachment bytes in R2, used by api
 packages/mailer        @repo/mailer      — Resend transport for outbound email
 packages/net           @repo/net         — SSRF guard for server-side fetches of a supplied URL
 packages/cron          @repo/cron        — the cron expression grammar shared by api and worker
-packages/agent-tools   @repo/agent-tools — tool definitions for the AI agent runtime
-packages/runner        @itsaplan/runner  — CLI that runs an external agent's queued tasks on the operator's own machine
 packages/eslint-config @repo/eslint-config — shared ESLint config
 scripts/               pg-to-d1 (one-time data migration), codemod-sqlite
 docs/                  see Docs below
@@ -103,7 +101,7 @@ Each Worker has a `wrangler.jsonc` that declares its bindings:
 
 | Worker         | D1 `DB` | R2 `BUCKET` | Queues                                   | Cron                 |
 | -------------- | ------- | ----------- | ---------------------------------------- | -------------------- |
-| `telic-api`    | yes     | yes         | produces and consumes `telic-agent-runs` | every minute, hourly |
+| `telic-api`    | yes     | yes         | none                                     | hourly               |
 | `telic-worker` | yes     | yes         | produces and consumes `telic-jobs`       | every minute         |
 | `telic-bot`    | yes     | no          | none                                     | none                 |
 | `telic-web`    | no      | no          | none                                     | none                 |
@@ -121,8 +119,6 @@ packages directly.** It talks to the API over HTTP (better-auth client + fetch).
 | `docs/dev/d1-notes.md`                                                                              | SQL, migrations, triggers, D1 limits                                     |
 | `docs/migration-data-pg-to-d1.md`                                                                   | `scripts/pg-to-d1`, the one-time data migration                          |
 | `docs/PORTING_TESTS_TODO.md`, `docs/DB_SIGNATURES.md`                                               | API tests not yet ported to the Workers suite; `db`-first signatures     |
-| `docs/runner.md`                                                                                    | `packages/runner` and its agent presets                                  |
-| `docs/agent-endpoint.md`                                                                            | external agents that receive tasks on their own HTTPS endpoint           |
 | `docs/mcp-results.md`                                                                               | the shape of MCP tool results (`structuredContent`)                      |
 | `docs/importing-from-linear.md`, `docs/dev/linear-import.md`                                        | the Linear import: user guide, implementation                            |
 | `docs/importing-from-plane.md`, `docs/dev/plane-import.md`, `docs/dev/plane-import-source-notes.md` | the Plane import: user guide, implementation, Plane API facts            |
@@ -157,7 +153,7 @@ of the database.
   `node` runs `src/**/*.vtest.ts` and `src/**/__tests__/d1/**`, with a Miniflare D1 started by
   the test.
 - `apps/worker` has the projects `unit` (`*.test.ts`) and `d1` (`*.vtest.ts`). `apps/bot` and
-  `packages/*` run plain `*.test.ts`. `apps/web` and `packages/agent-tools` use `bun test`.
+  `packages/*` run plain `*.test.ts`. `apps/web` uses `bun test`.
 - The suites never run in parallel (`--concurrency=1`).
 
 CI (`.github/workflows/ci.yml`) runs on every pull request: `format:check`, `lint`,
@@ -214,11 +210,7 @@ Release config traps:
 
 ## Gotchas
 
-- Shared packages have no build step. Their consumers import the source. The exception is
-  `packages/runner`, the only member published to npm. It bundles to `dist/`
-  (`bun build --target=node`), and its source uses no Bun APIs because the published CLI runs
-  on plain Node. Publish it by hand (`npm publish` after a `version` bump). release-please
-  versions the application, not this package.
+- Shared packages have no build step. Their consumers import the source.
 - A better-auth config change in `packages/auth` can change its tables. Run
   `bun run auth:generate`, then `bun run db:generate` and `db:migrate:local`.
 - D1 has no `db.transaction`, no row locks and at most 100 bound parameters per statement. Read

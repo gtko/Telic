@@ -110,7 +110,7 @@ truncated import, instead of importing the issue without the rest.
 ## Reviewing the mapping before you import
 
 After you pick the team and project, the team's workflow states are shown with the category
-itsaplan would automatically map each one to: Linear's own Backlog, Unstarted, Started,
+Telic would automatically map each one to: Linear's own Backlog, Unstarted, Started,
 Completed, and Canceled types map to the same categories, Triage to Backlog, and Duplicate to
 Canceled. Change any row that reads wrong before starting the import — a state you don't
 change keeps the automatic mapping.

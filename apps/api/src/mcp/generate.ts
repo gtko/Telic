@@ -57,7 +57,7 @@ export interface McpRouteTool {
 // where the method understates it — a POST that revokes a credential or turns
 // down an invite is destructive even though POST as a class is not:
 //
-//   detail: { ...mcpTool("regenerate_ai_agent_key", { destructiveHint: true }) }
+//   detail: { ...mcpTool("some_tool", { destructiveHint: true }) }
 //
 // `x-mcp` is an OpenAPI extension key, so it rides along in the route's detail,
 // is read back from app.routes by generateRouteTools, and does not show up as a
@@ -148,9 +148,7 @@ function mergeInputSchema(hooks: Record<string, unknown>, pathParams: string[]):
 }
 
 // The tool table derived from an app's routes, built once per app and cached: routes
-// are fixed after boot, so introspection runs on the first call only. Shared by the
-// MCP endpoint and the internal agent runtime, which build their tools from the same
-// table. Keyed by the app so a second app (a test's) gets its own table instead of
+// are fixed after boot, so introspection runs on the first call only. Keyed by the app so a second app (a test's) gets its own table instead of
 // inheriting whichever one was generated first.
 const cache = new WeakMap<McpApp, McpRouteTool[]>();
 export function routeTools(app: McpApp): McpRouteTool[] {

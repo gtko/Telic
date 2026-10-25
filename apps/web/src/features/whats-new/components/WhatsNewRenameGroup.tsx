@@ -3,7 +3,7 @@
 import { ArrowRight } from 'lucide-react';
 
 // One kind of renaming the migration did: what each name became. A team cannot hold
-// two roles, skills or agent handles of the same name, so the ones that collided
+// two roles of the same name, so the ones that collided
 // were given a suffix.
 export default function WhatsNewRenameGroup({
   title,

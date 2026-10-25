@@ -19,9 +19,7 @@ const OWNER_VALUE = 'owner';
 // A member's role, shown in the members list and in the team's project panel. A
 // reader who may reassign it gets a select — the team's custom roles, plus Owner when
 // they may hand that rank out; anyone else sees the current role name as a read-only
-// badge. The last owner cannot be demoted, so their select is disabled. An agent is
-// offered the roles without Owner: an owner bypasses the matrix, and the API refuses
-// it for an agent.
+// badge. The last owner cannot be demoted, so their select is disabled.
 export default function MemberRoleControl({
   projectKey,
   member,
@@ -31,7 +29,7 @@ export default function MemberRoleControl({
   isLastOwner,
 }: {
   projectKey: string;
-  member: Pick<MemberRow, 'userId' | 'role' | 'roleId' | 'roleName' | 'isAgent'>;
+  member: Pick<MemberRow, 'userId' | 'role' | 'roleId' | 'roleName'>;
   roles: Role[];
   canManage: boolean;
   // An owner bypasses the matrix, so only a project owner or someone who runs the team
@@ -87,9 +85,7 @@ export default function MemberRoleControl({
             {r.name}
           </SelectItem>
         ))}
-        {!member.isAgent && canGrantOwner && (
-          <SelectItem value={OWNER_VALUE}>{tCommon('owner')}</SelectItem>
-        )}
+        {canGrantOwner && <SelectItem value={OWNER_VALUE}>{tCommon('owner')}</SelectItem>}
       </SelectContent>
     </Select>
   );

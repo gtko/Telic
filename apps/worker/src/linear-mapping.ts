@@ -99,7 +99,7 @@ export interface LinearScope {
   projectId: string | null;
 }
 
-// Linear's WorkflowState.type. triage and duplicate have no itsaplan category of
+// Linear's WorkflowState.type. triage and duplicate have no Telic category of
 // their own; the mapping review step can still change either.
 const STATE_CATEGORY_MAP: Record<string, CanonicalStateCategory> = {
   triage: 'backlog',
@@ -123,7 +123,7 @@ export function mapLinearStates(nodes: LinearStateNode[]): CanonicalState[] {
   }));
 }
 
-// Linear: 0 none, 1 urgent, 2 high, 3 medium, 4 low. itsaplan stores the word, or null.
+// Linear: 0 none, 1 urgent, 2 high, 3 medium, 4 low. Telic stores the word, or null.
 const PRIORITIES: Record<number, string> = { 1: 'urgent', 2: 'high', 3: 'medium', 4: 'low' };
 
 export function linearPriority(priority: number): string | null {

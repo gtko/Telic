@@ -93,7 +93,7 @@ beforeEach(async () => {
     fetch: { configurable: true, value: () => new Promise(() => {}) },
     IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
-  Object.defineProperty(window, '__ITSAPLAN_ENV__', {
+  Object.defineProperty(window, '__TELIC_ENV__', {
     value: { apiUrl: 'https://example.test', privacyUrl: '', termsUrl: '' },
   });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });

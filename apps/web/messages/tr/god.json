@@ -7,12 +7,6 @@
   "users": {
     "empty": "Bu filtrelerle eşleşen hesap bulunamadı.",
     "searchPlaceholder": "Ada veya e-postaya göre ara",
-    "kind": "Hesap türü",
-    "kinds": {
-      "human": "Kişiler",
-      "agent": "Yapay zekâ botları",
-      "all": "Tüm hesaplar"
-    },
     "columns": {
       "account": "Hesap",
       "role": "Rol",
@@ -25,7 +19,6 @@
     "registered": "{date} tarihinde katıldı",
     "roleGod": "Süper Yönetici",
     "roleUser": "Kullanıcı",
-    "agent": "Ajan",
     "noProviders": "yok",
     "neverSeen": "hiçbir zaman",
     "verified": "Doğrulandı",
@@ -39,7 +32,6 @@
     },
     "activeLock": {
       "owner": "Örneklem sahibi her zaman aktiftir.",
-      "agent": "Bir ajanın hesabı bağlı olduğu ajanı takip eder.",
       "scim": "Hangi hesapların aktif olduğuna kimlik sağlayıcınız (SCIM) karar verir."
     },
     "deactivateTitle": "{email} devre dışı bırakılsın mı?",
@@ -49,7 +41,6 @@
   "userPanel": {
     "instanceOwner": "Örneklem sahibi",
     "user": "Kullanıcı",
-    "aiAgent": "Yapay zekâ ajanı",
     "emailVerified": "E-posta doğrulandı",
     "unconfirmedTitle": "E-posta adresi doğrulanmadı",
     "unconfirmedHint": "Onay bağlantısı kendilerine ulaşmadıysa buradan doğrulayabilirsiniz.",
@@ -71,7 +62,7 @@
     "deleteConfirm": "Hesabı sil",
     "deleteConfirmWithProjects": "{count, plural, one {Hesabı ve projeyi sil} other {Hesabı ve projeleri sil}}",
     "deleteMessage": "<strong>{name}</strong> bu örnekleme erişimini kaybeder. Yazdığı işler ve yorumlar yazar atanmamış olarak kalır. Bu işlem geri alınamaz.",
-    "deleteWorkspaceNote": "Bu hesabın sahip olduğu bir çalışma alanı, içinde proje veya yapay zekâ ajanı yoksa hesapla birlikte silinir. Aksi takdirde hesabın tek başına sahip olduğu her şeyle birlikte size devredilir.",
+    "deleteWorkspaceNote": "Bu hesabın sahip olduğu bir çalışma alanı, içinde proje yoksa hesapla birlikte silinir. Aksi takdirde hesabın tek başına sahip olduğu her şeyle birlikte size devredilir.",
     "soleOwnerTitle": "{count, plural, one {Bir projenin tek sahibi} other {# projenin tek sahibi}}",
     "soleOwnerHint": "{count, plural, one {Hesap silindiğinde projeyi kimse yönetemez.} other {Hesap silindiğinde projeleri kimse yönetemez.}}",
     "deleteWithProjects": "{count, plural, one {Projeyi hesapla birlikte sil} other {Projeleri hesapla birlikte sil}}",
@@ -87,7 +78,6 @@
       "project": "Proje",
       "members": "Üyeler",
       "issues": "İşler",
-      "agents": "Ajanlar",
       "lastActivity": "Son etkinlik",
       "mcp": "MCP"
     },
@@ -112,10 +102,7 @@
       "initiatives": "Girişimler",
       "members": "Üyeler",
       "dashboards": "Panolar",
-      "views": "Görünümler",
-      "agents": "Yapay zekâ ajanları",
-      "skills": "Yetenekler",
-      "tools": "Araçlar"
+      "views": "Görünümler"
     },
     "members": "Üyeler",
     "noMembersTitle": "Üye yok",
@@ -129,7 +116,6 @@
       "projects": "Projeler",
       "members": "Üyeler",
       "issues": "İşler",
-      "agents": "Ajanlar",
       "mcp": "MCP"
     },
     "mcpEnabled": "Etkin",
@@ -146,9 +132,6 @@
       "projects": "Projeler",
       "issues": "İşler",
       "members": "Üyeler",
-      "agents": "Yapay zekâ ajanları",
-      "skills": "Yetenekler",
-      "tools": "Araçlar",
       "roles": "Proje rolleri"
     },
     "projects": "Projeler",
@@ -165,8 +148,7 @@
     "roles": {
       "owner": "Sahip",
       "manager": "Yönetici",
-      "member": "Üye",
-      "agent": "Ajan"
+      "member": "Üye"
     },
     "joined": "{date} tarihinde katıldı"
   },
@@ -178,17 +160,7 @@
     "workspacesSaved": "Çalışma alanı ayarları kaydedildi",
     "workspaces": "Çalışma Alanları",
     "personalWorkspaces": "Herkes için bir çalışma alanı",
-    "personalWorkspacesHint": "Her hesaba kullanıcının adını taşıyan kendine ait bir çalışma alanı verilir. Kapalıyken kişiler yalnızca eklendikleri çalışma alanlarında çalışabilir.",
-    "agents": "Ajanlar",
-    "agentsSaved": "Ajan ayarları kaydedildi",
-    "traceRetention": "Çalıştırma izlerini saklama süresi",
-    "traceRetentionHint": "Her ajan çalıştırması model ve araç çağrılarını kaydeder. Kullanım panoları yalnızca saklanan çalıştırmaları sayar.",
-    "traceDays": "{days, plural, one {# gün} other {# gün}}",
-    "traceForever": "Süresiz",
-    "maxRunTime": "Azami çalışma süresi",
-    "maxRunTimeHint": "Bir ajan çalışmasının durdurulup başarısız olarak kaydedilmeden önce ne kadar sürebileceği. Bir ajanın kendi sınırı bunu aşamaz.",
-    "runMinutes": "{minutes, plural, one {# dakika} other {# dakika}}",
-    "runSeconds": "{seconds} sn"
+    "personalWorkspacesHint": "Her hesaba kullanıcının adını taşıyan kendine ait bir çalışma alanı verilir. Kapalıyken kişiler yalnızca eklendikleri çalışma alanlarında çalışabilir."
   },
   "authentication": {
     "saved": "Kimlik doğrulama ayarları kaydedildi",
@@ -239,7 +211,7 @@
     "fileSize": "Dosya boyutu",
     "fileSizeHint": "Bir yüklemenin taşıyabileceği tek dosya boyutu üst sınırı. Daha büyük dosyalar depolanmadan önce reddedilir.",
     "attachmentMb": "Ek boyutu (MB)",
-    "attachmentHint": "İş ekleri, açıklamaya yapıştırılan dosyalar ve ajanların eklediği dosyalar için geçerlidir.",
+    "attachmentHint": "İş ekleri ve açıklamaya yapıştırılan dosyalar için geçerlidir.",
     "avatarMb": "Profil resmi boyutu (MB)",
     "avatarHint": "Kişilerin hesapları için yüklediği profil resmi.",
     "mimeTypes": "Kabul edilen ek türleri",

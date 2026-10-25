@@ -662,10 +662,10 @@ describe('intégration : schéma réel de packages/db', () => {
     rmSync(base, { recursive: true, force: true });
   });
 
-  test('103 tables lues, ordre sans cycle, parents avant enfants pour toute clé étrangère', () => {
-    expect(tables).toHaveLength(103);
+  test('88 tables lues, ordre sans cycle, parents avant enfants pour toute clé étrangère', () => {
+    expect(tables).toHaveLength(88);
     const order = orderTables(tables);
-    expect(order).toHaveLength(103);
+    expect(order).toHaveLength(88);
     const pos = new Map(order.map((n, i) => [n, i]));
     for (const t of tables) {
       for (const fk of t.foreignKeys) {

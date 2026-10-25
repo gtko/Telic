@@ -50,7 +50,6 @@ export type ActivityAction =
   | 'description'
   | 'status'
   | 'assignee'
-  | 'delegate'
   | 'priority'
   | 'estimate'
   | 'type'
@@ -77,8 +76,6 @@ export type ActivityAction =
   | 'git_pr'
   // Entries recorded before the integration took other providers.
   | 'github_pr'
-  | 'agent_started'
-  | 'agent_finished'
   | 'comment_edited'
   | 'comment_deleted';
 

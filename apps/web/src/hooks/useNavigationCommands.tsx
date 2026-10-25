@@ -14,8 +14,6 @@ import {
 import { useTranslations } from 'next-intl';
 import { useSession } from '@/lib/auth-client';
 import {
-  aiAgentsPath,
-  aiTeamPath,
   apiDocsPath,
   dashboardsPath,
   documentsPath,
@@ -29,16 +27,11 @@ import {
   projectPath,
 } from '@/utils/paths';
 import { ACCOUNT_SECTIONS, accountPath } from '@/utils/accountSections';
-import { AI_AGENTS_SECTION, AI_TEAM_SECTIONS } from '@/utils/settingsSections';
 import { GOD_SECTIONS } from '@/utils/godSections';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useProjectFeatures } from '@/hooks/useProjectFeatures';
 import { useSettingsNavGroups } from '@/hooks/useSettingsNavGroups';
-import {
-  useAccountSectionLabel,
-  useGodSectionText,
-  useSettingsSectionText,
-} from '@/hooks/useSectionLabels';
+import { useAccountSectionLabel, useGodSectionText } from '@/hooks/useSectionLabels';
 import type { Command, CommandSection } from '@/utils/commands';
 
 // Every place the palette can navigate to, filtered by what the viewer may read.
@@ -49,7 +42,6 @@ import type { Command, CommandSection } from '@/utils/commands';
 // issues.
 export function useNavigationCommands(projectKey: string | null): CommandSection | null {
   const t = useTranslations('nav');
-  const sectionText = useSettingsSectionText();
   const godText = useGodSectionText();
   const accountLabel = useAccountSectionLabel();
   const router = useRouter();
@@ -86,24 +78,6 @@ export function useNavigationCommands(projectKey: string | null): CommandSection
         <BookOpenText />,
         documentsPath(key),
         'docs pages documentation',
-      );
-    for (const s of AI_TEAM_SECTIONS) {
-      if (can(s.resource, 'read'))
-        add(
-          `nav.ai-team.${s.slug}`,
-          sectionText(s.slug).label,
-          <s.icon />,
-          aiTeamPath(key, s.slug),
-          'ai team',
-        );
-    }
-    if (can(AI_AGENTS_SECTION.resource, 'read'))
-      add(
-        `nav.ai.${AI_AGENTS_SECTION.slug}`,
-        sectionText(AI_AGENTS_SECTION.slug).label,
-        <AI_AGENTS_SECTION.icon />,
-        aiAgentsPath(key),
-        'ai team agents',
       );
     add('nav.members', t('members'), <Users />, membersPath(key), 'team people invite');
     if (isMember)

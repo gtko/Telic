@@ -85,23 +85,14 @@ describe('attachments', () => {
     expect(res.status).toBe(400);
   });
 
-  it('serializes the shared project quota across issue, chat, and document uploads', async () => {
+  it('serializes the shared project quota across issue and document uploads', async () => {
     const { asOwner, issueId } = await setupIssue();
     await asOwner.god['storage-settings'].put({ projectQuotaMb: 1 });
-    const initial = 'x'.repeat(256 * 1024);
+    const initial = 'x'.repeat(400 * 1024);
 
     expect((await uploadFile(asOwner, issueId, 'issue.txt', 'text/plain', initial)).status).toBe(
       201,
     );
-    expect(
-      (
-        await asOwner.projects({ projectKey: 'MKT' })['chat-attachments'].post({
-          filename: 'chat.txt',
-          contentType: 'text/plain',
-          contentBase64: Buffer.from(initial).toString('base64'),
-        })
-      ).status,
-    ).toBe(201);
     const page = (
       await asOwner.projects({ projectKey: 'MKT' }).documents.post({ title: 'Handbook' })
     ).data!;

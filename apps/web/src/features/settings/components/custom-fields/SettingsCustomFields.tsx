@@ -61,7 +61,6 @@ export default function SettingsCustomFields({ project }: { project: ProjectDeta
     await createCustomField.mutateAsync({
       name: values.name,
       fieldType: values.fieldType,
-      memberScope: values.memberScope,
       showInBody: values.showInBody,
       options: values.options.map((o) => o.value),
       issueTypeId: scope === 'global' ? null : scope,
@@ -76,7 +75,6 @@ export default function SettingsCustomFields({ project }: { project: ProjectDeta
         name: values.name,
         showInBody: values.showInBody,
         fieldType: values.fieldType,
-        memberScope: values.memberScope,
         options: values.options,
       },
     });
