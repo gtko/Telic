@@ -106,11 +106,17 @@ function isLoopbackUrl(origin: string): boolean {
   );
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
+}
+
 function authConfig(env: AuthEnv): AuthConfig {
   // Frontend origins allowed to call the auth handler.
   const trustedOrigins = (env.APP_URL ?? '')
     .split(',')
-    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .map((origin) => stripTrailingSlashes(origin.trim()))
     .filter(Boolean);
   if (trustedOrigins.length === 0) {
     throw new Error('APP_URL is not set: public origin(s) of the web app.');
@@ -118,7 +124,7 @@ function authConfig(env: AuthEnv): AuthConfig {
 
   // Public URL of the backend, with the path a subpath proxy adds; the links in auth
   // emails and the OAuth redirect URIs are built from it.
-  const apiPublicUrl = (env.API_URL ?? '').replace(/\/+$/, '');
+  const apiPublicUrl = stripTrailingSlashes(env.API_URL ?? '');
   if (!apiPublicUrl) {
     throw new Error('API_URL is not set: public URL of the backend.');
   }
