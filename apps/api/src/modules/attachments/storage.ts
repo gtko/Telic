@@ -59,14 +59,12 @@ export interface SqlCondition {
 // statement atomically, and this replaces the advisory lock of the Postgres version.
 const PROJECT_USED_SQL = `(
   COALESCE((SELECT SUM(ia.size_bytes) FROM issue_attachment ia JOIN issue i ON i.id = ia.issue_id WHERE i.project_id = ?), 0)
-  + COALESCE((SELECT SUM(ca.size_bytes) FROM chat_attachment ca WHERE ca.project_id = ?), 0)
   + COALESCE((SELECT SUM(da.size_bytes) FROM document_asset da JOIN project_document pd ON pd.id = da.document_id WHERE pd.project_id = ?), 0)
   + COALESCE((SELECT SUM(na.size_bytes) FROM initiative_attachment na JOIN initiative it ON it.id = na.initiative_id WHERE it.project_id = ?), 0)
 )`;
 
 const WORKSPACE_USED_SQL = `(
   COALESCE((SELECT SUM(ia.size_bytes) FROM issue_attachment ia JOIN issue i ON i.id = ia.issue_id JOIN project p ON p.id = i.project_id JOIN team t ON t.id = p.team_id WHERE t.workspace_id = ?), 0)
-  + COALESCE((SELECT SUM(ca.size_bytes) FROM chat_attachment ca JOIN project p ON p.id = ca.project_id JOIN team t ON t.id = p.team_id WHERE t.workspace_id = ?), 0)
   + COALESCE((SELECT SUM(da.size_bytes) FROM document_asset da JOIN project_document pd ON pd.id = da.document_id JOIN project p ON p.id = pd.project_id JOIN team t ON t.id = p.team_id WHERE t.workspace_id = ?), 0)
   + COALESCE((SELECT SUM(na.size_bytes) FROM initiative_attachment na JOIN initiative it ON it.id = na.initiative_id JOIN project p ON p.id = it.project_id JOIN team t ON t.id = p.team_id WHERE t.workspace_id = ?), 0)
 )`;
@@ -92,12 +90,12 @@ export async function attachmentQuotaCondition(
   const params: Array<string | number | null> = [];
   if (limits.projectQuotaMb > 0) {
     parts.push(`(${PROJECT_USED_SQL} - ? + ? <= ?)`);
-    params.push(projectId, projectId, projectId, projectId);
+    params.push(projectId, projectId, projectId);
     params.push(replacedBytes, addedBytes, limits.projectQuotaMb * MB);
   }
   if (maxStorageBytes > 0) {
     parts.push(`(${WORKSPACE_USED_SQL} - ? + ? <= ?)`);
-    params.push(workspaceId, workspaceId, workspaceId, workspaceId);
+    params.push(workspaceId, workspaceId, workspaceId);
     params.push(replacedBytes, addedBytes, maxStorageBytes);
   }
   return { sql: parts.length > 0 ? parts.join(' AND ') : '1', params };
