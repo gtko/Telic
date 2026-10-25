@@ -1,6 +1,6 @@
 {
   "name": "telic",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "license": "AGPL-3.0-only",
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
