@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
+import { useTranslations } from 'next-intl';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import type { BoardIssue } from '@/lib/api/endpoints/issues';
 import { type Maps } from '@/utils/project';
@@ -7,10 +8,12 @@ import { useIsPhone } from '@/hooks/useIsPhone';
 import { usePermissions } from '@/hooks/usePermissions';
 import { isBlocked } from '@/utils/issueLinks';
 import { cn } from '@/lib/utils';
+import { MatrixCheckbox } from '@/components/common/inputs/MatrixCheckbox';
 import IssueContextMenu from '@/features/issue/components/actions/IssueContextMenu';
 import { DropLine } from '../shared/DropLine';
 import { IssueIdentifier } from '../shared/IssueIdentifier';
 import { SubtaskProgress } from '../shared/SubtaskProgress';
+import { useSelection } from '../../context/useSelection';
 import { useSubtaskFold } from '../../context/useSubtasks';
 import { columnKey, type OrderedColumn } from '../../utils/table';
 import { TableBuiltinCell } from './TableBuiltinCell';
@@ -32,6 +35,7 @@ export function TableRow({
   dropDisabled,
   onDrop,
   onClick,
+  onSelect,
   onOpenIssue,
 }: {
   project: ProjectDetail;
@@ -50,12 +54,18 @@ export function TableRow({
   dropDisabled: boolean;
   onDrop: (draggedId: number) => void;
   onClick: () => void;
+  // Set when the table is editable: the row gets a leading checkbox that reports
+  // whether Shift was held.
+  onSelect?: (shiftKey: boolean) => void;
   // Opens a linked issue from a sub-row.
   onOpenIssue: (id: number) => void;
 }) {
+  const t = useTranslations('workItems');
   // Drag is disabled on phones, and without work_items edit (reordering is an
   // issue edit).
   const { can } = usePermissions();
+  const selection = useSelection();
+  const selected = selection.isSelected(issue.id);
   const subtasks = useSubtaskFold();
   const {
     setNodeRef: dragRef,
@@ -95,10 +105,21 @@ export function TableRow({
           alignTop ? 'items-start' : 'items-center',
           indented ? 'pl-9' : 'pl-4',
           isDragging && 'opacity-40',
+          selected && 'kanban-card-selected',
         )}
         style={{ gridTemplateColumns: gridTemplate }}
       >
         {showDropLine && <DropLine className="top-0" />}
+        {onSelect && (
+          <MatrixCheckbox
+            checked={selected}
+            aria-label={t('selectIssue')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(e.shiftKey);
+            }}
+          />
+        )}
         <div className="flex min-w-0 items-center gap-2">
           {showId && (
             <IssueIdentifier

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCreateRole, useUpdateRole } from '@/services/roles.service';
-import { MatrixCheckbox } from './MatrixCheckbox';
+import { MatrixCheckbox } from '@/components/common/inputs/MatrixCheckbox';
 import {
   catalogSupport,
   groupResources,
