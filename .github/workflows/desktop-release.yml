@@ -90,7 +90,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           projectPath: apps/desktop
-          tauriScript: bunx tauri
+          tauriScript: bun run tauri
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: --bundles ${{ matrix.bundles }}
 
@@ -147,7 +147,7 @@ jobs:
 
       - name: Build the APK
         working-directory: apps/desktop
-        run: NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" bunx tauri android build --apk --ci
+        run: NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" bun run tauri android build --apk --ci
 
       - name: Upload the APK
         env:
@@ -156,16 +156,20 @@ jobs:
           VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           apk=$(find apps/desktop/src-tauri/gen/android/app/build/outputs/apk/universal/release -name '*.apk' | head -n 1)
+          [ -n "$apk" ] || { echo "::error::APK not found"; exit 1; }
           name="Telic_${VERSION}_android.apk"
           if [ "$SIGNED" != "true" ]; then
             name="Telic_${VERSION}_android-unsigned.apk"
+            note="The Android APK is unsigned and cannot be installed as is. Add the signing secrets described in apps/desktop/README.md and publish a new tag."
             body=$(gh release view "$GITHUB_REF_NAME" --json body -q .body)
-            gh release edit "$GITHUB_REF_NAME" --notes "$body
+            if [[ "$body" != *"$note"* ]]; then
+              gh release edit "$GITHUB_REF_NAME" --notes "$body
 
-          The Android APK is unsigned and cannot be installed as is. Add the signing secrets described in apps/desktop/README.md and publish a new tag."
+          $note"
+            fi
           fi
           cp "$apk" "$RUNNER_TEMP/$name"
-          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/$name"
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/$name" --clobber
 
   publish:
     name: Publish release

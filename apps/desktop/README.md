@@ -32,7 +32,7 @@ The tag must be `desktop-v` followed by the version in `package.json`, or the wo
 The APK is signed with the keystore in these repository secrets:
 
 - `ANDROID_KEYSTORE_BASE64`: the `.jks` file, base64-encoded.
-- `ANDROID_KEYSTORE_PASSWORD`: the password of the keystore and of the key.
+- `ANDROID_KEYSTORE_PASSWORD`: the password of the keystore and of the key. Do not use a backslash in it.
 - `ANDROID_KEY_ALIAS`: the key alias.
 
 Without them, the release has an unsigned APK (`*-unsigned.apk`) that Android does not install. To create the keystore once:
