@@ -43,15 +43,33 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     // The api answers 304 to it, and passing it on keeps a cached avatar cached.
     headers: forwardedHeaders(request),
     cache: 'no-store',
-    redirect: 'error',
+    // Workers rejects redirect: 'error'; 'manual' plus the check below keeps the
+    // guarantee that a redirect is never followed nor handed to the browser.
+    redirect: 'manual',
   });
+  if (isRedirect(upstream)) {
+    await upstream.body?.cancel();
+    return new Response(null, { status: 502 });
+  }
 
   const headers = new Headers();
   for (const name of PASSTHROUGH_HEADERS) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }
-  return new Response(upstream.body, { status: upstream.status, headers });
+  // A null-body status (304 to the forwarded if-none-match) cannot carry a stream.
+  const body = NULL_BODY_STATUSES.includes(upstream.status) ? null : upstream.body;
+  return new Response(body, { status: upstream.status, headers });
+}
+
+const NULL_BODY_STATUSES = [101, 204, 205, 304];
+
+// 304 stays: it answers the forwarded if-none-match, not a redirect.
+function isRedirect(response: Response): boolean {
+  return (
+    response.type === 'opaqueredirect' ||
+    (response.status >= 300 && response.status < 400 && response.status !== 304)
+  );
 }
 
 function forwardedHeaders(request: Request): HeadersInit {

@@ -12,6 +12,16 @@ afterEach(() => {
   else process.env.SERVICE_URL_API = originalOrigin;
 });
 
+// A 304 whose body is an empty stream, as a runtime fetch may hand it back.
+function notModified(): Response {
+  return {
+    status: 304,
+    type: 'default',
+    headers: new Headers({ etag: 'v1' }),
+    body: new ReadableStream(),
+  } as unknown as Response;
+}
+
 function get(path: string[]) {
   return GET(new Request('https://plan.test/media/example'), { params: Promise.resolve({ path }) });
 }
@@ -92,8 +102,28 @@ describe('public media proxy', () => {
     );
     assert.equal(capturedInput, `http://api:3000/attachments/${PUBLIC_ID}/raw?download=1`);
     assert.deepEqual(capturedInit?.headers, { 'if-none-match': 'v0' });
-    assert.equal(capturedInit?.redirect, 'error');
+    assert.equal(capturedInit?.redirect, 'manual');
     assert.equal(response.headers.get('content-type'), 'image/png');
     assert.equal(response.headers.get('x-private'), null);
+  });
+
+  it('never hands an upstream redirect to the browser', async () => {
+    process.env.SERVICE_URL_API = 'http://api:3000';
+    for (const status of [301, 302, 303, 307, 308]) {
+      globalThis.fetch = (async () =>
+        new Response(null, {
+          status,
+          headers: { location: 'https://elsewhere.test/' },
+        })) as typeof fetch;
+      const response = await get(['avatars', PUBLIC_ID, 'raw']);
+      assert.equal(response.status, 502, String(status));
+      assert.equal(response.headers.get('location'), null);
+    }
+  });
+
+  it('passes a 304 through to keep a cached avatar cached', async () => {
+    process.env.SERVICE_URL_API = 'http://api:3000';
+    globalThis.fetch = (async () => notModified()) as typeof fetch;
+    assert.equal((await get(['avatars', PUBLIC_ID, 'raw'])).status, 304);
   });
 });
