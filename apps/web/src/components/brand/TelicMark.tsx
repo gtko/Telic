@@ -1,6 +1,5 @@
-// The 'Telic' brand mark: an arc rising to a dot, the goal (telos) it reaches. One color
-// via currentColor so it stays legible at favicon size. Decorative — the caller sets
-// size/color via className.
+// The Telic mark: an arc that ends at a dot. Drawn in currentColor, so the caller sets
+// size and color via className.
 export default function TelicMark({ className }: { className?: string }) {
   return (
     <svg
