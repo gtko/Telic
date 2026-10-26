@@ -6,19 +6,27 @@ import type { TakeoverSection } from '@/components/common/page/TakeoverScreen';
 import { renderMarkdown, sanitizeHtml } from '@/lib/markdown';
 import { isNewerVersion } from '@/utils/version';
 import { formatDate } from '@/utils/dates';
+import { tagSections } from '../utils/releaseNotes';
 
 // One release's notes. They arrive as rendered HTML from the release feed and as
 // markdown from the changelog of this build; both end up sanitized.
 function ReleaseBody({ release, empty }: { release: Release; empty: string }) {
   const html = useMemo(() => {
     const options = { newTabLinks: true };
-    return release.notesFormat === 'html'
-      ? sanitizeHtml(release.notes, options)
-      : renderMarkdown(release.notes, options);
+    const sanitized =
+      release.notesFormat === 'html'
+        ? sanitizeHtml(release.notes, options)
+        : renderMarkdown(release.notes, options);
+    return tagSections(sanitized);
   }, [release.notes, release.notesFormat]);
 
   if (!html) return <p className="text-sm text-muted-foreground">{empty}</p>;
-  return <div className="md-content max-w-[68ch]" dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className="md-content release-notes max-w-[68ch]"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 // The running release is the reader's, the ones above it are not installed yet.
