@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { waitUntil } from 'cloudflare:workers';
 import { type Db, getSentryConfig, issue, projectColumn, sentryIssue, sentryRoute } from '@repo/db';
 
 // Every other column is created with a position of 0 or more (createColumn and
@@ -116,4 +117,39 @@ export async function updateSentryIssueStatus(
   } catch (err) {
     console.error(`[sentry] status update of issue ${sentryIssueId} failed:`, err);
   }
+}
+
+// Runs a Sentry call after the response is sent: waitUntil keeps the Worker alive until it
+// settles, so the request neither waits for it nor fails with it. An error is logged only.
+function inBackground(label: string, task: () => Promise<void>): void {
+  try {
+    waitUntil(task().catch((err) => console.error(`[sentry] ${label} failed:`, err)));
+  } catch (err) {
+    console.error(`[sentry] ${label} failed:`, err);
+  }
+}
+
+// Resolves the Sentry issues linked to a Telic issue, when the issue sits in a completed column.
+export function resolveSentryIssuesOnCompletion(db: Db, issueId: number): void {
+  inBackground(`resolve of issue ${issueId}`, async () => {
+    const rows = await db
+      .select({ sentryIssueId: sentryIssue.sentryIssueId, stateType: projectColumn.stateType })
+      .from(sentryIssue)
+      .innerJoin(issue, eq(issue.id, sentryIssue.issueId))
+      .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
+      .where(eq(sentryIssue.issueId, issueId));
+    if (rows[0]?.stateType !== 'completed') return;
+    for (const row of rows) await updateSentryIssueStatus(db, row.sentryIssueId, 'resolved');
+  });
+}
+
+// Ignores the Sentry issues linked to a Telic issue.
+export function ignoreLinkedSentryIssues(db: Db, issueId: number): void {
+  inBackground(`ignore of issue ${issueId}`, async () => {
+    const rows = await db
+      .select({ sentryIssueId: sentryIssue.sentryIssueId })
+      .from(sentryIssue)
+      .where(eq(sentryIssue.issueId, issueId));
+    for (const row of rows) await updateSentryIssueStatus(db, row.sentryIssueId, 'ignored');
+  });
 }

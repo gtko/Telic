@@ -13,6 +13,7 @@ import { labelRoutes } from './modules/labels';
 import { customFieldRoutes } from './modules/custom-fields';
 import { issueTemplateRoutes } from './modules/issue-templates';
 import { issueRoutes } from './modules/issues';
+import { sentryTriageRoutes } from './modules/sentry';
 import { initiativeRoutes } from './modules/initiatives';
 import { cycleRoutes } from './modules/cycles';
 import { attachmentRoutes } from './modules/attachments';
@@ -69,6 +70,7 @@ export const planner = new Elysia({ name: 'planner' })
   .use(customFieldRoutes)
   .use(issueTemplateRoutes)
   .use(issueRoutes)
+  .use(sentryTriageRoutes)
   .use(initiativeRoutes)
   .use(cycleRoutes)
   .use(attachmentRoutes)
