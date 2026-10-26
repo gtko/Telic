@@ -44,15 +44,20 @@ import {
 } from '#modules/scim/mappings';
 import {
   deleteInstanceUser,
+  deleteSentryRoute,
   getInstanceProject,
   getInstanceTeam,
   getInstanceUser,
+  getSentrySettings,
   listInstanceProjects,
   listInstanceTeams,
   listInstanceTeamProjects,
   listInstanceTeamMembers,
   listInstanceUsers,
+  listSentryRoutes,
   setInstanceUserActive,
+  setSentrySettings,
+  upsertSentryRoute,
   verifyInstanceUserEmail,
   type ActiveLock,
 } from './service';
@@ -74,6 +79,11 @@ import {
   InstanceUserPageResponse,
   OidcSettingsBody,
   OidcSettingsResponse,
+  SentryRouteBody,
+  SentryRouteResponse,
+  SentryRoutesResponse,
+  SentrySettingsBody,
+  SentrySettingsResponse,
   StorageSettingsBody,
   TelegramSettingsBody,
   TelegramSettingsResponse,
@@ -82,6 +92,7 @@ import {
   projectParams,
   scimGroupParams,
   searchPageQuery,
+  sentryRouteParams,
   teamParams,
   userParams,
 } from './model';
@@ -525,6 +536,69 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
         summary: 'Update Telegram bot settings',
         description:
           'Update the instance Telegram bot token and whether the bot is in use. The token is verified with Telegram before it is stored.',
+      },
+    },
+  )
+
+  .get('/god/sentry', ({ db }) => getSentrySettings(db), {
+    response: { 200: SentrySettingsResponse, ...errors(401, 403) },
+    detail: {
+      summary: 'Get Sentry settings',
+      description:
+        'Get the instance Sentry integration: the organization, whether the auth token and the client secret are stored (never returned), and the webhook URL to register in Sentry.',
+    },
+  })
+
+  .put('/god/sentry', ({ db, body }) => setSentrySettings(db, body), {
+    body: SentrySettingsBody,
+    response: { 200: SentrySettingsResponse, ...errors(400, 401, 403) },
+    detail: {
+      summary: 'Update Sentry settings',
+      description:
+        'Update the Sentry organization, auth token and client secret. An omitted or empty secret keeps the stored value.',
+    },
+  })
+
+  .get('/god/sentry/routes', ({ db }) => listSentryRoutes(db), {
+    response: { 200: SentryRoutesResponse, ...errors(401, 403) },
+    detail: {
+      summary: 'List Sentry routes',
+      description: 'Get which Sentry project sends its issues to which Telic project.',
+    },
+  })
+
+  .put(
+    '/god/sentry/routes',
+    async ({ db, body }) => {
+      const route = await upsertSentryRoute(db, body);
+      if (!route) throw new HttpError(404, 'Project not found');
+      return route;
+    },
+    {
+      body: SentryRouteBody,
+      response: { 200: SentryRouteResponse, ...commonErrors },
+      detail: {
+        summary: 'Route a Sentry project',
+        description:
+          'Send the issues of a Sentry project to a Telic project. A Sentry project that already has a route moves to the new project.',
+      },
+    },
+  )
+
+  .delete(
+    '/god/sentry/routes/:id',
+    async ({ db, params }) => {
+      if (!(await deleteSentryRoute(db, params.id))) {
+        throw new HttpError(404, 'Sentry route not found');
+      }
+      return noContent();
+    },
+    {
+      params: sentryRouteParams,
+      response: { 204: t.Void(), ...commonErrors },
+      detail: {
+        summary: 'Delete a Sentry route',
+        description: 'Stop sending the issues of a Sentry project to its Telic project.',
       },
     },
   )
