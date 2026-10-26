@@ -462,7 +462,7 @@ export const projectColumn = sqliteTable(
   (t) => [
     check(
       'project_column_state_type_check',
-      sql`${t.stateType} IN ('backlog', 'unstarted', 'started', 'completed', 'canceled')`,
+      sql`${t.stateType} IN ('backlog', 'triage', 'unstarted', 'started', 'completed', 'canceled')`,
     ),
     check('project_column_wip_mode_check', sql`${t.wipMode} IN ('soft', 'hard')`),
     check('project_column_wip_limit_check', sql`${t.wipLimit} IS NULL OR ${t.wipLimit} > 0`),
@@ -1874,6 +1874,37 @@ export const webhookDelivery = sqliteTable(
       .where(sql`${t.status} = 'pending'`),
     index('webhook_delivery_webhook_idx').on(t.webhookId),
   ],
+);
+
+// A Sentry project routed into a Telic project. The slug is the Sentry project's slug
+// in the organization set in the Sentry configuration.
+export const sentryRoute = sqliteTable(
+  'sentry_route',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sentryProjectSlug: text('sentry_project_slug').notNull().unique(),
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => project.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(CAST(unixepoch('subsecond') * 1000 AS INTEGER))`),
+  },
+  (t) => [index('sentry_route_project_idx').on(t.projectId)],
+);
+
+// A Sentry issue linked to a Telic issue. Several Sentry issues can point at one Telic
+// issue after a merge, so issue_id is indexed and not unique.
+export const sentryIssue = sqliteTable(
+  'sentry_issue',
+  {
+    sentryIssueId: text('sentry_issue_id').primaryKey(),
+    issueId: integer('issue_id')
+      .notNull()
+      .references(() => issue.id, { onDelete: 'cascade' }),
+    lastEventAt: integer('last_event_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('sentry_issue_issue_idx').on(t.issueId)],
 );
 
 // Background job that imports issues from an external tracker into a project. The
