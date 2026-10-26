@@ -1,0 +1,181 @@
+name: Desktop release
+
+# A `desktop-vX.Y.Z` tag builds the Tauri app in apps/desktop for Windows, Linux and
+# Android and attaches the files to a GitHub release for that tag. The tag must match
+# the version in apps/desktop/package.json. See apps/desktop/README.md.
+on:
+  push:
+    tags: ['desktop-v*']
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  BUN_VERSION: 1.4.3
+  NDK_VERSION: 27.0.12077973
+
+jobs:
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: version
+        name: Check the tag against the app version
+        run: |
+          version=$(jq -r .version apps/desktop/package.json)
+          if [ "$GITHUB_REF_NAME" != "desktop-v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # --latest=false keeps the release-please vX.Y.Z release as the latest release.
+      - id: release
+        name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --latest=false --verify-tag \
+            --title "Telic apps $VERSION" \
+            --notes "Telic $VERSION for Windows (installer), Linux (AppImage, .deb) and Android (APK)."
+          echo "id=$(gh release view "$GITHUB_REF_NAME" --json databaseId -q .databaseId)" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: Build ${{ matrix.name }}
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            bundles: nsis
+          - name: Linux
+            os: ubuntu-22.04
+            bundles: appimage,deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile --linker hoisted --filter @repo/desktop
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: bun run tauri
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: --bundles ${{ matrix.bundles }}
+
+  android:
+    name: Build Android
+    needs: create-release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile --linker hoisted --filter @repo/desktop
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - run: sdkmanager "ndk;$NDK_VERSION"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      # The keystore is written outside the repository and read by gen/android/app/build.gradle.kts.
+      - id: keystore
+        name: Write the signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "::warning::Android signing secrets are not set. The APK is published unsigned."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "password=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+          } > apps/desktop/src-tauri/gen/android/keystore.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the APK
+        working-directory: apps/desktop
+        run: NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" bun run tauri android build --apk --ci
+
+      - name: Upload the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.keystore.outputs.signed }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          apk=$(find apps/desktop/src-tauri/gen/android/app/build/outputs/apk/universal/release -name '*.apk' | head -n 1)
+          [ -n "$apk" ] || { echo "::error::APK not found"; exit 1; }
+          name="Telic_${VERSION}_android.apk"
+          if [ "$SIGNED" != "true" ]; then
+            name="Telic_${VERSION}_android-unsigned.apk"
+            note="The Android APK is unsigned and cannot be installed as is. Add the signing secrets described in apps/desktop/README.md and publish a new tag."
+            body=$(gh release view "$GITHUB_REF_NAME" --json body -q .body)
+            if [[ "$body" != *"$note"* ]]; then
+              gh release edit "$GITHUB_REF_NAME" --notes "$body
+
+          $note"
+            fi
+          fi
+          cp "$apk" "$RUNNER_TEMP/$name"
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/$name" --clobber
+
+  publish:
+    name: Publish release
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
