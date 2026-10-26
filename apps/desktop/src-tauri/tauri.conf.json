@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Telic",
-  "version": "0.1.0",
-  "identifier": "dev.telic.desktop",
+  "version": "../package.json",
+  "identifier": "dev.telic.app",
   "build": {
     "frontendDist": "../ui"
   },

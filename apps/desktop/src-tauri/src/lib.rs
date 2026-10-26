@@ -21,37 +21,44 @@ fn is_internal(url: &Url, allowed: &[Option<String>]) -> bool {
             .is_some_and(|host| allowed.iter().flatten().any(|a| a == host))
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build());
+    builder
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let allowed = [host_of(APP_URL), host_of(API_URL)];
             let handle = app.handle().clone();
-            WebviewWindowBuilder::new(
+            let window = WebviewWindowBuilder::new(
                 app,
                 "main",
                 WebviewUrl::External(APP_URL.parse().expect("invalid TELIC_APP_URL")),
-            )
-            .title("Telic")
-            .inner_size(1280.0, 800.0)
-            .min_inner_size(900.0, 600.0)
-            .on_navigation(move |url| {
-                if is_internal(url, &allowed) {
-                    return true;
-                }
-                if matches!(url.scheme(), "https" | "http") {
-                    let _ = handle.opener().open_url(url.as_str(), None::<&str>);
-                }
-                false
-            })
-            .build()?;
+            );
+            #[cfg(desktop)]
+            let window = window
+                .title("Telic")
+                .inner_size(1280.0, 800.0)
+                .min_inner_size(900.0, 600.0);
+            window
+                .on_navigation(move |url| {
+                    if is_internal(url, &allowed) {
+                        return true;
+                    }
+                    if matches!(url.scheme(), "https" | "http") {
+                        let _ = handle.opener().open_url(url.as_str(), None::<&str>);
+                    }
+                    false
+                })
+                .build()?;
             Ok(())
         })
         .run(tauri::generate_context!())
