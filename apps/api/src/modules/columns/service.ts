@@ -250,6 +250,8 @@ export async function deleteColumn(
   const column = await getColumnById(db, columnId);
   if (!column || column.projectId !== projectId)
     throw new HttpError(404, `Column ${columnId} not found`);
+  if (column.stateType === 'triage')
+    throw new HttpError(400, 'The triage column cannot be deleted');
 
   let target: ColumnRow | null = null;
   if (opts.mode === 'move') {

@@ -34,6 +34,7 @@ import { ApplyActionDialog, DeleteIssueDialog, matchedActions } from './IssueAct
 import { buildIssueBranchName } from '../../utils/issuePrompt';
 import { useSession } from '@/lib/auth-client';
 import { toDateStr } from '@/utils/dates';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { colorDot } from '@/components/common/fields/colorDot';
 import { PRIORITY_FIELDS } from '@/components/common/fields/priorityFields';
 import { StateIcon } from '../shared/IssueIcons';
@@ -173,7 +174,7 @@ export default function IssueContextMenu({
                   {t('status')}
                 </ContextMenuSubTrigger>
                 <ContextMenuSubContent className="w-56">
-                  {project.columns.map((c) => (
+                  {selectableColumns(project.columns).map((c) => (
                     <ContextMenuItem key={c.id} onSelect={() => patch({ columnId: c.id })}>
                       <StateIcon stateType={c.stateType} color={c.color} className="size-3.5" />
                       <span className="truncate">{c.name}</span>

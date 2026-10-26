@@ -18,6 +18,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { usePriorityLabel } from '@/hooks/usePriorityLabel';
 import { useInitiativeOptionsQuery } from '@/services/initiatives.service';
 import { CYCLE_STATUS_META } from '@/utils/cycleMeta';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { subtaskCount } from '@/utils/subtasks';
 import { cn } from '@/lib/utils';
 import { colorDot } from '@/components/common/fields/colorDot';
@@ -83,7 +84,7 @@ export function BulkActionBar({ project }: { project: ProjectDetail }) {
                 label={t('status')}
                 disabled={disabled}
               >
-                {project.columns.map((c) => (
+                {selectableColumns(project.columns).map((c) => (
                   <DropdownMenuItem
                     key={c.id}
                     onSelect={() => void bulk.patch(ids, { columnId: c.id })}

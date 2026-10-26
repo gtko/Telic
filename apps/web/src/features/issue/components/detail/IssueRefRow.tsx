@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import type { IssueRef } from '@/lib/api/endpoints/issues';
 import { issuePath } from '@/utils/paths';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { Button } from '@/components/ui/button';
 import PopoverPick from '@/components/common/fields/PopoverPick';
 import ArchivedBadge from '@/components/common/ArchivedBadge';
@@ -92,7 +93,7 @@ export default function IssueRefRow({
                 {column.name}
               </button>
             }
-            items={project.columns.map((c) => ({
+            items={selectableColumns(project.columns).map((c) => ({
               key: String(c.id),
               search: c.name,
               icon: <StateIcon stateType={c.stateType} color={c.color} />,

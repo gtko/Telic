@@ -1,3 +1,4 @@
+import { selectableColumns } from '@/utils/fieldOptions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Editor } from '@tiptap/react';
 import { MoreHorizontal } from 'lucide-react';
@@ -70,7 +71,9 @@ export default function NewIssueModal({
   const tFields = useTranslations('issue.fields');
   const [title, setTitle] = useState(defaults.title ?? '');
   const [description, setDescription] = useState(defaults.description ?? '');
-  const [columnId, setColumnId] = useState(defaults.columnId ?? project.columns[0]?.id ?? 0);
+  const [columnId, setColumnId] = useState(
+    defaults.columnId ?? selectableColumns(project.columns)[0]?.id ?? 0,
+  );
   const [typeId, setTypeId] = useState<number | null>(
     defaults.typeId === undefined
       ? (project.issueTypes.find((t) => t.isDefault)?.id ?? null)

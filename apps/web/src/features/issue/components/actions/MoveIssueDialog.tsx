@@ -6,6 +6,7 @@ import type { Issue } from '@/lib/api/endpoints/issues';
 import { useIssueQuery, useMoveIssue } from '@/services/issues.service';
 import { useProjectQuery, useProjectsQuery } from '@/services/projects.service';
 import { issuePath } from '@/utils/paths';
+import { selectableColumns } from '@/utils/fieldOptions';
 import ConfirmDialog from '@/components/common/overlay/ConfirmDialog';
 import { Label } from '@/components/ui/label';
 import {
@@ -92,7 +93,7 @@ export default function MoveIssueDialog({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={MATCHING}>{t('moveColumnMatching')}</SelectItem>
-            {targetDetail?.columns.map((c) => (
+            {selectableColumns(targetDetail?.columns ?? []).map((c) => (
               <SelectItem key={c.id} value={String(c.id)}>
                 {c.name}
               </SelectItem>

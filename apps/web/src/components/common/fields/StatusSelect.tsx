@@ -1,5 +1,6 @@
 import { CircleDashed } from 'lucide-react';
 import type { Column } from '@/lib/api/endpoints/columns';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { colorDot } from './colorDot';
 import { Pill } from './Pill';
 import PopoverPick from './PopoverPick';
@@ -48,7 +49,7 @@ export default function StatusSelect({
               },
             ]
           : []),
-        ...columns.map((c) => ({
+        ...selectableColumns(columns).map((c) => ({
           key: String(c.id),
           search: c.name,
           icon: colorDot(c.color),

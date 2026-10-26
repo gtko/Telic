@@ -18,6 +18,7 @@ import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import type { IssuePatch } from '@/lib/api/endpoints/issues';
 import { actionIcon } from '@/utils/actionIcons';
 import { toDateStr } from '@/utils/dates';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { useActionsQuery } from '@/services/actions.service';
 import { useIssueQuery, useRestoreIssue, useUpdateIssue } from '@/services/issues.service';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -135,7 +136,7 @@ export function useIssueCommands(
       submenu: {
         heading: t('status'),
         placeholder: t('statusPlaceholder'),
-        items: project.columns.map((c) => ({
+        items: selectableColumns(project.columns).map((c) => ({
           id: `issue.status.${c.id}`,
           label: c.name,
           icon: <StateIcon stateType={c.stateType} color={c.color} className="size-3.5" />,

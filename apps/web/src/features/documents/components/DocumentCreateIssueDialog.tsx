@@ -8,6 +8,7 @@ import { listDocumentIssueLinks, linkDocumentIssue } from '@/lib/api/endpoints/d
 import { useShell } from '@/context/shellContext';
 import { qk } from '@/services/queryKeys';
 import { documentPath, issuePath } from '@/utils/paths';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -38,7 +39,7 @@ export default function DocumentCreateIssueDialog({
   const { project } = useShell();
   const qc = useQueryClient();
   const [title, setTitle] = useState(quote.slice(0, 255));
-  const [columnId, setColumnId] = useState(project?.columns[0]?.id ?? 0);
+  const [columnId, setColumnId] = useState(selectableColumns(project?.columns ?? [])[0]?.id ?? 0);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState(false);
   const created = useRef<Issue | null>(null);
@@ -122,7 +123,7 @@ export default function DocumentCreateIssueDialog({
             onChange={(event) => setColumnId(Number(event.target.value))}
             disabled={pending || created.current !== null}
           >
-            {project?.columns.map((column) => (
+            {selectableColumns(project?.columns ?? []).map((column) => (
               <option key={column.id} value={column.id}>
                 {column.name}
               </option>

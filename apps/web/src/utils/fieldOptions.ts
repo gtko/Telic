@@ -3,7 +3,7 @@
 // keeping its own copy. Adding a priority/state is a single edit in this file
 // (plus its icon in the two icon renderers and its message).
 
-import type { StateType } from '@/lib/api/endpoints/columns';
+import type { Column, StateType } from '@/lib/api/endpoints/columns';
 import type { CycleStatus } from '@/lib/api/endpoints/cycles';
 import type { InitiativeStatus } from '@/lib/api/endpoints/initiatives';
 
@@ -46,3 +46,9 @@ export const STATE_TYPES: StateType[] = [
 // The state types a user can pick or create. The triage column is managed by the Sentry
 // integration, so it is left out of filters and of Settings › States.
 export const SELECTABLE_STATE_TYPES: StateType[] = STATE_TYPES.filter((s) => s !== 'triage');
+
+// The columns a user can move an issue into or group a board by. The triage column is
+// read on the Triage page only, so the pickers and the board leave it out.
+export function selectableColumns(columns: Column[]): Column[] {
+  return columns.filter((c) => SELECTABLE_STATE_TYPES.includes(c.stateType));
+}

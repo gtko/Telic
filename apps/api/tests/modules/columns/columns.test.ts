@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
-import { deliverSentry, sentryIssue, setupRoutedProject } from '../../helpers/sentry';
+import { deliverSentry, sentryIssue, setupRoutedProject, triageIssues } from '../../helpers/sentry';
 
 // Columns (kanban states). There is no GET /columns route — a column is read back
 // through the project view (GET /projects/:projectKey), whose `columns` field is
@@ -224,6 +224,20 @@ describe('columns', () => {
   });
 
   describe('delete', () => {
+    it('refuses to delete the triage column and keeps the issues in it', async () => {
+      const { asOwner } = await setupRoutedProject();
+      await deliverSentry(sentryIssue('9002'));
+      const triage = (await columnsOf(asOwner)).find((c) => c.stateType === 'triage')!;
+
+      const del = await asOwner
+        .projects({ projectKey: 'MKT' })
+        .columns({ columnId: triage.id })
+        .delete({ mode: 'delete' });
+      expect(del.status).toBe(400);
+      expect((await columnsOf(asOwner)).map((c) => c.id)).toContain(triage.id);
+      expect(await triageIssues(asOwner)).toHaveLength(1);
+    });
+
     it("moves the column's issues to the target, then drops the column", async () => {
       const { asOwner } = await setupProject();
       const todo = await columnByName(asOwner, 'Todo');
