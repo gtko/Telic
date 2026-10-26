@@ -1,0 +1,21 @@
+{
+  "title": "Triage",
+  "description": "Erreurs reçues de Sentry. Elles restent hors des listes tant qu’elles ne sont pas acceptées.",
+  "listLabel": "Issues en triage",
+  "detailLabel": "Détail de l’issue",
+  "empty": {
+    "title": "Rien à trier",
+    "description": "Les nouvelles erreurs Sentry de ce projet apparaîtront ici."
+  },
+  "loadFailed": "Impossible de charger le triage. Cliquez pour réessayer.",
+  "openInSentry": "Ouvrir dans Sentry",
+  "accept": "Accepter",
+  "merge": "Fusionner…",
+  "reject": "Rejeter",
+  "actionsHint": "Accepter : vers le backlog. Rejeter : vers Annulée.",
+  "mergeTitle": "Fusionner dans l’issue",
+  "mergePrompt": "Rechercher par titre ou clé",
+  "accepted": "Issue acceptée",
+  "rejected": "Issue rejetée",
+  "merged": "Fusionnée dans {identifier}"
+}

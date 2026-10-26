@@ -45,6 +45,10 @@
       "label": "Telegram",
       "description": "The bot people connect their Telegram account to, and the one that delivers Telegram notifications for projects that set no bot of their own."
     },
+    "sentry": {
+      "label": "Sentry",
+      "description": "Sentry errors of the routed projects arrive in the triage column of the Telic project you choose."
+    },
     "email": {
       "label": "Email provider",
       "description": "The mail provider the instance sends through: password resets, address confirmation, and sign-in links."

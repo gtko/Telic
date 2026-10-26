@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import type { Column, StateType, WipMode } from '@/lib/api/endpoints/columns';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import { useDndSensors } from '@/lib/dnd';
-import { STATE_TYPES } from '@/utils/fieldOptions';
+import { SELECTABLE_STATE_TYPES, STATE_TYPES } from '@/utils/fieldOptions';
 import { DEFAULT_COLOR } from '@/utils/project';
 import AssigneeSelect from '@/components/common/fields/AssigneeSelect';
 import { Button } from '@/components/ui/button';
@@ -122,7 +122,7 @@ export default function SettingsStates({ project }: { project: ProjectDetail }) 
     <div className="space-y-4">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div>
-          {STATE_TYPES.map((s) => {
+          {SELECTABLE_STATE_TYPES.map((s) => {
             const group = project.columns.filter((c) => c.stateType === s);
             return (
               <div key={s} className="mb-8 last:mb-0">

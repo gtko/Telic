@@ -42,3 +42,7 @@ export const STATE_TYPES: StateType[] = [
   'completed',
   'canceled',
 ];
+
+// The state types a user can pick or create. The triage column is managed by the Sentry
+// integration, so it is left out of filters and of Settings › States.
+export const SELECTABLE_STATE_TYPES: StateType[] = STATE_TYPES.filter((s) => s !== 'triage');

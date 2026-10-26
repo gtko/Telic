@@ -26,6 +26,7 @@ import sections from '../../messages/en/sections.json';
 import settings from '../../messages/en/settings.json';
 import shell from '../../messages/en/shell.json';
 import teams from '../../messages/en/teams.json';
+import triage from '../../messages/en/triage.json';
 import updates from '../../messages/en/updates.json';
 import views from '../../messages/en/views.json';
 import whatsNew from '../../messages/en/whatsNew.json';
@@ -67,6 +68,7 @@ const coreMessages = {
   god,
   newProject,
   teams,
+  triage,
   updates,
   whatsNew,
 };

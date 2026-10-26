@@ -27,7 +27,9 @@ export default function SettingsDeleteStateDialog({
 }) {
   const t = useTranslations('settings.states');
   const tStateType = useTranslations('display.stateTypes');
-  const otherColumns = project.columns.filter((c) => c.id !== column.id);
+  const otherColumns = project.columns.filter(
+    (c) => c.id !== column.id && c.stateType !== 'triage',
+  );
   const [action, setAction] = useState<'move' | 'delete'>(otherColumns.length ? 'move' : 'delete');
   const [targetColumnId, setTargetColumnId] = useState<number | undefined>(otherColumns[0]?.id);
   const deleteColumn = useDeleteColumn(project.project.ref);

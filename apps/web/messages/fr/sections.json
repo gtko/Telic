@@ -45,6 +45,10 @@
       "label": "Telegram",
       "description": "Le bot auquel les utilisateurs relient leur compte Telegram, et celui qui envoie les notifications Telegram des projets sans bot dédié."
     },
+    "sentry": {
+      "label": "Sentry",
+      "description": "Les erreurs Sentry des projets routés arrivent dans la colonne Triage du projet Telic choisi."
+    },
     "email": {
       "label": "Fournisseur d'e-mail",
       "description": "Le fournisseur de messagerie utilisé par l'instance : réinitialisations de mot de passe, confirmations d'adresse et liens de connexion."

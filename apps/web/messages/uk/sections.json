@@ -45,6 +45,10 @@
       "label": "Telegram",
       "description": "Бот, до якого люди підключають свій Telegram, і бот, що доставляє Telegram-сповіщення для проєктів без власного бота."
     },
+    "sentry": {
+      "label": "Sentry",
+      "description": "Sentry errors of the routed projects arrive in the triage column of the Telic project you choose."
+    },
     "email": {
       "label": "Поштовий провайдер",
       "description": "Провайдер, через який інстанс надсилає пошту: скидання пароля, підтвердження адреси та посилання для входу."

@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   RefreshCw,
   SquareKanban,
+  ShieldAlert,
   StickyNote,
   Target,
 } from 'lucide-react';
@@ -18,11 +19,13 @@ import {
   initiativesPath,
   notesPath,
   projectPath,
+  triagePath,
   viewPath,
 } from '@/utils/paths';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useProjectFeatures } from '@/hooks/useProjectFeatures';
 import { useInboxUnread } from '@/hooks/useInboxUnread';
+import { useTriageQuery } from '@/services/triage.service';
 import { useViewsQuery } from '@/services/views.service';
 import { viewIcon } from '@/utils/viewIcons';
 import { SidebarGroup, SidebarGroupContent, SidebarMenu } from '@/components/ui/sidebar';
@@ -45,6 +48,8 @@ export default function SidebarWorkNav({
   const features = useProjectFeatures();
   const disabled = !projectKey;
   const { data: inboxUnread } = useInboxUnread(projectKey, projectId);
+  const canReadTriage = can('work_items', 'read');
+  const { data: triage } = useTriageQuery(projectKey, projectId, canReadTriage);
   const { data: views } = useViewsQuery(projectKey);
   const favorites = views?.filter((v) => v.favorite) ?? [];
 
@@ -114,6 +119,16 @@ export default function SidebarWorkNav({
               label={t('workItems')}
               active={onWorkItems}
               disabled={disabled}
+            />
+          )}
+          {canReadTriage && (
+            <SidebarNavItem
+              href={projectKey ? triagePath(projectKey) : '#'}
+              icon={ShieldAlert}
+              label={t('triage')}
+              active={pathname.endsWith('/triage')}
+              disabled={disabled}
+              badge={triage?.length}
             />
           )}
           {features.initiatives && can('initiatives', 'read') && (

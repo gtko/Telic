@@ -1,0 +1,21 @@
+{
+  "title": "Triage",
+  "description": "Errors received from Sentry. They stay out of the lists until accepted.",
+  "listLabel": "Issues in triage",
+  "detailLabel": "Issue detail",
+  "empty": {
+    "title": "Nothing to triage",
+    "description": "New Sentry errors of this project will appear here."
+  },
+  "loadFailed": "Could not load the triage list. Click to retry.",
+  "openInSentry": "Open in Sentry",
+  "accept": "Accept",
+  "merge": "Merge…",
+  "reject": "Reject",
+  "actionsHint": "Accept moves the issue to the backlog. Reject moves it to canceled.",
+  "mergeTitle": "Merge into issue",
+  "mergePrompt": "Search by title or key",
+  "accepted": "Issue accepted",
+  "rejected": "Issue rejected",
+  "merged": "Merged into {identifier}"
+}

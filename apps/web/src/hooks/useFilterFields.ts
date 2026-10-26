@@ -12,7 +12,7 @@ import {
   CYCLE_FILTER_STATUSES,
   INITIATIVE_FILTER_STATUSES,
   PRIORITY_FILTER_VALUES,
-  STATE_TYPES,
+  SELECTABLE_STATE_TYPES,
 } from '@/utils/fieldOptions';
 import { compareByGroupOrder } from '@/utils/initiativeMeta';
 import { projectFeatures } from '@/utils/projectFeatures';
@@ -149,13 +149,15 @@ export function useFilterFields(projectKey?: string) {
         field: 'status',
         label: t('fields.status'),
         kind: 'set',
-        options: project.columns.map((c) => ({ value: c.id, label: c.name, color: c.color })),
+        options: project.columns
+          .filter((c) => c.stateType !== 'triage')
+          .map((c) => ({ value: c.id, label: c.name, color: c.color })),
       },
       {
         field: 'statusType',
         label: t('fields.statusType'),
         kind: 'set',
-        options: STATE_TYPES.map((value) => ({ value, label: stateType(value) })),
+        options: SELECTABLE_STATE_TYPES.map((value) => ({ value, label: stateType(value) })),
       },
       {
         field: 'assignee',
