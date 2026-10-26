@@ -55,7 +55,27 @@ describe('protected document asset proxy', () => {
       cookie: 'session=value',
       'if-none-match': 'asset-v0',
     });
+    assert.equal(capturedInit?.redirect, 'manual');
     assert.equal(response.headers.get('content-type'), 'image/png');
     assert.equal(response.headers.get('x-private'), null);
+  });
+
+  it('never hands an upstream redirect to the browser', async () => {
+    process.env.SERVICE_URL_API = 'http://api:3000';
+    for (const status of [301, 302, 303, 307, 308]) {
+      globalThis.fetch = (async () =>
+        new Response(null, {
+          status,
+          headers: { location: 'https://elsewhere.test/' },
+        })) as typeof fetch;
+      const response = await GET(
+        new Request('https://plan.test/protected-media/example', {
+          headers: { cookie: 'session=value' },
+        }),
+        { params },
+      );
+      assert.equal(response.status, 502, String(status));
+      assert.equal(response.headers.get('location'), null);
+    }
   });
 });
