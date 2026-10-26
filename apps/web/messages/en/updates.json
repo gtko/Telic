@@ -8,5 +8,14 @@
   "checking": "Checking",
   "lastChecked": "Last checked {date}",
   "allReleases": "All releases",
-  "noNotes": "This release has no notes."
+  "noNotes": "This release has no notes.",
+  "viewOnGitHub": "View on GitHub",
+  "banner": {
+    "feat": "{count, plural, one {# feature} other {# features}}",
+    "improvement": "{count, plural, one {# improvement} other {# improvements}}",
+    "fix": "{count, plural, one {# fix} other {# fixes}}",
+    "perf": "{count, plural, one {# performance change} other {# performance changes}}",
+    "docs": "{count, plural, one {# docs change} other {# docs changes}}",
+    "other": "{count, plural, one {# other change} other {# other changes}}"
+  }
 }

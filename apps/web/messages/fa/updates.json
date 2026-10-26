@@ -8,5 +8,14 @@
   "checking": "در حال بررسی",
   "lastChecked": "آخرین بررسی {date}",
   "allReleases": "همه انتشارها",
-  "noNotes": "این انتشار یادداشتی ندارد."
+  "noNotes": "این انتشار یادداشتی ندارد.",
+  "viewOnGitHub": "مشاهده در GitHub",
+  "banner": {
+    "feat": "{count, plural, one {# ویژگی جدید} other {# ویژگی جدید}}",
+    "improvement": "{count, plural, one {# بهبود} other {# بهبود}}",
+    "fix": "{count, plural, one {# رفع اشکال} other {# رفع اشکال}}",
+    "perf": "{count, plural, one {# بهینه‌سازی} other {# بهینه‌سازی}}",
+    "docs": "{count, plural, one {# تغییر مستندات} other {# تغییر مستندات}}",
+    "other": "{count, plural, one {# تغییر دیگر} other {# تغییر دیگر}}"
+  }
 }

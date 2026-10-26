@@ -8,5 +8,14 @@
   "checking": "Перевірка",
   "lastChecked": "Перевірено {date}",
   "allReleases": "Усі релізи",
-  "noNotes": "Цей реліз без нотаток."
+  "noNotes": "Цей реліз без нотаток.",
+  "viewOnGitHub": "Відкрити на GitHub",
+  "banner": {
+    "feat": "{count, plural, one {# нова функція} few {# нові функції} many {# нових функцій} other {# нової функції}}",
+    "improvement": "{count, plural, one {# покращення} few {# покращення} many {# покращень} other {# покращення}}",
+    "fix": "{count, plural, one {# виправлення} few {# виправлення} many {# виправлень} other {# виправлення}}",
+    "perf": "{count, plural, one {# оптимізація} few {# оптимізації} many {# оптимізацій} other {# оптимізації}}",
+    "docs": "{count, plural, one {# зміна в документації} few {# зміни в документації} many {# змін у документації} other {# зміни в документації}}",
+    "other": "{count, plural, one {# інша зміна} few {# інші зміни} many {# інших змін} other {# іншої зміни}}"
+  }
 }

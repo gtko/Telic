@@ -8,5 +8,14 @@
   "checking": "Memeriksa",
   "lastChecked": "Terakhir diperiksa {date}",
   "allReleases": "Semua rilis",
-  "noNotes": "Rilis ini tidak memiliki catatan."
+  "noNotes": "Rilis ini tidak memiliki catatan.",
+  "viewOnGitHub": "Lihat di GitHub",
+  "banner": {
+    "feat": "{count, plural, other {# fitur baru}}",
+    "improvement": "{count, plural, other {# peningkatan}}",
+    "fix": "{count, plural, other {# perbaikan}}",
+    "perf": "{count, plural, other {# optimasi kinerja}}",
+    "docs": "{count, plural, other {# perubahan dokumentasi}}",
+    "other": "{count, plural, other {# perubahan lain}}"
+  }
 }

@@ -23,6 +23,7 @@ export default function WhatsNewOverlay({
 
   const sections: TakeoverSection[] = releaseSections(data.releases, {
     empty: tUpdates('noNotes'),
+    link: tUpdates('viewOnGitHub'),
   });
   if (data.backup) {
     sections.push({

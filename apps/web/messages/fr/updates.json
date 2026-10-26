@@ -8,5 +8,14 @@
   "checking": "Recherche",
   "lastChecked": "Dernière vérification {date}",
   "allReleases": "Toutes les versions",
-  "noNotes": "Cette version n'a pas de notes."
+  "noNotes": "Cette version n'a pas de notes.",
+  "viewOnGitHub": "Voir sur GitHub",
+  "banner": {
+    "feat": "{count, plural, one {# nouveauté} other {# nouveautés}}",
+    "improvement": "{count, plural, one {# amélioration} other {# améliorations}}",
+    "fix": "{count, plural, one {# correctif} other {# correctifs}}",
+    "perf": "{count, plural, one {# optimisation} other {# optimisations}}",
+    "docs": "{count, plural, one {# modification de la doc} other {# modifications de la doc}}",
+    "other": "{count, plural, one {# autre changement} other {# autres changements}}"
+  }
 }

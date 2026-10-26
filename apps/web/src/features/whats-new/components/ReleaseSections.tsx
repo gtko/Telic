@@ -7,6 +7,7 @@ import { renderMarkdown, sanitizeHtml } from '@/lib/markdown';
 import { isNewerVersion } from '@/utils/version';
 import { formatDate } from '@/utils/dates';
 import { tagSections } from '../utils/releaseNotes';
+import WhatsNewBanner from './WhatsNewBanner';
 
 // One release's notes. They arrive as rendered HTML from the release feed and as
 // markdown from the changelog of this build; both end up sanitized.
@@ -46,14 +47,18 @@ export function releaseSections(
     // The version the instance runs, which is what makes a release current or new.
     current?: string;
     badges?: Record<NonNullable<TakeoverSection['tone']>, string>;
+    // Names the link to the release page.
+    link?: string;
   },
 ): TakeoverSection[] {
-  return releases.map((release) => {
+  return releases.map((release, index) => {
     const releaseTone = tone(release, labels.current);
     return {
       id: release.tag,
       title: release.tag,
       href: release.url ?? undefined,
+      hrefLabel: labels.link,
+      cover: index === 0 ? <WhatsNewBanner release={release} /> : undefined,
       badge: releaseTone && labels.badges?.[releaseTone],
       tone: releaseTone,
       description: release.publishedAt ? formatDate(release.publishedAt) : undefined,

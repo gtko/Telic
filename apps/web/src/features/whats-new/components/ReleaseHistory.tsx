@@ -27,6 +27,7 @@ export default function ReleaseHistory({
 
   const sections = releaseSections(status.releases, {
     empty: t('noNotes'),
+    link: t('viewOnGitHub'),
     current: status.currentVersion,
     badges: { current: t('badgeRunning'), new: t('badgeNew') },
   });
