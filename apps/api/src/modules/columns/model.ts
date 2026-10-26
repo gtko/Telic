@@ -1,6 +1,7 @@
 import { t } from 'elysia';
 
 const stateType = t.Union([
+  t.Literal('triage'),
   t.Literal('backlog'),
   t.Literal('unstarted'),
   t.Literal('started'),

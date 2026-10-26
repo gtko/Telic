@@ -11,8 +11,9 @@ import {
   user,
   type Db,
 } from '@repo/db';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, ne } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 
 // A project's own data, read directly (no import_job involved) and shaped into a
 // self-contained, human-readable snapshot: states/cycles/parents/relations are named,
@@ -76,7 +77,7 @@ export async function exportProject(db: Db, projectId: number): Promise<ProjectE
   const columns = await db
     .select({ id: projectColumn.id, name: projectColumn.name, category: projectColumn.stateType })
     .from(projectColumn)
-    .where(eq(projectColumn.projectId, projectId));
+    .where(and(eq(projectColumn.projectId, projectId), ne(projectColumn.stateType, 'triage')));
   const columnNameById = new Map(columns.map((c) => [c.id, c.name]));
 
   const labelRows = await db
@@ -112,7 +113,7 @@ export async function exportProject(db: Db, projectId: number): Promise<ProjectE
       dueDate: issue.dueDate,
     })
     .from(issue)
-    .where(eq(issue.projectId, projectId))
+    .where(and(eq(issue.projectId, projectId), notInTriage(issue.columnId)))
     .orderBy(issue.sequenceNumber);
   const identifierByIssueId = new Map(
     issueRows.map((i) => [i.id, `${projectRow.key}-${i.sequenceNumber}`]),

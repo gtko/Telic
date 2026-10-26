@@ -46,6 +46,7 @@
     "statusAge": "المدة في الحالة"
   },
   "stateTypes": {
+    "triage": "الفرز",
     "backlog": "قائمة الانتظار",
     "unstarted": "لم تبدأ",
     "started": "قيد التنفيذ",

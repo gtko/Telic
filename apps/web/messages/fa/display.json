@@ -46,6 +46,7 @@
     "statusAge": "زمان در وضعیت"
   },
   "stateTypes": {
+    "triage": "غربالگری",
     "backlog": "بک‌لاگ",
     "unstarted": "شروع‌نشده",
     "started": "شروع‌شده",

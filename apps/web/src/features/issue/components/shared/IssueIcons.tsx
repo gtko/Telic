@@ -1,8 +1,8 @@
 import type { StateType } from '@/lib/api/endpoints/columns';
 
 // Linear-style status icon, colored by the column color. One glyph per state
-// type: backlog is a dashed ring, unstarted an empty ring, started a ring with
-// a filled sector, completed a filled check, canceled a filled cross.
+// type: triage and backlog are a dashed ring, unstarted an empty ring, started a
+// ring with a filled sector, completed a filled check, canceled a filled cross.
 export function StateIcon({
   stateType,
   color,
@@ -20,6 +20,7 @@ export function StateIcon({
     'aria-hidden': true,
   } as const;
   switch (stateType) {
+    case 'triage':
     case 'backlog':
       return (
         <svg {...common}>

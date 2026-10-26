@@ -11,7 +11,7 @@ import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 // Colors are fixed per group rather than taken from the columns, because a group
 // spans several columns with their own colors. The label of a group is a message
 // under `initiatives.stateGroups`.
-const GROUPS: { type: StateType; color: string }[] = [
+const GROUPS: { type: Exclude<StateType, 'triage'>; color: string }[] = [
   { type: 'backlog', color: '#a1a1aa' },
   { type: 'unstarted', color: '#64748b' },
   { type: 'started', color: '#eab308' },
@@ -30,6 +30,7 @@ export default function InitiativeStateBreakdown({
   const counts = useMemo(() => {
     const stateByColumn = new Map(project.columns.map((c) => [c.id, c.stateType]));
     const acc: Record<StateType, number> = {
+      triage: 0,
       backlog: 0,
       unstarted: 0,
       started: 0,

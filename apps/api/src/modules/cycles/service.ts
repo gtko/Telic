@@ -1,6 +1,7 @@
 import { cycle, issue, projectColumn, type Db } from '@repo/db';
 import { and, asc, desc, eq, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 
 // Data access for cycles: a time-boxed period of work inside a project (a sprint).
 // Issues link to a cycle through issue.cycle_id. The status is derived from the
@@ -75,7 +76,7 @@ function selectCycles(db: Db, where: SQL | undefined) {
       canceled: sql<number>`count(*) filter (where ${projectColumn.stateType} = 'canceled')`,
     })
     .from(cycle)
-    .leftJoin(issue, eq(issue.cycleId, cycle.id))
+    .leftJoin(issue, and(eq(issue.cycleId, cycle.id), notInTriage(issue.columnId)))
     .leftJoin(projectColumn, eq(projectColumn.id, issue.columnId))
     .where(where)
     .groupBy(cycle.id);

@@ -35,6 +35,7 @@ export const INITIATIVE_FILTER_STATUSES: InitiativeStatus[] = ['active', 'planne
 // State types in workflow order. The label of a state type is a message under
 // `display.stateTypes`.
 export const STATE_TYPES: StateType[] = [
+  'triage',
   'backlog',
   'unstarted',
   'started',

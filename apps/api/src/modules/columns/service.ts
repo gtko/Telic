@@ -114,6 +114,7 @@ export async function assertWipLimit(db: Db, columnId: number, incoming = 1): Pr
 // The work items view's left-to-right order: sorting by state type before position
 // keeps a newly added column next to the others of its type rather than at the end.
 const STATE_TYPE_ORDER = sql`CASE ${projectColumn.stateType}
+    WHEN 'triage' THEN -1
     WHEN 'backlog' THEN 0
     WHEN 'unstarted' THEN 1
     WHEN 'started' THEN 2

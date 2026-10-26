@@ -46,6 +46,7 @@
     "statusAge": "현재 상태 유지 시간"
   },
   "stateTypes": {
+    "triage": "분류",
     "backlog": "백로그",
     "unstarted": "시작 전",
     "started": "진행 중",

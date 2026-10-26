@@ -1,6 +1,7 @@
 import { type Db, issue, issueActivity, project, type ActivityPayload } from '@repo/db';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { iso } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 import { textSide, userName, userSide, type ActivityInput } from '#modules/issues/activity';
 
 // An initiative's activity feed merges two kinds of rows from issue_activity:
@@ -51,7 +52,7 @@ export async function listFeed(
   const linkedIssueIds = db
     .select({ id: issue.id })
     .from(issue)
-    .where(eq(issue.initiativeId, initiativeId));
+    .where(and(eq(issue.initiativeId, initiativeId), notInTriage(issue.columnId)));
   const rows = await db
     .select({
       id: issueActivity.id,

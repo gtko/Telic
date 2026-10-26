@@ -46,6 +46,7 @@
     "statusAge": "處於目前狀態的時間"
   },
   "stateTypes": {
+    "triage": "待分類",
     "backlog": "待辦事項",
     "unstarted": "未開始",
     "started": "進行中",

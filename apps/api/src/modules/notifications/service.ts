@@ -15,6 +15,7 @@ import { and, desc, eq, inArray, lt, or, sql, isNull } from 'drizzle-orm';
 import { addedMentionHandles, resolveMentionHandles, type MentionedUsers } from '#shared/mentions';
 import { autoWatchIssue, watcherUserIds } from '#modules/issues/watchers';
 import { iso } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 import { enqueueOutbound } from './outbound';
 
 // Inbox notifications. A notification is one (recipient, event) row: a user is told
@@ -344,7 +345,7 @@ export async function listNotifications(
   const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
   const before = opts.before ?? null;
   const f = opts.filters ?? {};
-  const conds = notificationConditions(userId, f);
+  const conds = [...notificationConditions(userId, f), notInTriage(issue.columnId)];
   // The cursor's ts is an ISO instant (ms precision, which is what created_at stores).
   const cursorAt = before ? new Date(before.ts) : null;
   if (before && cursorAt && !Number.isNaN(cursorAt.getTime())) {
@@ -412,7 +413,8 @@ export async function unreadCount(db: Db, userId: string, projectId?: number): P
       projectMember,
       and(eq(projectMember.projectId, notification.projectId), eq(projectMember.userId, userId)),
     )
-    .where(and(...conds));
+    .innerJoin(issue, eq(issue.id, notification.issueId))
+    .where(and(...conds, notInTriage(issue.columnId)));
   return row?.n ?? 0;
 }
 

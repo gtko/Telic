@@ -46,6 +46,7 @@
     "statusAge": "Час у статусі"
   },
   "stateTypes": {
+    "triage": "Триаж",
     "backlog": "Беклог",
     "unstarted": "Не розпочато",
     "started": "У роботі",

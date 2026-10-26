@@ -46,6 +46,7 @@
     "statusAge": "Tiempo en el estado"
   },
   "stateTypes": {
+    "triage": "Triaje",
     "backlog": "Pila de trabajo",
     "unstarted": "Sin empezar",
     "started": "Empezada",
