@@ -116,7 +116,7 @@ jobs:
       - name: Install the NDK
         run: |
           sdkmanager=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n 1)
-          yes | "$sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          "$sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
 
       - uses: dtolnay/rust-toolchain@stable
         with:
