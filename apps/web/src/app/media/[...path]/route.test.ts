@@ -12,6 +12,16 @@ afterEach(() => {
   else process.env.SERVICE_URL_API = originalOrigin;
 });
 
+// A 304 whose body is an empty stream, as a runtime fetch may hand it back.
+function notModified(): Response {
+  return {
+    status: 304,
+    type: 'default',
+    headers: new Headers({ etag: 'v1' }),
+    body: new ReadableStream(),
+  } as unknown as Response;
+}
+
 function get(path: string[]) {
   return GET(new Request('https://plan.test/media/example'), { params: Promise.resolve({ path }) });
 }
@@ -113,7 +123,7 @@ describe('public media proxy', () => {
 
   it('passes a 304 through to keep a cached avatar cached', async () => {
     process.env.SERVICE_URL_API = 'http://api:3000';
-    globalThis.fetch = (async () => new Response(null, { status: 304 })) as typeof fetch;
+    globalThis.fetch = (async () => notModified()) as typeof fetch;
     assert.equal((await get(['avatars', PUBLIC_ID, 'raw'])).status, 304);
   });
 });

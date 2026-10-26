@@ -47,15 +47,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     // guarantee that a redirect is never followed nor handed to the browser.
     redirect: 'manual',
   });
-  if (isRedirect(upstream)) return new Response(null, { status: 502 });
+  if (isRedirect(upstream)) {
+    await upstream.body?.cancel();
+    return new Response(null, { status: 502 });
+  }
 
   const headers = new Headers();
   for (const name of PASSTHROUGH_HEADERS) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }
-  return new Response(upstream.body, { status: upstream.status, headers });
+  // A null-body status (304 to the forwarded if-none-match) cannot carry a stream.
+  const body = NULL_BODY_STATUSES.includes(upstream.status) ? null : upstream.body;
+  return new Response(body, { status: upstream.status, headers });
 }
+
+const NULL_BODY_STATUSES = [101, 204, 205, 304];
 
 // 304 stays: it answers the forwarded if-none-match, not a redirect.
 function isRedirect(response: Response): boolean {

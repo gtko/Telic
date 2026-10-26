@@ -78,4 +78,23 @@ describe('protected document asset proxy', () => {
       assert.equal(response.headers.get('location'), null);
     }
   });
+
+  it('passes a 304 through even when the runtime hands it a body stream', async () => {
+    process.env.SERVICE_URL_API = 'http://api:3000';
+    globalThis.fetch = (async () =>
+      ({
+        status: 304,
+        type: 'default',
+        headers: new Headers({ etag: 'asset-v1' }),
+        body: new ReadableStream(),
+      }) as unknown as Response) as typeof fetch;
+    const response = await GET(
+      new Request('https://plan.test/protected-media/example', {
+        headers: { cookie: 'session=value', 'if-none-match': 'asset-v1' },
+      }),
+      { params },
+    );
+    assert.equal(response.status, 304);
+    assert.equal(response.headers.get('etag'), 'asset-v1');
+  });
 });
