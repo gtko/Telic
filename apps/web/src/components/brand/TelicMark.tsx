@@ -1,7 +1,5 @@
-// The 'Telic' brand mark: two shapes in tandem — a filled circle (the human/team)
-// and an outlined square (the agent), joined by a short link. Roles read from the shapes
-// themselves, so the mark works in a single color via currentColor and stays legible at
-// small sizes. Decorative — the caller sets size/color via className.
+// The Telic mark: an arc that ends at a dot. Drawn in currentColor, so the caller sets
+// size and color via className.
 export default function TelicMark({ className }: { className?: string }) {
   return (
     <svg
@@ -11,18 +9,13 @@ export default function TelicMark({ className }: { className?: string }) {
       className={className}
       aria-hidden="true"
     >
-      <rect x="13" y="14.3" width="6" height="3.4" rx="1.7" fill="currentColor" opacity="0.4" />
-      <circle cx="9.5" cy="16" r="6" fill="currentColor" />
-      <rect
-        x="17"
-        y="10.5"
-        width="11"
-        height="11"
-        rx="3.4"
-        fill="none"
+      <path
+        d="M5 27C6.5 16 12.5 9.5 19.5 8.5"
         stroke="currentColor"
-        strokeWidth="3"
+        strokeWidth="3.2"
+        strokeLinecap="round"
       />
+      <circle cx="25.5" cy="8" r="4" fill="currentColor" />
     </svg>
   );
 }
