@@ -55,7 +55,46 @@ describe('protected document asset proxy', () => {
       cookie: 'session=value',
       'if-none-match': 'asset-v0',
     });
+    assert.equal(capturedInit?.redirect, 'manual');
     assert.equal(response.headers.get('content-type'), 'image/png');
     assert.equal(response.headers.get('x-private'), null);
+  });
+
+  it('never hands an upstream redirect to the browser', async () => {
+    process.env.SERVICE_URL_API = 'http://api:3000';
+    for (const status of [301, 302, 303, 307, 308]) {
+      globalThis.fetch = (async () =>
+        new Response(null, {
+          status,
+          headers: { location: 'https://elsewhere.test/' },
+        })) as typeof fetch;
+      const response = await GET(
+        new Request('https://plan.test/protected-media/example', {
+          headers: { cookie: 'session=value' },
+        }),
+        { params },
+      );
+      assert.equal(response.status, 502, String(status));
+      assert.equal(response.headers.get('location'), null);
+    }
+  });
+
+  it('passes a 304 through even when the runtime hands it a body stream', async () => {
+    process.env.SERVICE_URL_API = 'http://api:3000';
+    globalThis.fetch = (async () =>
+      ({
+        status: 304,
+        type: 'default',
+        headers: new Headers({ etag: 'asset-v1' }),
+        body: new ReadableStream(),
+      }) as unknown as Response) as typeof fetch;
+    const response = await GET(
+      new Request('https://plan.test/protected-media/example', {
+        headers: { cookie: 'session=value', 'if-none-match': 'asset-v1' },
+      }),
+      { params },
+    );
+    assert.equal(response.status, 304);
+    assert.equal(response.headers.get('etag'), 'asset-v1');
   });
 });
