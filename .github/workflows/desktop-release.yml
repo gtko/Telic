@@ -112,9 +112,11 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
-
-      - run: sdkmanager "ndk;$NDK_VERSION"
+      # The runner image has the Android SDK in $ANDROID_HOME.
+      - name: Install the NDK
+        run: |
+          sdkmanager=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n 1)
+          yes | "$sdkmanager" "ndk;$NDK_VERSION" > /dev/null
 
       - uses: dtolnay/rust-toolchain@stable
         with:
