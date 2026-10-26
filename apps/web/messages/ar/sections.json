@@ -45,6 +45,10 @@
       "label": "Telegram",
       "description": "البوت اللي الناس بتربط بيه حساب Telegram بتاعها، والبوت اللي بيبعت إشعارات Telegram للمشاريع اللي محدّدتش بوت خاص بيها."
     },
+    "sentry": {
+      "label": "Sentry",
+      "description": "Sentry errors of the routed projects arrive in the triage column of the Telic project you choose."
+    },
     "email": {
       "label": "مزوّد البريد",
       "description": "مزوّد البريد اللي النسخة بتبعت من خلاله: إعادة تعيين كلمات المرور، وتأكيد العنوان، وروابط تسجيل الدخول."

@@ -3,7 +3,7 @@
 // it and drops states with an unknown state type.
 
 import type { Column, StateType } from '@/lib/api/endpoints/columns';
-import { STATE_TYPES } from '@/utils/fieldOptions';
+import { SELECTABLE_STATE_TYPES } from '@/utils/fieldOptions';
 import { DEFAULT_COLOR } from '@/utils/project';
 
 const PAYLOAD_TYPE = 'plan.states';
@@ -32,7 +32,9 @@ export function serializeStates(columns: Column[]): string {
   const envelope: StatesEnvelope = {
     type: PAYLOAD_TYPE,
     version: PAYLOAD_VERSION,
-    states: columns.map((c) => ({ name: c.name, stateType: c.stateType, color: c.color })),
+    states: columns
+      .filter((c) => c.stateType !== 'triage')
+      .map((c) => ({ name: c.name, stateType: c.stateType, color: c.color })),
   };
   return JSON.stringify(envelope, null, 2);
 }
@@ -54,7 +56,7 @@ export function parseStatesText(text: string): StateTransfer[] {
   for (const raw of env.states) {
     const name = typeof raw?.name === 'string' ? raw.name.trim() : '';
     const stateType = raw?.stateType;
-    if (!name || !STATE_TYPES.includes(stateType as StateType)) continue;
+    if (!name || !SELECTABLE_STATE_TYPES.includes(stateType as StateType)) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

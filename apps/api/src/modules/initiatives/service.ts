@@ -13,6 +13,7 @@ import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
 import { labelNames, rowSide } from '#modules/issues/activity';
 import { getMembership } from '#modules/members/service';
 import { HttpError, iso, num } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 import { computeHealth, type Health } from './health';
 import { recordActivity, logInitiativeUpdate, type InitiativeSnapshot } from './activity';
 
@@ -62,7 +63,7 @@ async function countsFor(
     })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
-    .where(inArray(issue.initiativeId, initiativeIds))
+    .where(and(inArray(issue.initiativeId, initiativeIds), notInTriage(issue.columnId)))
     .groupBy(issue.initiativeId);
   for (const r of rows) {
     if (r.initiativeId == null) continue;

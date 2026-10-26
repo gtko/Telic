@@ -46,6 +46,7 @@
     "statusAge": "处于当前状态的时间"
   },
   "stateTypes": {
+    "triage": "待分类",
     "backlog": "待办池",
     "unstarted": "未开始",
     "started": "进行中",

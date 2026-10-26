@@ -4,6 +4,7 @@ import {
   BookOpenText,
   Braces,
   Inbox,
+  ShieldAlert,
   LayoutDashboard,
   Server,
   Shield,
@@ -19,6 +20,7 @@ import {
   documentsPath,
   godPath,
   inboxPath,
+  triagePath,
   initiativesPath,
   manageTeamsPath,
   mcpServerPath,
@@ -60,6 +62,8 @@ export function useNavigationCommands(projectKey: string | null): CommandSection
   if (projectKey) {
     const key = projectKey;
     add('nav.inbox', t('inbox'), <Inbox />, inboxPath(key), 'notifications unread');
+    if (can('work_items', 'read'))
+      add('nav.triage', t('triage'), <ShieldAlert />, triagePath(key), 'sentry errors');
     if (features.dashboards && can('dashboards', 'read'))
       add('nav.dashboards', t('dashboards'), <LayoutDashboard />, dashboardsPath(key), 'charts');
     add(

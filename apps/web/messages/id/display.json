@@ -46,6 +46,7 @@
     "statusAge": "Waktu dalam status"
   },
   "stateTypes": {
+    "triage": "Triase",
     "backlog": "Backlog",
     "unstarted": "Belum dimulai",
     "started": "Dimulai",

@@ -46,6 +46,7 @@
     "statusAge": "Durumda geçen süre"
   },
   "stateTypes": {
+    "triage": "Triaj",
     "backlog": "İş Havuzu (Backlog)",
     "unstarted": "Başlanmadı",
     "started": "Başlandı",

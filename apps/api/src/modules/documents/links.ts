@@ -8,6 +8,7 @@ import {
 } from '@repo/db';
 import { and, asc, eq, or } from 'drizzle-orm';
 import { HttpError } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 import { fencedBatch, stmt } from './tree';
 
 export interface DocumentIssueLinkRow {
@@ -90,7 +91,13 @@ export async function listDocumentIssueLinks(
     })
     .from(projectDocumentIssue)
     .innerJoin(issue, eq(issue.id, projectDocumentIssue.issueId))
-    .where(and(eq(projectDocumentIssue.documentId, documentId), eq(issue.projectId, projectId)))
+    .where(
+      and(
+        eq(projectDocumentIssue.documentId, documentId),
+        eq(issue.projectId, projectId),
+        notInTriage(issue.columnId),
+      ),
+    )
     .orderBy(asc(issue.sequenceNumber));
   return rows.map((row) => ({
     issueId: row.issueId,

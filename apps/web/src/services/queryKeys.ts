@@ -205,6 +205,8 @@ export const qk = {
   notifications: (projectKey: string, filters?: unknown) =>
     ['notifications', projectKey, filters ?? {}] as const,
   notificationsUnread: (projectKey: string) => ['notificationsUnread', projectKey] as const,
+  // The issues of a project waiting in its triage column.
+  triage: (projectKey: string) => ['triage', projectKey] as const,
   // The unread count across every project (the app icon badge).
   notificationsUnreadTotal: ['notificationsUnreadTotal'] as const,
   // The signed-in user's WebAuthn passkeys (account security page).
@@ -231,6 +233,8 @@ export const qk = {
   instanceGoogleSettings: ['instanceGoogleSettings'] as const,
   instanceOidcSettings: ['instanceOidcSettings'] as const,
   instanceTelegramSettings: ['instanceTelegramSettings'] as const,
+  instanceSentrySettings: ['instanceSentrySettings'] as const,
+  instanceSentryRoutes: ['instanceSentryRoutes'] as const,
   instanceProjectDefaults: ['instanceProjectDefaults'] as const,
   instanceStorageSettings: ['instanceStorageSettings'] as const,
   // The upload limits as read by the upload UI (open to any signed-in user).

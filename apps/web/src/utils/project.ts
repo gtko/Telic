@@ -11,7 +11,7 @@ import type { InitiativeRef, Issue, IssuePatch, NewIssueInput } from '@/lib/api/
 import type { CycleOption } from '@/lib/api/endpoints/cycles';
 import type { InitiativeOption } from '@/lib/api/endpoints/initiatives';
 import { CYCLE_STATUS_META } from '@/utils/cycleMeta';
-import { PRIORITY_ORDER, PRIORITY_RANK } from '@/utils/fieldOptions';
+import { PRIORITY_ORDER, PRIORITY_RANK, selectableColumns } from '@/utils/fieldOptions';
 import {
   hasValue,
   isEffectiveCondition,
@@ -319,7 +319,7 @@ function allGroups(project: ProjectDetail, group: GroupField, labels: GroupLabel
   if (isCustomFieldKey(group)) return memberGroups(project, group, labels);
   switch (group) {
     case 'status':
-      return project.columns.map((c) => ({
+      return selectableColumns(project.columns).map((c) => ({
         key: `c${c.id}`,
         name: c.name,
         color: c.color,

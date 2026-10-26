@@ -10,8 +10,9 @@ import {
   type ActivityPayload,
   type Db,
 } from '@repo/db';
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { HttpError, iso } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 
 // Read-only project metrics for the dashboards feature. Every figure is derived
 // from the existing issue / project_column / issue_activity / issue_status tables —
@@ -43,6 +44,7 @@ function closings(projectId: number) {
       FROM issue_status s
       JOIN issue i ON i.id = s.issue_id
      WHERE i.project_id = ${projectId}
+       AND ${notInTriage(sql`i.column_id`)}
        AND s.state_type = 'completed'
        AND NOT EXISTS (
              SELECT 1 FROM issue_status p
@@ -72,7 +74,7 @@ export async function getStats(db: Db, projectId: number): Promise<StatsDto> {
     .select({ stateType: projectColumn.stateType, count: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
-    .where(eq(issue.projectId, projectId))
+    .where(and(eq(issue.projectId, projectId), notInTriage(issue.columnId)))
     .groupBy(projectColumn.stateType);
 
   let open = 0;
@@ -88,13 +90,27 @@ export async function getStats(db: Db, projectId: number): Promise<StatsDto> {
     .select({ overdue: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
-    .where(and(eq(issue.projectId, projectId), sql`${issue.dueDate} < date('now')`, OPEN_STATES));
+    .where(
+      and(
+        eq(issue.projectId, projectId),
+        sql`${issue.dueDate} < date('now')`,
+        OPEN_STATES,
+        notInTriage(issue.columnId),
+      ),
+    );
 
   const [{ unassigned }] = await db
     .select({ unassigned: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(projectColumn, eq(projectColumn.id, issue.columnId))
-    .where(and(eq(issue.projectId, projectId), isNull(issue.assigneeUserId), OPEN_STATES));
+    .where(
+      and(
+        eq(issue.projectId, projectId),
+        isNull(issue.assigneeUserId),
+        OPEN_STATES,
+        notInTriage(issue.columnId),
+      ),
+    );
 
   const since7d = Date.now() - 7 * DAY_MS;
   const closedRows = (await db.all(sql`
@@ -141,7 +157,7 @@ export async function getBreakdown(
       })
       .from(projectColumn)
       .leftJoin(issue, eq(issue.columnId, projectColumn.id))
-      .where(eq(projectColumn.projectId, projectId))
+      .where(and(eq(projectColumn.projectId, projectId), ne(projectColumn.stateType, 'triage')))
       .groupBy(projectColumn.id, projectColumn.name, projectColumn.color, projectColumn.position)
       .orderBy(projectColumn.position);
     return rows.map((r) => ({ key: r.key, label: r.label, count: r.count, color: r.color }));
@@ -154,7 +170,7 @@ export async function getBreakdown(
         count: sql<number>`count(*)`,
       })
       .from(issue)
-      .where(eq(issue.projectId, projectId))
+      .where(and(eq(issue.projectId, projectId), notInTriage(issue.columnId)))
       .groupBy(issue.priority)
       .orderBy(desc(sql`count(*)`));
     return rows.map((r) => ({
@@ -175,7 +191,7 @@ export async function getBreakdown(
       })
       .from(issue)
       .leftJoin(issueType, eq(issueType.id, issue.typeId))
-      .where(eq(issue.projectId, projectId))
+      .where(and(eq(issue.projectId, projectId), notInTriage(issue.columnId)))
       .groupBy(issueType.id, issueType.name, issueType.color)
       .orderBy(desc(sql`count(${issue.id})`));
     return rows.map((r) => ({
@@ -195,7 +211,7 @@ export async function getBreakdown(
     })
     .from(issue)
     .leftJoin(user, eq(user.id, issue.assigneeUserId))
-    .where(eq(issue.projectId, projectId))
+    .where(and(eq(issue.projectId, projectId), notInTriage(issue.columnId)))
     .groupBy(user.id, user.name)
     .orderBy(desc(sql`count(${issue.id})`));
   return rows.map((r) => ({ key: r.key, label: r.label, count: r.count, color: null }));
@@ -292,7 +308,8 @@ export async function getPulse(
   const rows = (await db.all(sql`
     SELECT CAST((a.created_at - ${start}) / ${u.stepMs} AS INTEGER) AS idx, count(a.id) AS count
       FROM issue_activity a
-     WHERE a.issue_id IN (SELECT id FROM issue WHERE project_id = ${projectId})
+     WHERE a.issue_id IN (
+             SELECT id FROM issue WHERE project_id = ${projectId} AND ${notInTriage(issue.columnId)})
        AND a.created_at >= ${start}
        ${actorUserId == null ? sql`` : sql`AND a.actor_user_id = ${actorUserId}`}
      GROUP BY idx`)) as unknown as { idx: number; count: number }[];
@@ -329,6 +346,7 @@ export async function getThroughput(
           FROM issue_activity a
           JOIN issue i ON i.id = a.issue_id
          WHERE i.project_id = ${projectId}
+           AND ${notInTriage(sql`i.column_id`)}
            AND a.action = 'created'
            AND a.created_at >= ${since}
         UNION ALL
@@ -414,6 +432,8 @@ export async function getBurnup(
           FROM issue_status s
           JOIN issue i ON i.id = s.issue_id
          WHERE i.project_id = ${projectId} ${initiativeFilter}
+           AND ${notInTriage(sql`i.column_id`)}
+           AND s.state_type IS NOT 'triage'
       ) s ON s.entered_at < d.day + ${DAY_MS}
          AND (s.left_at IS NULL OR s.left_at >= d.day + ${DAY_MS})
      GROUP BY d.day
@@ -573,7 +593,7 @@ export async function listActivity(
 
   if (opts.issueIds && opts.issueIds.length === 0) return { items: [], nextCursor: null };
 
-  const conds = [eq(issue.projectId, projectId)];
+  const conds = [eq(issue.projectId, projectId), notInTriage(issue.columnId)];
   if (opts.issueIds) conds.push(inArray(issueActivity.issueId, opts.issueIds));
   if (opts.actorUserId != null) conds.push(eq(issueActivity.actorUserId, opts.actorUserId));
   if (opts.action) conds.push(eq(issueActivity.action, opts.action));

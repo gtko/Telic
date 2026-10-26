@@ -1,6 +1,7 @@
 import { CircleDashed } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Column } from '@/lib/api/endpoints/columns';
+import { selectableColumns } from '@/utils/fieldOptions';
 import { colorDot } from '@/components/common/fields/colorDot';
 import { Pill } from '@/components/common/fields/Pill';
 import PopoverPick from '@/components/common/fields/PopoverPick';
@@ -39,7 +40,7 @@ export default function GitColumnSelect({
           selected: value == null,
           onSelect: () => onChange(null),
         },
-        ...columns.map((c) => ({
+        ...selectableColumns(columns).map((c) => ({
           key: String(c.id),
           search: c.name,
           icon: colorDot(c.color),

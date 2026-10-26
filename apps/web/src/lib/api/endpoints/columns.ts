@@ -1,6 +1,6 @@
 import { request } from '@/lib/api/core/client';
 
-export type StateType = 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled';
+export type StateType = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled';
 
 export interface Column {
   id: number;

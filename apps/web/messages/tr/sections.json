@@ -45,6 +45,10 @@
       "label": "Telegram",
       "description": "Kullanıcıların Telegram hesaplarını bağladığı ve kendi botunu ayarlamayan projeler için bildirim gönderen bot."
     },
+    "sentry": {
+      "label": "Sentry",
+      "description": "Sentry errors of the routed projects arrive in the triage column of the Telic project you choose."
+    },
     "email": {
       "label": "E-posta Sağlayıcısı",
       "description": "Örneklemin e-posta gönderdiği sağlayıcı: şifre sıfırlama, adres doğrulama ve giriş bağlantıları."

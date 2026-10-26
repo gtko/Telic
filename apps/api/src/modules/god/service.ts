@@ -16,10 +16,27 @@ import {
   teamRole,
   projectView,
   workspaceManager,
+  sentryRoute,
+  writeSecret,
+  getSentryConfig,
+  SENTRY_SECRET_KEY,
   type Db,
+  type SentryConfig,
   chunk,
 } from '@repo/db';
-import { and, desc, eq, like, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  like,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import type { AnySQLiteColumn, SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { accountsManagedByScim } from '@repo/auth';
 import { iso } from '#shared/lib';
@@ -797,4 +814,116 @@ export async function verifyInstanceUserEmail(
     .returning({ id: user.id });
   if (updated.length === 0) return null;
   return getInstanceUser(db, userId);
+}
+
+// ── Sentry integration ────────────────────────────────────────────────────────
+
+export interface SentrySettings {
+  orgSlug: string;
+  hasAuthToken: boolean;
+  hasClientSecret: boolean;
+  webhookUrl: string;
+}
+
+// Built from the api origin on each read, so it is not stored with the secret.
+function sentryWebhookUrl(): string {
+  return `${(process.env.API_URL ?? '').replace(/\/+$/, '')}/api/sentry/webhook`;
+}
+
+function redactSentry(config: SentryConfig): Omit<SentrySettings, 'webhookUrl'> {
+  return {
+    orgSlug: config.orgSlug,
+    hasAuthToken: config.authToken.length > 0,
+    hasClientSecret: config.clientSecret.length > 0,
+  };
+}
+
+export async function getSentrySettings(db: Db): Promise<SentrySettings> {
+  return { ...redactSentry(await getSentryConfig(db)), webhookUrl: sentryWebhookUrl() };
+}
+
+export interface SentrySettingsPatch {
+  authToken?: string | null;
+  clientSecret?: string | null;
+  orgSlug?: string;
+}
+
+// A secret keeps its stored value when omitted or sent empty; null erases it.
+function nextSecret(sent: string | null | undefined, stored: string): string {
+  if (sent === null) return '';
+  return sent || stored;
+}
+
+export async function setSentrySettings(
+  db: Db,
+  patch: SentrySettingsPatch,
+): Promise<SentrySettings> {
+  const current = await getSentryConfig(db);
+  const next: SentryConfig = {
+    authToken: nextSecret(patch.authToken, current.authToken),
+    clientSecret: nextSecret(patch.clientSecret, current.clientSecret),
+    orgSlug: patch.orgSlug ?? current.orgSlug,
+  };
+  const redacted = redactSentry(next);
+  await writeSecret(db, SENTRY_SECRET_KEY, next, redacted);
+  return { ...redacted, webhookUrl: sentryWebhookUrl() };
+}
+
+export interface SentryRoute {
+  id: number;
+  sentryProjectSlug: string;
+  projectId: number;
+  projectKey: string;
+  projectName: string;
+}
+
+export async function listSentryRoutes(db: Db): Promise<SentryRoute[]> {
+  return db
+    .select({
+      id: sentryRoute.id,
+      sentryProjectSlug: sentryRoute.sentryProjectSlug,
+      projectId: sentryRoute.projectId,
+      projectKey: project.key,
+      projectName: project.name,
+    })
+    .from(sentryRoute)
+    .innerJoin(project, eq(project.id, sentryRoute.projectId))
+    .orderBy(asc(sentryRoute.sentryProjectSlug));
+}
+
+// A slug that already has a route is moved to the given project. Returns null for an
+// unknown project.
+export async function upsertSentryRoute(
+  db: Db,
+  input: { sentryProjectSlug: string; projectId: number },
+): Promise<SentryRoute | null> {
+  const [target] = await db
+    .select({ key: project.key, name: project.name })
+    .from(project)
+    .where(eq(project.id, input.projectId));
+  if (!target) return null;
+  const [row] = await db
+    .insert(sentryRoute)
+    .values(input)
+    .onConflictDoUpdate({
+      target: sentryRoute.sentryProjectSlug,
+      set: { projectId: input.projectId },
+    })
+    .returning({ id: sentryRoute.id });
+  return {
+    id: row.id,
+    sentryProjectSlug: input.sentryProjectSlug,
+    projectId: input.projectId,
+    projectKey: target.key,
+    projectName: target.name,
+  };
+}
+
+// False for an unknown id.
+export async function deleteSentryRoute(db: Db, id: number): Promise<boolean> {
+  const removed = await db
+    .delete(sentryRoute)
+    .where(eq(sentryRoute.id, id))
+    .returning({ id: sentryRoute.id });
+  return removed.length > 0;
 }

@@ -2,6 +2,7 @@ import { type Db, issue, project as projectTable } from '@repo/db';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { HttpError } from '#shared/lib';
+import { notInTriage } from '#shared/triage';
 import { archiveIssue, deleteIssue, restoreIssue, updateIssue } from './service';
 import type { AttachmentRow } from '#modules/attachments/service';
 
@@ -73,7 +74,7 @@ export async function attachSubtaskCounts<T extends { id: number }>(
     .select({ parentId: issue.parentId, count: sql<number>`count(*)` })
     .from(issue)
     .innerJoin(parent, eq(parent.id, issue.parentId))
-    .where(eq(parent.projectId, projectId))
+    .where(and(eq(parent.projectId, projectId), notInTriage(issue.columnId)))
     .groupBy(issue.parentId);
   const byParent = new Map(rows.map((row) => [row.parentId, row.count]));
   return issues.map((row) => ({ ...row, subtaskCount: byParent.get(row.id) ?? 0 }));

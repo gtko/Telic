@@ -34,7 +34,7 @@ export const columnRoutes = new Elysia({ name: 'columns', detail: { tags: ['Colu
         summary: 'Create a column',
         description:
           'Create a column (workflow state). stateType is one of ' +
-          'backlog/unstarted/started/completed/canceled.',
+          'triage/backlog/unstarted/started/completed/canceled.',
         ...mcpTool('create_column'),
       },
     },

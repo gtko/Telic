@@ -46,6 +46,7 @@
     "statusAge": "Время в статусе"
   },
   "stateTypes": {
+    "triage": "Триаж",
     "backlog": "Бэклог",
     "unstarted": "Не начато",
     "started": "В работе",

@@ -45,6 +45,10 @@
       "label": "Telegram",
       "description": "设置用户关联 Telegram 账户所用的机器人，以及项目未单独配置时发送通知的机器人。"
     },
+    "sentry": {
+      "label": "Sentry",
+      "description": "Sentry errors of the routed projects arrive in the triage column of the Telic project you choose."
+    },
     "email": {
       "label": "邮件服务商",
       "description": "设置实例用于发送密码重置、邮箱验证和登录链接的邮件服务商。"

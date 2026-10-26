@@ -1,3 +1,4 @@
+import { selectableColumns } from '@/utils/fieldOptions';
 import { Fragment, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -22,7 +23,7 @@ function defaultEffectValue(
 ): ActionEffect[EffectFieldKey] {
   switch (key) {
     case 'columnId':
-      return project.columns[0]?.id ?? 0;
+      return selectableColumns(project.columns)[0]?.id ?? 0;
     case 'labelIds':
       return [];
     default:
@@ -49,7 +50,7 @@ function EffectValue({
       return (
         <StatusSelect
           columns={project.columns}
-          value={effect.columnId ?? project.columns[0]?.id ?? 0}
+          value={effect.columnId ?? selectableColumns(project.columns)[0]?.id ?? 0}
           onChange={onChange}
         />
       );

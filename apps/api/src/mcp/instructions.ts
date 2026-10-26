@@ -47,8 +47,10 @@ gets the ids from list_teams.
 ## Columns and state
 
 Column names are chosen per project and cannot be assumed. The stable part is the
-stateType each column carries in get_project: backlog, unstarted, started,
+stateType each column carries in get_project: triage, backlog, unstarted, started,
 completed, canceled. Select a column by its stateType, never by its name.
+Issues in a triage column are hidden from list_issues and search_issues; get_issue
+and get_issue_by_number still return them.
 
 ## Working on an issue
 

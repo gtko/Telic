@@ -173,6 +173,36 @@ export const TelegramSettingsBody = t.Object({
   botToken: t.Optional(t.String()),
 });
 
+export const SentrySettingsResponse = t.Object({
+  orgSlug: t.String(),
+  hasAuthToken: t.Boolean(),
+  hasClientSecret: t.Boolean(),
+  webhookUrl: t.String(),
+});
+
+export const SentrySettingsBody = t.Object({
+  authToken: t.Optional(t.Nullable(t.String())),
+  clientSecret: t.Optional(t.Nullable(t.String())),
+  orgSlug: t.Optional(t.String()),
+});
+
+export const SentryRouteResponse = t.Object({
+  id: t.Number(),
+  sentryProjectSlug: t.String(),
+  projectId: t.Number(),
+  projectKey: t.String(),
+  projectName: t.String(),
+});
+
+export const SentryRoutesResponse = t.Array(SentryRouteResponse);
+
+export const SentryRouteBody = t.Object({
+  sentryProjectSlug: t.String({ minLength: 1 }),
+  projectId: t.Integer({ minimum: 1 }),
+});
+
+export const sentryRouteParams = t.Object({ id: t.Numeric() });
+
 const InstanceUserResponse = t.Object({
   id: t.String(),
   name: t.String(),

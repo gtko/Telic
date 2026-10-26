@@ -10,6 +10,7 @@ export {
   isInstanceBotUsable,
   type InstanceBotConfig,
 } from './domains/telegram-bot';
+export { SENTRY_SECRET_KEY, getSentryConfig, type SentryConfig } from './domains/sentry';
 export {
   INSTANCE_EMAIL_SECRET_KEY,
   defaultInstanceEmailConfig,

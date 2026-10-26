@@ -37,7 +37,9 @@ import type { IssueQuery } from './query';
 import { iso, num, HttpError } from '#shared/lib';
 import { escapeLike, inIds, likeText } from './sql-helpers';
 import type { ProjectRow } from '#modules/projects/service';
+import { resolveSentryIssuesOnCompletion } from '#modules/sentry/service';
 import { assertProjectFeature } from '#shared/access';
+import { notInTriage } from '#shared/triage';
 import { getCustomFieldById, type CustomFieldType } from '#modules/custom-fields/service';
 import {
   recordActivity,
@@ -212,7 +214,9 @@ export async function listIssues(db: Db, project: ProjectRow): Promise<IssueRow[
   const rows = await db
     .select()
     .from(issue)
-    .where(and(eq(issue.projectId, project.id), isNull(issue.archivedAt)))
+    .where(
+      and(eq(issue.projectId, project.id), isNull(issue.archivedAt), notInTriage(issue.columnId)),
+    )
     .orderBy(issue.columnId, issue.position);
   const issues = rows.map((row) => mapIssue(row, project.key));
   await attachLabels(db, issues);
@@ -229,7 +233,13 @@ export async function listArchivedIssues(db: Db, project: ProjectRow): Promise<I
   const rows = await db
     .select()
     .from(issue)
-    .where(and(eq(issue.projectId, project.id), isNotNull(issue.archivedAt)))
+    .where(
+      and(
+        eq(issue.projectId, project.id),
+        isNotNull(issue.archivedAt),
+        notInTriage(issue.columnId),
+      ),
+    )
     .orderBy(sql`${issue.archivedAt} desc`);
   const issues = rows.map((row) => mapIssue(row, project.key));
   await attachLabels(db, issues);
@@ -294,7 +304,7 @@ export async function searchIssues(
   },
   opts: { includeArchived?: boolean } = {},
 ): Promise<IssueSearchHit[]> {
-  const conds: SQL[] = [eq(issue.projectId, project.id)];
+  const conds: SQL[] = [eq(issue.projectId, project.id), notInTriage(issue.columnId)];
   if (!opts.includeArchived) conds.push(isNull(issue.archivedAt));
 
   const raw = filters.query?.trim();
@@ -561,7 +571,7 @@ async function attachLabels<T extends { id: number; labelIds: number[] }>(
 // selected option ids) and merges them onto the issues. A field with no scalar
 // value and no options is omitted, so unset fields add nothing to the payload.
 // Mutates the passed issues in place.
-async function attachFieldValues(db: Db, issues: IssueRow[]): Promise<void> {
+export async function attachFieldValues(db: Db, issues: IssueRow[]): Promise<void> {
   if (issues.length === 0) return;
   const issueIds = issues.map((i) => i.id);
   const [scalarRows, optionRows] = await Promise.all([
@@ -1116,6 +1126,7 @@ export async function updateIssue(
       if (before.columnId !== after.columnId) {
         await emitIssueEvent(db, 'issue.state_changed', after, actor);
         await applySubtaskAutomation(db, after, actor);
+        resolveSentryIssuesOnCompletion(db, after.id);
       }
     }
   }

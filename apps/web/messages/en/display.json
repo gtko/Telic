@@ -46,6 +46,7 @@
     "statusAge": "Time in status"
   },
   "stateTypes": {
+    "triage": "Triage",
     "backlog": "Backlog",
     "unstarted": "Unstarted",
     "started": "Started",

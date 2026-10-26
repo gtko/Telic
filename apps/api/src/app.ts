@@ -19,6 +19,7 @@ import { requestContext } from './shared/context';
 import { planner } from './planner';
 import { mountMcp } from './mcp/mount';
 import { gitWebhookRoutes } from './modules/git/webhook';
+import { sentryWebhookRoutes } from './modules/sentry';
 import { scimRoutes } from './modules/scim';
 import { currentUserRoutes } from './modules/current-user';
 import { syncOidcGroupsAfterCallback } from './modules/scim/oidc-sync';
@@ -103,14 +104,14 @@ const dynamicAdapter = { ...CloudflareAdapter, beforeCompile: undefined };
 // Two things the composed handler does that the dynamic one does not. A JSON request with an empty body
 // (a bodiless POST from a client that sends a JSON content type) is read as an empty object instead of
 // failing. And `parse: 'none'` is not honoured, so the body of /api/auth/* is left unread here for
-// better-auth. Likewise `parse: 'text'` is not honoured: the repository webhooks verify a signature
-// over the exact bytes, so their body stays text.
-const REPOSITORY_WEBHOOK_PATH = /^\/webhooks\/(git|github)\//;
+// better-auth. Likewise `parse: 'text'` is not honoured: the webhooks verify a signature over the
+// exact bytes, so their body stays text.
+const RAW_BODY_WEBHOOK_PATH = /^\/(webhooks\/(git|github)\/|api\/sentry\/webhook$)/;
 
 async function readJsonBody({ request, contentType }: { request: Request; contentType: string }) {
   const { pathname } = new URL(request.url);
   if (pathname.startsWith('/api/auth/')) return UNREAD_BODY;
-  if (REPOSITORY_WEBHOOK_PATH.test(pathname)) return request.text();
+  if (RAW_BODY_WEBHOOK_PATH.test(pathname)) return request.text();
   if (contentType !== 'application/json') return undefined;
   const text = await request.text();
   return text ? (JSON.parse(text) as unknown) : {};
@@ -213,6 +214,10 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
           {
             name: 'Telegram',
             description: "The session user's linked Telegram account",
+          },
+          {
+            name: 'Sentry',
+            description: 'Sentry issue webhook, which files Sentry issues as Telic issues',
           },
           {
             name: 'Analytics',
@@ -387,6 +392,8 @@ export const app = new Elysia({ adapter: dynamicAdapter, aot: false, normalize: 
   })
   // Inbound repository webhook receiver (authenticated by its per-project secret).
   .use(gitWebhookRoutes)
+  // Inbound Sentry issue webhook (authenticated by the signature over its body).
+  .use(sentryWebhookRoutes)
   // SCIM 2.0 provisioning (authenticated by the instance SCIM bearer token). Mounted
   // here rather than under the planner: the planner's session guard would answer 401
   // before the bearer check runs, and its error handler emits a body SCIM does not

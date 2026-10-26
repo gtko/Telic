@@ -114,6 +114,7 @@ export async function assertWipLimit(db: Db, columnId: number, incoming = 1): Pr
 // The work items view's left-to-right order: sorting by state type before position
 // keeps a newly added column next to the others of its type rather than at the end.
 const STATE_TYPE_ORDER = sql`CASE ${projectColumn.stateType}
+    WHEN 'triage' THEN -1
     WHEN 'backlog' THEN 0
     WHEN 'unstarted' THEN 1
     WHEN 'started' THEN 2
@@ -186,6 +187,10 @@ export async function updateColumn(
 ): Promise<ColumnRow | null> {
   await assertAutoAssignee(db, projectId, patch.autoAssignUserId);
   const scope = and(eq(projectColumn.id, id), eq(projectColumn.projectId, projectId));
+  const [current] = await db.select().from(projectColumn).where(scope);
+  if (!current) return null;
+  if (current.stateType === 'triage' && patch.stateType !== undefined)
+    throw new HttpError(400, 'The triage column cannot change its state type');
   const set: Partial<typeof projectColumn.$inferInsert> = {};
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.color !== undefined) set.color = patch.color;
@@ -193,10 +198,7 @@ export async function updateColumn(
   if (patch.wipLimit !== undefined) set.wipLimit = patch.wipLimit;
   if (patch.wipMode !== undefined) set.wipMode = patch.wipMode;
   if (patch.autoAssignUserId !== undefined) set.autoAssignUserId = patch.autoAssignUserId;
-  if (Object.keys(set).length === 0) {
-    const rows = await db.select().from(projectColumn).where(scope);
-    return rows[0] ? mapColumn(rows[0]) : null;
-  }
+  if (Object.keys(set).length === 0) return mapColumn(current);
   const [row] = await db.update(projectColumn).set(set).where(scope).returning();
   return row ? mapColumn(row) : null;
 }
@@ -248,6 +250,8 @@ export async function deleteColumn(
   const column = await getColumnById(db, columnId);
   if (!column || column.projectId !== projectId)
     throw new HttpError(404, `Column ${columnId} not found`);
+  if (column.stateType === 'triage')
+    throw new HttpError(400, 'The triage column cannot be deleted');
 
   let target: ColumnRow | null = null;
   if (opts.mode === 'move') {

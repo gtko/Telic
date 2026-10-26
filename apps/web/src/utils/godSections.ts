@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import {
   Building2,
+  Bug,
   FolderKanban,
   HardDrive,
   Keyboard,
@@ -75,6 +76,12 @@ export const GOD_SECTIONS: GodSection[] = godSections([
     slug: 'telegram',
     group: 'instance',
     icon: Send,
+    integration: true,
+  },
+  {
+    slug: 'sentry',
+    group: 'instance',
+    icon: Bug,
     integration: true,
   },
   {

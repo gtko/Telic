@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
+import { hmacSha256Valid } from '#shared/hmac';
 
 // The provider adapters behind the one inbound webhook receiver. An adapter
 // recognises a delivery by its headers, verifies it with the credential its
@@ -79,9 +80,7 @@ export interface GitProvider {
 function hmacValid(secret: string, rawBody: string, signature: string | undefined): boolean {
   if (!signature) return false;
   const hex = signature.startsWith('sha256=') ? signature.slice('sha256='.length) : signature;
-  const given = Buffer.from(hex, 'hex');
-  const expected = createHmac('sha256', secret).update(rawBody).digest();
-  return given.length === expected.length && timingSafeEqual(given, expected);
+  return hmacSha256Valid(secret, rawBody, hex);
 }
 
 // A shared token sent as-is, which is how GitLab authenticates a delivery.

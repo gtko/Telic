@@ -49,6 +49,8 @@ export const settingsPath = (ref: string, section: string) =>
 
 export const inboxPath = (ref: string) => `${projectPath(ref)}/inbox`;
 
+export const triagePath = (ref: string) => `${projectPath(ref)}/triage`;
+
 // The member's own notification preferences (which events, by which channel, their
 // Telegram chat id). A main-nav Configuration destination, open to any member.
 export const notificationsPath = (ref: string) => `${projectPath(ref)}/notifications`;
