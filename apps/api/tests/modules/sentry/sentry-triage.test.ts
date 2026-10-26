@@ -204,6 +204,23 @@ describe('sentry triage', () => {
     const byNumber = await project.issues({ sequenceNumber: issue.sequenceNumber }).get();
     expect(byNumber.data).toMatchObject({ id: issue.id, columnId: issue.columnId });
   });
+
+  it('leaves a triaged issue out of the project stats, the status breakdown and the export', async () => {
+    const { asOwner } = await setupRoutedProject();
+    const columns = await columnIds(asOwner);
+    await plainIssue(asOwner, columns.backlog, 'Checkout copy');
+    await triagedIssue(asOwner, '1013');
+    const project = asOwner.projects({ projectKey: 'MKT' });
+
+    const stats = await project.analytics.stats.get();
+    expect(stats).toMatchObject({ status: 200, data: { open: 1, backlog: 1, unassigned: 1 } });
+
+    const breakdown = await project.analytics.breakdown.get({ query: { by: 'status' } });
+    expect(breakdown.data!.reduce((sum, column) => sum + column.count, 0)).toBe(1);
+
+    const exported = await project['import-jobs'].export.get();
+    expect(exported.data!.issues.map((item) => item.title)).toEqual(['Checkout copy']);
+  });
 });
 
 describe('sentry status sync', () => {

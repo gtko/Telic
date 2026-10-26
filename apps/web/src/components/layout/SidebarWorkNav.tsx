@@ -121,7 +121,7 @@ export default function SidebarWorkNav({
               disabled={disabled}
             />
           )}
-          {canReadTriage && (
+          {canReadTriage && (triage?.length ?? 0) > 0 && (
             <SidebarNavItem
               href={projectKey ? triagePath(projectKey) : '#'}
               icon={ShieldAlert}
