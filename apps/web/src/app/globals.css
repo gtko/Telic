@@ -588,7 +588,6 @@ a.issue-ref {
   cursor: default;
   pointer-events: none;
 }
-/* The notes of a release: each change section opens with its icon on a tile. */
 .release-notes > * + h3[data-kind] {
   margin-top: 2.5em;
 }
@@ -652,7 +651,7 @@ a.issue-ref {
   --kind-icon: url('/whats-new/other.svg');
 }
 /* The release page on GitHub shows this banner as an image; the screen draws its own. */
-.release-notes img[alt='Telic release banner'] {
+.release-notes p:has(img[alt='Telic release banner']) {
   display: none;
 }
 .md-content table {

@@ -12,9 +12,7 @@ export interface TakeoverSection {
   title: string;
   // Turns the heading into a link to the source of the section.
   href?: string;
-  // Also shown as a link at the end of the heading.
   hrefLabel?: string;
-  // Shown above the heading.
   cover?: ReactNode;
   icon?: ReactNode;
   badge?: string;
