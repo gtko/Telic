@@ -6,7 +6,16 @@
   "badgeNew": "Yeni",
   "check": "Güncellemeleri denetle",
   "checking": "Denetleniyor",
-  "lastChecked": "Son denetim",
+  "lastChecked": "Son denetim {date}",
   "allReleases": "Tüm sürümler",
-  "noNotes": "Bu sürüm için sürüm notu bulunmuyor."
+  "noNotes": "Bu sürüm için sürüm notu bulunmuyor.",
+  "viewOnGitHub": "GitHub’da görüntüle",
+  "banner": {
+    "feat": "{count, plural, other {# yenilik}}",
+    "improvement": "{count, plural, other {# iyileştirme}}",
+    "fix": "{count, plural, other {# düzeltme}}",
+    "perf": "{count, plural, other {# performans iyileştirmesi}}",
+    "docs": "{count, plural, other {# belge değişikliği}}",
+    "other": "{count, plural, other {# diğer değişiklik}}"
+  }
 }

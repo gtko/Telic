@@ -6,7 +6,16 @@
   "badgeNew": "신규",
   "check": "업데이트 확인",
   "checking": "확인 중",
-  "lastChecked": "마지막 확인",
+  "lastChecked": "마지막 확인 {date}",
   "allReleases": "모든 릴리스",
-  "noNotes": "이 릴리스에는 릴리스 노트가 없습니다."
+  "noNotes": "이 릴리스에는 릴리스 노트가 없습니다.",
+  "viewOnGitHub": "GitHub에서 보기",
+  "banner": {
+    "feat": "{count, plural, other {새 기능 #개}}",
+    "improvement": "{count, plural, other {개선 #건}}",
+    "fix": "{count, plural, other {수정 #건}}",
+    "perf": "{count, plural, other {성능 개선 #건}}",
+    "docs": "{count, plural, other {문서 변경 #건}}",
+    "other": "{count, plural, other {기타 변경 #건}}"
+  }
 }

@@ -6,7 +6,16 @@
   "badgeNew": "新版本",
   "check": "檢查更新",
   "checking": "正在檢查",
-  "lastChecked": "上次檢查",
+  "lastChecked": "上次檢查 {date}",
   "allReleases": "所有版本",
-  "noNotes": "此版本沒有版本說明。"
+  "noNotes": "此版本沒有版本說明。",
+  "viewOnGitHub": "在 GitHub 上檢視",
+  "banner": {
+    "feat": "{count, plural, other {# 項新功能}}",
+    "improvement": "{count, plural, other {# 項改進}}",
+    "fix": "{count, plural, other {# 項修正}}",
+    "perf": "{count, plural, other {# 項效能最佳化}}",
+    "docs": "{count, plural, other {# 項文件更新}}",
+    "other": "{count, plural, other {# 項其他變更}}"
+  }
 }

@@ -6,7 +6,16 @@
   "badgeNew": "Nueva",
   "check": "Comprobar actualizaciones",
   "checking": "Comprobando",
-  "lastChecked": "Última comprobación",
+  "lastChecked": "Última comprobación {date}",
   "allReleases": "Todas las versiones",
-  "noNotes": "Esta versión no tiene notas."
+  "noNotes": "Esta versión no tiene notas.",
+  "viewOnGitHub": "Ver en GitHub",
+  "banner": {
+    "feat": "{count, plural, one {# novedad} other {# novedades}}",
+    "improvement": "{count, plural, one {# mejora} other {# mejoras}}",
+    "fix": "{count, plural, one {# corrección} other {# correcciones}}",
+    "perf": "{count, plural, one {# optimización} other {# optimizaciones}}",
+    "docs": "{count, plural, one {# cambio en la documentación} other {# cambios en la documentación}}",
+    "other": "{count, plural, one {# cambio más} other {# cambios más}}"
+  }
 }

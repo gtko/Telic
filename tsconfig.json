@@ -2,8 +2,13 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["bun"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./apps/web/src/*"]
+    }
   },
   "include": ["scripts/**/*.ts"]
 }

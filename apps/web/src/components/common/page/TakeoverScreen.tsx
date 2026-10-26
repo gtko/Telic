@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,8 @@ export interface TakeoverSection {
   title: string;
   // Turns the heading into a link to the source of the section.
   href?: string;
+  hrefLabel?: string;
+  cover?: ReactNode;
   icon?: ReactNode;
   badge?: string;
   // What the section is to the reader: the one they are on, or one they have not
@@ -101,32 +104,46 @@ export default function TakeoverScreen({
                 id={section.id}
                 className={index === 0 ? 'scroll-mt-8' : 'scroll-mt-8 border-t border-border pt-14'}
               >
-                <h2 className="flex items-center gap-2 text-lg font-semibold">
-                  {section.icon}
-                  {section.href ? (
+                {section.cover && <div className="mb-8">{section.cover}</div>}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h2 className="flex items-center gap-3 text-xl font-bold tracking-tight">
+                    {section.icon}
+                    {section.href ? (
+                      <a
+                        href={section.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:underline"
+                      >
+                        {section.title}
+                      </a>
+                    ) : (
+                      section.title
+                    )}
+                    {section.badge && (
+                      <Badge
+                        variant={section.tone === 'new' ? 'destructive' : 'secondary'}
+                        className={cn(
+                          section.tone === 'current' &&
+                            'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                        )}
+                      >
+                        {section.badge}
+                      </Badge>
+                    )}
+                  </h2>
+                  {section.href && section.hrefLabel && (
                     <a
                       href={section.href}
                       target="_blank"
                       rel="noreferrer"
-                      className="hover:underline"
+                      className="ms-auto flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
                     >
-                      {section.title}
+                      {section.hrefLabel}
+                      <ExternalLink className="size-3.5" />
                     </a>
-                  ) : (
-                    section.title
                   )}
-                  {section.badge && (
-                    <Badge
-                      variant={section.tone === 'new' ? 'destructive' : 'secondary'}
-                      className={cn(
-                        section.tone === 'current' &&
-                          'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-                      )}
-                    >
-                      {section.badge}
-                    </Badge>
-                  )}
-                </h2>
+                </div>
                 {section.description && (
                   <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
                     {section.description}

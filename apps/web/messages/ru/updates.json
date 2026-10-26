@@ -6,7 +6,16 @@
   "badgeNew": "Новое",
   "check": "Проверить обновления",
   "checking": "Проверка",
-  "lastChecked": "Проверено",
+  "lastChecked": "Проверено {date}",
   "allReleases": "Все релизы",
-  "noNotes": "Этот релиз без заметок."
+  "noNotes": "Этот релиз без заметок.",
+  "viewOnGitHub": "Открыть на GitHub",
+  "banner": {
+    "feat": "{count, plural, one {# новая функция} few {# новые функции} many {# новых функций} other {# новой функции}}",
+    "improvement": "{count, plural, one {# улучшение} few {# улучшения} many {# улучшений} other {# улучшения}}",
+    "fix": "{count, plural, one {# исправление} few {# исправления} many {# исправлений} other {# исправления}}",
+    "perf": "{count, plural, one {# оптимизация} few {# оптимизации} many {# оптимизаций} other {# оптимизации}}",
+    "docs": "{count, plural, one {# изменение в документации} few {# изменения в документации} many {# изменений в документации} other {# изменения в документации}}",
+    "other": "{count, plural, one {# другое изменение} few {# других изменения} many {# других изменений} other {# другого изменения}}"
+  }
 }

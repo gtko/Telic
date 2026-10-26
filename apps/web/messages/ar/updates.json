@@ -6,7 +6,16 @@
   "badgeNew": "جديد",
   "check": "التحقّق من التحديثات",
   "checking": "جارٍ التحقّق",
-  "lastChecked": "آخر تحقّق",
+  "lastChecked": "آخر تحقّق {date}",
   "allReleases": "كل الإصدارات",
-  "noNotes": "لا توجد ملاحظات لهذا الإصدار."
+  "noNotes": "لا توجد ملاحظات لهذا الإصدار.",
+  "viewOnGitHub": "عرض على GitHub",
+  "banner": {
+    "feat": "{count, plural, zero {# ميزة} one {# ميزة} two {# ميزتان} few {# ميزات} many {# ميزة} other {# ميزة}}",
+    "improvement": "{count, plural, zero {# تحسين} one {# تحسين} two {# تحسينان} few {# تحسينات} many {# تحسينًا} other {# تحسين}}",
+    "fix": "{count, plural, zero {# إصلاح} one {# إصلاح} two {# إصلاحان} few {# إصلاحات} many {# إصلاحًا} other {# إصلاح}}",
+    "perf": "{count, plural, zero {# تحسين للأداء} one {# تحسين للأداء} two {# تحسينان للأداء} few {# تحسينات للأداء} many {# تحسينًا للأداء} other {# تحسين للأداء}}",
+    "docs": "{count, plural, zero {# تغيير في التوثيق} one {# تغيير في التوثيق} two {# تغييران في التوثيق} few {# تغييرات في التوثيق} many {# تغييرًا في التوثيق} other {# تغيير في التوثيق}}",
+    "other": "{count, plural, zero {# تغيير آخر} one {# تغيير آخر} two {# تغييران آخران} few {# تغييرات أخرى} many {# تغييرًا آخر} other {# تغيير آخر}}"
+  }
 }

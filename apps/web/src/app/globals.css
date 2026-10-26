@@ -588,6 +588,72 @@ a.issue-ref {
   cursor: default;
   pointer-events: none;
 }
+.release-notes > * + h3[data-kind] {
+  margin-top: 2.5em;
+}
+.release-notes > h3[data-kind] + * {
+  margin-top: 0.875em;
+}
+.release-notes li + li {
+  margin-top: 0.5em;
+}
+.release-notes h3[data-kind] {
+  --kind-tile: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --kind-ink: var(--foreground);
+  position: relative;
+  display: flex;
+  align-items: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.release-notes h3[data-kind='feat'] {
+  --kind-tile: rgb(52 211 153 / 0.14);
+  --kind-ink: #059669;
+}
+.dark .release-notes h3[data-kind='feat'] {
+  --kind-ink: #6ee7b7;
+}
+.release-notes h3[data-kind]::before {
+  content: '';
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin-inline-end: 12px;
+  border-radius: 10px;
+  background: var(--kind-tile);
+}
+.release-notes h3[data-kind]::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 8px;
+  top: calc(50% - 10px);
+  width: 20px;
+  height: 20px;
+  background: var(--kind-ink);
+  mask: var(--kind-icon) center / contain no-repeat;
+}
+.release-notes h3[data-kind='feat'] {
+  --kind-icon: url('/whats-new/feat.svg');
+}
+.release-notes h3[data-kind='improvement'] {
+  --kind-icon: url('/whats-new/improvement.svg');
+}
+.release-notes h3[data-kind='fix'] {
+  --kind-icon: url('/whats-new/fix.svg');
+}
+.release-notes h3[data-kind='perf'] {
+  --kind-icon: url('/whats-new/perf.svg');
+}
+.release-notes h3[data-kind='docs'] {
+  --kind-icon: url('/whats-new/docs.svg');
+}
+.release-notes h3[data-kind='other'] {
+  --kind-icon: url('/whats-new/other.svg');
+}
+/* The release page on GitHub shows this banner as an image; the screen draws its own. */
+.release-notes p:has(img[alt='Telic release banner']) {
+  display: none;
+}
 .md-content table {
   border-collapse: collapse;
 }
