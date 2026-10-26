@@ -6,7 +6,7 @@
   "badgeNew": "Baru",
   "check": "Periksa pembaruan",
   "checking": "Memeriksa",
-  "lastChecked": "Terakhir diperiksa",
+  "lastChecked": "Terakhir diperiksa {date}",
   "allReleases": "Semua rilis",
   "noNotes": "Rilis ini tidak memiliki catatan."
 }

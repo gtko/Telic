@@ -6,7 +6,7 @@
   "badgeNew": "Новое",
   "check": "Проверить обновления",
   "checking": "Проверка",
-  "lastChecked": "Проверено",
+  "lastChecked": "Проверено {date}",
   "allReleases": "Все релизы",
   "noNotes": "Этот релиз без заметок."
 }

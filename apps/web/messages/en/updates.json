@@ -6,7 +6,7 @@
   "badgeNew": "New",
   "check": "Check for updates",
   "checking": "Checking",
-  "lastChecked": "Last checked",
+  "lastChecked": "Last checked {date}",
   "allReleases": "All releases",
   "noNotes": "This release has no notes."
 }

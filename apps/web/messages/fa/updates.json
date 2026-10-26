@@ -6,7 +6,7 @@
   "badgeNew": "جدید",
   "check": "بررسی به‌روزرسانی‌ها",
   "checking": "در حال بررسی",
-  "lastChecked": "آخرین بررسی",
+  "lastChecked": "آخرین بررسی {date}",
   "allReleases": "همه انتشارها",
   "noNotes": "این انتشار یادداشتی ندارد."
 }

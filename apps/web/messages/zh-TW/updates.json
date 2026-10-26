@@ -6,7 +6,7 @@
   "badgeNew": "新版本",
   "check": "檢查更新",
   "checking": "正在檢查",
-  "lastChecked": "上次檢查",
+  "lastChecked": "上次檢查 {date}",
   "allReleases": "所有版本",
   "noNotes": "此版本沒有版本說明。"
 }

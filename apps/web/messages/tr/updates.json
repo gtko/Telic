@@ -6,7 +6,7 @@
   "badgeNew": "Yeni",
   "check": "Güncellemeleri denetle",
   "checking": "Denetleniyor",
-  "lastChecked": "Son denetim",
+  "lastChecked": "Son denetim {date}",
   "allReleases": "Tüm sürümler",
   "noNotes": "Bu sürüm için sürüm notu bulunmuyor."
 }

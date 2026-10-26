@@ -6,7 +6,7 @@
   "badgeNew": "Nueva",
   "check": "Comprobar actualizaciones",
   "checking": "Comprobando",
-  "lastChecked": "Última comprobación",
+  "lastChecked": "Última comprobación {date}",
   "allReleases": "Todas las versiones",
   "noNotes": "Esta versión no tiene notas."
 }

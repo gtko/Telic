@@ -6,7 +6,7 @@
   "badgeNew": "Нове",
   "check": "Перевірити оновлення",
   "checking": "Перевірка",
-  "lastChecked": "Перевірено",
+  "lastChecked": "Перевірено {date}",
   "allReleases": "Усі релізи",
   "noNotes": "Цей реліз без нотаток."
 }

@@ -6,7 +6,7 @@
   "badgeNew": "جديد",
   "check": "التحقّق من التحديثات",
   "checking": "جارٍ التحقّق",
-  "lastChecked": "آخر تحقّق",
+  "lastChecked": "آخر تحقّق {date}",
   "allReleases": "كل الإصدارات",
   "noNotes": "لا توجد ملاحظات لهذا الإصدار."
 }

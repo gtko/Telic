@@ -42,7 +42,7 @@ export default function ReleaseHistory({
       title={t(status.updateAvailable ? 'updateAvailable' : 'releaseHistory')}
       sections={sections}
       aside={
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col items-start gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -53,10 +53,8 @@ export default function ReleaseHistory({
             {t(check.isPending ? 'checking' : 'check')}
           </Button>
           {status.checkedAt && (
-            <p className="text-end text-xs text-muted-foreground">
-              {t('lastChecked')}
-              <br />
-              {formatDateTime(status.checkedAt)}
+            <p className="text-xs text-muted-foreground">
+              {t('lastChecked', { date: formatDateTime(status.checkedAt) })}
             </p>
           )}
         </div>

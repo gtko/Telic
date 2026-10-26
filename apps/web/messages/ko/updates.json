@@ -6,7 +6,7 @@
   "badgeNew": "신규",
   "check": "업데이트 확인",
   "checking": "확인 중",
-  "lastChecked": "마지막 확인",
+  "lastChecked": "마지막 확인 {date}",
   "allReleases": "모든 릴리스",
   "noNotes": "이 릴리스에는 릴리스 노트가 없습니다."
 }
