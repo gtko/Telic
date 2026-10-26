@@ -48,8 +48,9 @@ export async function rejectIssue(
   return rejected;
 }
 
-// Moves the issue into the target issue's duplicates, then repoints its Sentry links so
-// later Sentry events land on the target.
+// Links the issue as a duplicate of the target and repoints its Sentry links to the target, so
+// later Sentry events land on it. The issue moves to canceled last: a failure before that
+// leaves it in triage.
 export async function mergeIssue(
   db: Db,
   project: ProjectRow,
@@ -61,14 +62,23 @@ export async function mergeIssue(
   const target = await getIssueState(db, targetIssueId);
   if (!target || target.projectId !== project.id)
     throw new HttpError(404, 'Target issue not found');
+  if (target.stateType === 'triage' || target.stateType === 'canceled')
+    throw new HttpError(400, 'A duplicate cannot be merged into a triaged or canceled issue');
 
-  const merged = await moveFromTriage(db, project, issueId, 'canceled', actorUserId);
+  await assertInTriage(db, project, issueId);
+  const canceledColumnId = await firstColumnId(db, project.id, 'canceled');
   await addIssueLink(db, issueId, targetIssueId, 'duplicates', actorUserId);
   await db
     .update(sentryIssue)
     .set({ issueId: targetIssueId })
     .where(eq(sentryIssue.issueId, issueId));
-  return merged;
+  return moveIssue(db, issueId, canceledColumnId, actorUserId);
+}
+
+async function assertInTriage(db: Db, project: ProjectRow, issueId: number): Promise<void> {
+  const state = await getIssueState(db, issueId);
+  if (!state || state.projectId !== project.id) throw new HttpError(404, 'Issue not found');
+  if (state.stateType !== 'triage') throw new HttpError(400, 'Issue is not in triage');
 }
 
 async function moveFromTriage(
@@ -78,11 +88,17 @@ async function moveFromTriage(
   stateType: 'backlog' | 'canceled',
   actorUserId: string,
 ): Promise<IssueRow> {
-  const state = await getIssueState(db, issueId);
-  if (!state || state.projectId !== project.id) throw new HttpError(404, 'Issue not found');
-  if (state.stateType !== 'triage') throw new HttpError(400, 'Issue is not in triage');
-
+  await assertInTriage(db, project, issueId);
   const columnId = await firstColumnId(db, project.id, stateType);
+  return moveIssue(db, issueId, columnId, actorUserId);
+}
+
+async function moveIssue(
+  db: Db,
+  issueId: number,
+  columnId: number,
+  actorUserId: string,
+): Promise<IssueRow> {
   const moved = await updateIssue(
     db,
     issueId,

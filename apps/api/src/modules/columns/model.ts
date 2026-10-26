@@ -1,7 +1,8 @@
 import { t } from 'elysia';
 
+// No triage here: the Sentry integration creates that column, and this API neither makes one
+// nor moves a column into or out of it.
 const stateType = t.Union([
-  t.Literal('triage'),
   t.Literal('backlog'),
   t.Literal('unstarted'),
   t.Literal('started'),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { authedApi, type Api, createProject } from '../../helpers/app';
 import { signUpTestUser } from '../../helpers/auth';
+import { deliverSentry, sentryIssue, setupRoutedProject } from '../../helpers/sentry';
 
 // Columns (kanban states). There is no GET /columns route — a column is read back
 // through the project view (GET /projects/:projectKey), whose `columns` field is
@@ -74,6 +75,16 @@ describe('columns', () => {
         stateType: 'nonsense' as unknown as 'started',
       });
       expect(res.status).toBe(400);
+    });
+
+    it('rejects a triage column, which only the Sentry integration creates', async () => {
+      const { asOwner } = await setupProject();
+      const res = await asOwner.projects({ projectKey: 'MKT' }).columns.post({
+        name: 'Inbox',
+        stateType: 'triage' as unknown as 'started',
+      });
+      expect(res.status).toBe(400);
+      expect((await columnsOf(asOwner)).map((c) => c.name)).not.toContain('Inbox');
     });
   });
 
@@ -183,6 +194,32 @@ describe('columns', () => {
         .columns({ columnId: todo.id })
         .patch({ stateType: 'nonsense' as unknown as 'started' });
       expect(res.status).toBe(400);
+    });
+
+    it('refuses to move a column to the triage state type', async () => {
+      const { asOwner } = await setupProject();
+      const todo = await columnByName(asOwner, 'Todo');
+      const res = await asOwner
+        .projects({ projectKey: 'MKT' })
+        .columns({ columnId: todo.id })
+        .patch({ stateType: 'triage' as unknown as 'started' });
+      expect(res.status).toBe(400);
+      expect(await columnByName(asOwner, 'Todo')).toMatchObject({ stateType: todo.stateType });
+    });
+
+    it('refuses to move the triage column to another state type', async () => {
+      const { asOwner } = await setupRoutedProject();
+      await deliverSentry(sentryIssue('9001'));
+      const triage = (await columnsOf(asOwner)).find((c) => c.stateType === 'triage')!;
+
+      const res = await asOwner
+        .projects({ projectKey: 'MKT' })
+        .columns({ columnId: triage.id })
+        .patch({ stateType: 'backlog' });
+      expect(res.status).toBe(400);
+      expect((await columnsOf(asOwner)).find((c) => c.id === triage.id)).toMatchObject({
+        stateType: 'triage',
+      });
     });
   });
 

@@ -57,6 +57,30 @@ describe('sentry settings', () => {
     expect(res).toMatchObject({ status: 200, data: { handled: 'created' } });
   });
 
+  it('clears a stored auth token when an update sends it null', async () => {
+    const { god } = await setupRoutedProject({ authToken: AUTH_TOKEN });
+
+    const put = await god.god.sentry.put({ authToken: null });
+    expect(put).toMatchObject({
+      status: 200,
+      data: { hasAuthToken: false, hasClientSecret: true },
+    });
+
+    const res = await god.god.sentry.get();
+    expect(res.data).toMatchObject({ hasAuthToken: false, hasClientSecret: true });
+  });
+
+  it('clears the client secret when an update sends it null, so no delivery verifies', async () => {
+    const { god, asOwner } = await setupRoutedProject();
+
+    const put = await god.god.sentry.put({ clientSecret: null });
+    expect(put).toMatchObject({ status: 200, data: { hasClientSecret: false } });
+
+    const res = await deliverSentry(sentryIssue('3003'));
+    expect(res.status).toBe(401);
+    expect(await triageIssues(asOwner)).toEqual([]);
+  });
+
   it('refuses the settings to a user who is not god', async () => {
     await godApi();
     const user = await signUpTestUser({ name: 'Plain' });

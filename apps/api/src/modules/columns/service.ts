@@ -187,6 +187,10 @@ export async function updateColumn(
 ): Promise<ColumnRow | null> {
   await assertAutoAssignee(db, projectId, patch.autoAssignUserId);
   const scope = and(eq(projectColumn.id, id), eq(projectColumn.projectId, projectId));
+  const [current] = await db.select().from(projectColumn).where(scope);
+  if (!current) return null;
+  if (current.stateType === 'triage' && patch.stateType !== undefined)
+    throw new HttpError(400, 'The triage column cannot change its state type');
   const set: Partial<typeof projectColumn.$inferInsert> = {};
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.color !== undefined) set.color = patch.color;
@@ -194,10 +198,7 @@ export async function updateColumn(
   if (patch.wipLimit !== undefined) set.wipLimit = patch.wipLimit;
   if (patch.wipMode !== undefined) set.wipMode = patch.wipMode;
   if (patch.autoAssignUserId !== undefined) set.autoAssignUserId = patch.autoAssignUserId;
-  if (Object.keys(set).length === 0) {
-    const rows = await db.select().from(projectColumn).where(scope);
-    return rows[0] ? mapColumn(rows[0]) : null;
-  }
+  if (Object.keys(set).length === 0) return mapColumn(current);
   const [row] = await db.update(projectColumn).set(set).where(scope).returning();
   return row ? mapColumn(row) : null;
 }

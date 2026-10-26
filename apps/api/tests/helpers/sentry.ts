@@ -24,7 +24,13 @@ export async function deliverSentry(
     secret = CLIENT_SECRET,
     signature,
     resource = 'issue',
-  }: { secret?: string; signature?: string; resource?: string } = {},
+    headers = {},
+  }: {
+    secret?: string;
+    signature?: string;
+    resource?: string;
+    headers?: Record<string, string>;
+  } = {},
 ) {
   const body = JSON.stringify(payload);
   const res = await app.handle(
@@ -35,6 +41,7 @@ export async function deliverSentry(
         'sentry-hook-resource': resource,
         'sentry-hook-signature':
           signature ?? createHmac('sha256', secret).update(body).digest('hex'),
+        ...headers,
       },
       body,
     }),

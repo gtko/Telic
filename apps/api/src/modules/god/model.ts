@@ -181,8 +181,8 @@ export const SentrySettingsResponse = t.Object({
 });
 
 export const SentrySettingsBody = t.Object({
-  authToken: t.Optional(t.String()),
-  clientSecret: t.Optional(t.String()),
+  authToken: t.Optional(t.Nullable(t.String())),
+  clientSecret: t.Optional(t.Nullable(t.String())),
   orgSlug: t.Optional(t.String()),
 });
 

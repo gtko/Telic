@@ -843,20 +843,25 @@ export async function getSentrySettings(db: Db): Promise<SentrySettings> {
 }
 
 export interface SentrySettingsPatch {
-  authToken?: string;
-  clientSecret?: string;
+  authToken?: string | null;
+  clientSecret?: string | null;
   orgSlug?: string;
 }
 
-// A secret keeps its stored value when omitted or sent empty.
+// A secret keeps its stored value when omitted or sent empty; null erases it.
+function nextSecret(sent: string | null | undefined, stored: string): string {
+  if (sent === null) return '';
+  return sent || stored;
+}
+
 export async function setSentrySettings(
   db: Db,
   patch: SentrySettingsPatch,
 ): Promise<SentrySettings> {
   const current = await getSentryConfig(db);
   const next: SentryConfig = {
-    authToken: patch.authToken || current.authToken,
-    clientSecret: patch.clientSecret || current.clientSecret,
+    authToken: nextSecret(patch.authToken, current.authToken),
+    clientSecret: nextSecret(patch.clientSecret, current.clientSecret),
     orgSlug: patch.orgSlug ?? current.orgSlug,
   };
   const redacted = redactSentry(next);

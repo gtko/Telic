@@ -11,6 +11,8 @@ import {
 // The inbound Sentry webhook: a signed delivery creates one issue in the Triage column of
 // the Telic project its Sentry project is routed to, and reopens a closed one on unresolved.
 
+const MEGABYTE = 1024 * 1024;
+
 describe('sentry webhook', () => {
   it('refuses a delivery signed with another secret and creates no issue', async () => {
     const { asOwner } = await setupRoutedProject();
@@ -67,6 +69,30 @@ describe('sentry webhook', () => {
     const issues = await triageIssues(asOwner);
     expect(issues).toHaveLength(1);
     expect(issues[0].columnId).toBe((await columnIds(asOwner)).triage);
+  });
+
+  it('refuses a delivery over 1 MB with 413 before checking its signature', async () => {
+    const { asOwner } = await setupRoutedProject();
+    const oversized = { ...sentryIssue('802'), padding: 'x'.repeat(MEGABYTE) };
+    const res = await deliverSentry(oversized, { signature: 'not-a-signature' });
+    expect(res.status).toBe(413);
+    expect(await triageIssues(asOwner)).toEqual([]);
+  });
+
+  it('refuses a delivery whose content-length is over 1 MB with 413', async () => {
+    const { asOwner } = await setupRoutedProject();
+    const res = await deliverSentry(sentryIssue('803'), {
+      headers: { 'content-length': String(MEGABYTE + 1) },
+    });
+    expect(res.status).toBe(413);
+    expect(await triageIssues(asOwner)).toEqual([]);
+  });
+
+  it('accepts a delivery of exactly 1 MB', async () => {
+    await setupRoutedProject();
+    const padding = 'x'.repeat(MEGABYTE - JSON.stringify({ padding: '' }).length);
+    const res = await deliverSentry({ padding });
+    expect(res).toMatchObject({ status: 200, data: { handled: 'ignored' } });
   });
 
   it('moves a closed linked issue back to Triage on an unresolved delivery', async () => {

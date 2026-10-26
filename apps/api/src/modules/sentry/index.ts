@@ -29,6 +29,7 @@ export const sentryWebhookRoutes = new Elysia({
       const handled = await handleSentryDelivery(db, {
         resource: headers['sentry-hook-resource'],
         signature: headers['sentry-hook-signature'],
+        contentLength: headers['content-length'],
         body,
       });
       return { ok: true, handled };
@@ -36,7 +37,7 @@ export const sentryWebhookRoutes = new Elysia({
     {
       parse: 'text',
       body: sentryWebhookBody,
-      response: { 200: SentryWebhookAckResponse, ...errors(400, 401) },
+      response: { 200: SentryWebhookAckResponse, ...errors(400, 401, 413) },
       detail: {
         summary: 'Receive a Sentry issue webhook',
         description:

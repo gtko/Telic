@@ -555,7 +555,7 @@ export const godRoutes = new Elysia({ name: 'god', detail: { tags: ['God'] } })
     detail: {
       summary: 'Update Sentry settings',
       description:
-        'Update the Sentry organization, auth token and client secret. An omitted or empty secret keeps the stored value.',
+        'Update the Sentry organization, auth token and client secret. An omitted or empty secret keeps the stored value; null erases it.',
     },
   })
 

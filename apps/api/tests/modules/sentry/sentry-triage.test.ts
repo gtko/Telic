@@ -85,6 +85,62 @@ describe('sentry triage', () => {
     expect(await triageIssues(asOwner)).toEqual([]);
   });
 
+  it('refuses a merge into a target in triage and leaves the source in triage', async () => {
+    const { asOwner } = await setupRoutedProject();
+    const target = await triagedIssue(asOwner, '1008');
+    const duplicate = await triagedIssue(asOwner, '1009');
+    const columns = await columnIds(asOwner);
+
+    const res = await asOwner
+      .projects({ projectKey: 'MKT' })
+      .triage({ issueId: duplicate.id })
+      .merge.post({ targetIssueId: target.id });
+    expect(res.status).toBe(400);
+
+    const detail = await asOwner.issues({ issueId: duplicate.id }).get();
+    expect(detail.data).toMatchObject({ columnId: columns.triage, links: [] });
+  });
+
+  it('refuses a merge into a canceled target and leaves the source in triage', async () => {
+    const { asOwner } = await setupRoutedProject();
+    const target = await triagedIssue(asOwner, '1010');
+    await asOwner.projects({ projectKey: 'MKT' }).triage({ issueId: target.id }).reject.post();
+    const duplicate = await triagedIssue(asOwner, '1011');
+    const columns = await columnIds(asOwner);
+
+    const res = await asOwner
+      .projects({ projectKey: 'MKT' })
+      .triage({ issueId: duplicate.id })
+      .merge.post({ targetIssueId: target.id });
+    expect(res.status).toBe(400);
+
+    const detail = await asOwner.issues({ issueId: duplicate.id }).get();
+    expect(detail.data).toMatchObject({ columnId: columns.triage, links: [] });
+  });
+
+  it('leaves the source and its Sentry link unchanged when the duplicate link cannot be made', async () => {
+    const { asOwner } = await setupRoutedProject();
+    const columns = await columnIds(asOwner);
+    const target = await plainIssue(asOwner, columns.backlog, 'Checkout target');
+    const duplicate = await triagedIssue(asOwner, '1012');
+    await asOwner
+      .issues({ issueId: duplicate.id })
+      .links.post({ targetIssueId: target.id, kind: 'duplicates' });
+
+    const res = await asOwner
+      .projects({ projectKey: 'MKT' })
+      .triage({ issueId: duplicate.id })
+      .merge.post({ targetIssueId: target.id });
+    expect(res.status).toBe(409);
+    expect(await triageIssues(asOwner)).toMatchObject([{ id: duplicate.id }]);
+
+    // The Sentry link still names the source: a closed source reopens, a target would not.
+    await asOwner.issues({ issueId: duplicate.id }).patch({ columnId: columns.completed });
+    const reopened = await deliverSentry(sentryIssue('1012', { action: 'unresolved' }));
+    expect(reopened).toMatchObject({ status: 200, data: { handled: 'reopened' } });
+    expect(await triageIssues(asOwner)).toMatchObject([{ id: duplicate.id }]);
+  });
+
   it('moves the Sentry link of a merged issue to its target', async () => {
     const { asOwner } = await setupRoutedProject();
     const columns = await columnIds(asOwner);

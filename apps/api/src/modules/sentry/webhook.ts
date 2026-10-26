@@ -16,6 +16,8 @@ import {
 // Issue states that a regression reopens. An issue still open keeps its column.
 const CLOSED_STATE_TYPES = new Set(['completed', 'canceled']);
 
+const MAX_DELIVERY_BYTES = 1024 * 1024;
+
 interface SentryIssue {
   id: string;
   title: string;
@@ -35,11 +37,18 @@ interface SentryPayload {
 export interface SentryDelivery {
   resource: string | undefined;
   signature: string | undefined;
+  contentLength: string | undefined;
   body: string;
 }
 
 // Verifies a delivery and applies it. Returns what was done, for the response.
 export async function handleSentryDelivery(db: Db, delivery: SentryDelivery): Promise<string> {
+  if (
+    Number(delivery.contentLength) > MAX_DELIVERY_BYTES ||
+    new TextEncoder().encode(delivery.body).byteLength > MAX_DELIVERY_BYTES
+  )
+    throw new HttpError(413, 'Delivery is larger than 1 MB');
+
   const { clientSecret } = await getSentryConfig(db);
   // An empty secret is refused: a signature over an empty key is one anyone can compute.
   if (!clientSecret || !hmacSha256Valid(clientSecret, delivery.body, delivery.signature ?? ''))
