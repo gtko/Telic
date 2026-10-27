@@ -1,6 +1,6 @@
 name: Deploy
 
-# Applies the D1 migrations, then deploys the four Workers (api, worker, bot, web).
+# Applies the D1 migrations, then deploys the five Workers (api, worker, bot, web, site).
 # Runs on main only and does nothing while the CLOUDFLARE_API_TOKEN repository secret is unset; the token needs
 # Workers Scripts, D1, Queues and R2 edit permissions on the account.
 on:

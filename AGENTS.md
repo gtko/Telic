@@ -85,6 +85,7 @@ apps/api               Elysia on a Worker: better-auth at /api/auth/*, MCP serve
 apps/web               Next.js App Router, SSR on a Worker through OpenNext, shadcn, TanStack Query  :3001
 apps/worker            Worker: webhook and notification delivery, imports (cron + queue)
 apps/bot               Worker: Telegram bot webhook
+apps/site              Static site: public/ served as Worker assets, no code
 packages/db            @repo/db          — Drizzle client for D1, schema, migrations, permission matrix, shared config readers
 packages/auth          @repo/auth        — better-auth server instance + instance auth settings
 packages/crypto        @repo/crypto      — AES-256-GCM encryption for secrets at rest
@@ -105,6 +106,7 @@ Each Worker has a `wrangler.jsonc` that declares its bindings:
 | `telic-worker` | yes     | yes         | produces and consumes `telic-jobs`       | every minute         |
 | `telic-bot`    | yes     | no          | none                                     | none                 |
 | `telic-web`    | no      | no          | none                                     | none                 |
+| `telic-site`   | no      | no          | none                                     | none                 |
 
 The database is the D1 database `telic`. The bucket is `telic-attachments`.
 
@@ -138,7 +140,7 @@ packages directly.** It talks to the API over HTTP (better-auth client + fetch).
 | `bun run db:generate`       | generate a D1 migration from the Drizzle schema                            |
 | `bun run db:migrate:local`  | apply migrations to the local D1 (`wrangler d1 migrations apply --local`)  |
 | `bun run db:migrate:remote` | apply migrations to the deployed D1 (`--remote`)                           |
-| `bun run deploy`            | `wrangler deploy` of api, worker and bot, then the web deploy              |
+| `bun run deploy`            | `wrangler deploy` of api, worker, bot and site, then the web deploy        |
 | `bun run auth:generate`     | regenerate better-auth tables → `packages/db/src/schema/auth.ts`           |
 
 One test file: `cd apps/api && bunx vitest run <path>`. Same in every member.
@@ -174,7 +176,7 @@ workflow for a job that an existing workflow already runs.
 ## Deploy
 
 - `.github/workflows/deploy.yml` runs on push to `main`. It applies the D1 migrations
-  (`wrangler d1 migrations apply telic --remote`), then deploys the four Workers. It does
+  (`wrangler d1 migrations apply telic --remote`), then deploys the five Workers. It does
   nothing while the `CLOUDFLARE_API_TOKEN` repository secret is unset.
 - A deployed database is migrated by wrangler only. Never run `migrateD1` on it.
 
@@ -221,3 +223,14 @@ Release config traps:
   form, Bun reads `run` as the script name and fails.
 - `packages/db/legacy-pg` and `scripts/pg-to-d1` exist only for the one-time Postgres data
   migration. Do not extend them.
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

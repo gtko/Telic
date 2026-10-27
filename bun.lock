@@ -81,6 +81,13 @@
         "@tauri-apps/cli": "^2.9.0",
       },
     },
+    "apps/site": {
+      "name": "@repo/site",
+      "version": "1.0.0",
+      "devDependencies": {
+        "wrangler": "4.152.0",
+      },
+    },
     "apps/web": {
       "name": "web",
       "version": "0.0.0",
@@ -1150,6 +1157,8 @@
     "@repo/mailer": ["@repo/mailer@workspace:packages/mailer"],
 
     "@repo/net": ["@repo/net@workspace:packages/net"],
+
+    "@repo/site": ["@repo/site@workspace:apps/site"],
 
     "@repo/storage": ["@repo/storage@workspace:packages/storage"],
 

@@ -1,0 +1,9 @@
+{
+  // The site has no script: public/ is served as Worker static assets.
+  "name": "telic-site",
+  "account_id": "4f2452fbc81b70c2549d6f7dd779b190",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./public",
+  },
+}
