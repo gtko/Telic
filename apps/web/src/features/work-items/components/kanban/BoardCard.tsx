@@ -92,7 +92,7 @@ export function BoardCard({
         className={cn(
           // select-none so a Shift/Cmd-click toggles selection without the browser
           // also starting a native text selection across cards.
-          'kanban-card cursor-grab rounded-md p-2 select-none',
+          'kanban-card cursor-grab rounded-lg p-2 select-none',
           isDragging && 'opacity-40',
           isBlocked(issue) && 'kanban-card-blocked',
           // Selected cards read as a primary-tinted fill, like Linear — no border,

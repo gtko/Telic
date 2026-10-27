@@ -27,7 +27,7 @@ const Avatar = forwardRef<
     <span
       ref={ref}
       className={cn(
-        'relative inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-semibold text-white',
+        'relative inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-bold text-[#050608]',
         className,
       )}
       {...props}

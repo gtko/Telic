@@ -67,36 +67,36 @@ export default function WhatsNewReleaseBanner({
           r="520"
           gradientTransform="translate(1100 120) scale(1 0.7) translate(-1100 -120)"
         >
-          <stop offset="0" stopColor="#34d399" stopOpacity="0.2" />
-          <stop offset="0.7" stopColor="#34d399" stopOpacity="0" />
+          <stop offset="0" stopColor="#5B6CFF" stopOpacity="0.2" />
+          <stop offset="0.7" stopColor="#5B6CFF" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <rect width="1280" height="400" fill="#08090a" />
+      <rect width="1280" height="400" fill="#050608" />
       <rect width="1280" height="400" fill="url(#telic-banner-halo)" />
       <g transform="translate(700 -60) scale(19.375)">
         <path
           d={MARK_ARC}
-          stroke="#fbfbfa"
+          stroke="#f4f5f7"
           strokeOpacity="0.14"
           strokeWidth="3.2"
           strokeLinecap="round"
           fill="none"
         />
-        <circle cx="25.5" cy="8" r="4" fill="#34d399" />
+        <circle cx="25.5" cy="8" r="4" fill="#FFB347" />
       </g>
 
       <g transform="translate(72 56) scale(0.875)">
-        <path d={MARK_ARC} stroke="#fbfbfa" strokeWidth="3.2" strokeLinecap="round" fill="none" />
-        <circle cx="25.5" cy="8" r="4" fill="#34d399" />
+        <path d={MARK_ARC} stroke="#f4f5f7" strokeWidth="3.2" strokeLinecap="round" fill="none" />
+        <circle cx="25.5" cy="8" r="4" fill="#FFB347" />
       </g>
-      <text x="112" y="75" fontSize="15" fontWeight="600" letterSpacing="3.3" fill="#a1a1aa">
+      <text x="112" y="75" fontSize="15" fontWeight="600" letterSpacing="3.3" fill="#a0a4ad">
         TELIC
       </text>
 
-      <text x="72" y="210" fontSize="120" fontWeight="800" letterSpacing="-4.8" fill="#fbfbfa">
+      <text x="72" y="210" fontSize="120" fontWeight="800" letterSpacing="-4.8" fill="#f4f5f7">
         {version}
       </text>
-      <text x="72" y="262" fontSize="22" fontWeight="500" fill="#a1a1aa">
+      <text x="72" y="262" fontSize="22" fontWeight="500" fill="#a0a4ad">
         {date}
       </text>
 
@@ -110,15 +110,15 @@ export default function WhatsNewReleaseBanner({
               width={width - 1}
               height="43"
               rx="21.5"
-              fill={accent ? '#34d399' : '#ffffff'}
+              fill={accent ? '#3DDC97' : '#ffffff'}
               fillOpacity={accent ? 0.12 : 0.06}
-              stroke={accent ? '#34d399' : '#ffffff'}
+              stroke={accent ? '#3DDC97' : '#ffffff'}
               strokeOpacity={accent ? 0.35 : 0.16}
             />
             <g
               transform={`translate(${pillX + 18} 312) scale(0.8333)`}
               fill="none"
-              stroke={accent ? '#6ee7b7' : '#e4e4e7'}
+              stroke={accent ? '#3DDC97' : '#d5d7dc'}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -132,7 +132,7 @@ export default function WhatsNewReleaseBanner({
               y="328"
               fontSize={PILL_FONT_SIZE}
               fontWeight="600"
-              fill={accent ? '#6ee7b7' : '#e4e4e7'}
+              fill={accent ? '#3DDC97' : '#d5d7dc'}
             >
               {labels[kind]}
             </text>

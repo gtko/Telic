@@ -39,7 +39,7 @@ export function CollapsedColumn({
   return (
     <div
       className={cn(
-        'flex h-full w-10 shrink-0 flex-col items-center gap-2 rounded-md bg-kanban-column py-2',
+        'flex h-full w-10 shrink-0 flex-col items-center gap-2 rounded-xl bg-kanban-column py-2',
         pinned && PINNED_COLUMN,
       )}
     >

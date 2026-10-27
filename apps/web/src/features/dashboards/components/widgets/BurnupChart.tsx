@@ -10,9 +10,10 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import type { BurnupPoint } from '../../utils/burnupSeries';
+import { AURORA } from '@/utils/auroraColors';
 
-const TODAY_COLOR = '#94a3b8';
-const TARGET_COLOR = '#ef4444';
+const TODAY_COLOR = AURORA.gray;
+const TARGET_COLOR = AURORA.red;
 
 // The legend in reading order (outer line to inner), not the alphabetical default.
 const LEGEND_ORDER = ['scope', 'started', 'completed', 'projection', 'band'];

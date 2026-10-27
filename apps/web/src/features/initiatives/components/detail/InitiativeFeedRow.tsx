@@ -113,7 +113,7 @@ export default function InitiativeFeedRow({
             {' '}
             <Link
               href={issuePath(projectKey, Number(item.issueIdentifier.split('-').pop()))}
-              className="text-foreground/70 hover:text-foreground"
+              className="font-mono text-foreground/70 hover:text-foreground"
             >
               {item.issueIdentifier}
             </Link>

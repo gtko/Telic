@@ -132,7 +132,10 @@ export default function InboxListItem({
                 unread ? 'font-medium text-foreground' : 'text-muted-foreground',
               )}
             >
-              {n.projectKey}-{n.issueSeq} {n.issueTitle}
+              <span className="font-mono">
+                {n.projectKey}-{n.issueSeq}
+              </span>{' '}
+              {n.issueTitle}
             </span>
             <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               {snoozed && <Clock className="size-3 shrink-0" />}
@@ -149,7 +152,9 @@ export default function InboxListItem({
             <span className="text-xs text-muted-foreground group-hover:hidden">
               {formatDurationShort(n.createdAt)}
             </span>
-            {unread && <span className="size-2 rounded-full bg-primary group-hover:hidden" />}
+            {unread && (
+              <span className="size-2 rounded-full bg-brand-arc-3 shadow-[0_0_6px_var(--brand-arc-3)] group-hover:hidden" />
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

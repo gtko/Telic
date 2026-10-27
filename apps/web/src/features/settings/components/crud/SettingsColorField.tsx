@@ -1,35 +1,19 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
+import { AURORA } from '@/utils/auroraColors';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-// Chosen to stay legible on both light and dark surfaces.
+// The Aurora accents and state hues, then a few more hues for a project with more
+// categories than accents.
 const PRESET_COLORS = [
-  '#64748b',
-  '#6b7280',
-  '#78716c',
-  '#a1a1aa',
-  '#ef4444',
-  '#f97316',
-  '#f59e0b',
-  '#eab308',
-  '#84cc16',
-  '#22c55e',
-  '#10b981',
-  '#14b8a6',
-  '#06b6d4',
-  '#0ea5e9',
-  '#3b82f6',
-  '#6366f1',
-  '#8b5cf6',
-  '#a855f7',
-  '#d946ef',
-  '#ec4899',
-  '#f43f5e',
-  '#e11d48',
-  '#7c3aed',
-  '#0891b2',
+  ...Object.values(AURORA),
+  '#F5C84C',
+  '#FF8A5B',
+  '#34D3C0',
+  '#3A7BFF',
+  '#A06CFF',
 ];
 
 // Built from the app's own tokens so it follows the light/dark theme.

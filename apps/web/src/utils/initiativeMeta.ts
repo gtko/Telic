@@ -1,4 +1,5 @@
 import type { InitiativeStatus, InitiativeHealth } from '@/lib/api/endpoints/initiatives';
+import { AURORA } from '@/utils/auroraColors';
 
 // Display metadata for the initiative status lifecycle and the derived health
 // signal. Colors are raw hex so they can drive both a dot and a text color. The
@@ -6,11 +7,11 @@ import type { InitiativeStatus, InitiativeHealth } from '@/lib/api/endpoints/ini
 // under `initiatives.health`.
 
 export const STATUS_META: Record<InitiativeStatus, { color: string }> = {
-  proposed: { color: '#a1a1aa' },
-  planned: { color: '#6366f1' },
-  active: { color: '#eab308' },
-  completed: { color: '#22c55e' },
-  canceled: { color: '#ef4444' },
+  proposed: { color: AURORA.gray },
+  planned: { color: AURORA.indigo },
+  active: { color: AURORA.amber },
+  completed: { color: AURORA.mint },
+  canceled: { color: AURORA.dim },
 };
 
 // The lifecycle order used by the status picker and the list tabs.
@@ -48,11 +49,11 @@ export function compareByGroupOrder(
 // Health (computed server-side). null means there is nothing to judge yet, and
 // carries the muted color of an unknown value.
 export const HEALTH_META: Record<InitiativeHealth, { color: string }> = {
-  on_track: { color: '#22c55e' },
-  at_risk: { color: '#eab308' },
-  off_track: { color: '#ef4444' },
+  on_track: { color: AURORA.mint },
+  at_risk: { color: AURORA.amber },
+  off_track: { color: AURORA.red },
 };
 
 export function healthColor(health: InitiativeHealth | null): string {
-  return health ? HEALTH_META[health].color : '#a1a1aa';
+  return health ? HEALTH_META[health].color : AURORA.gray;
 }

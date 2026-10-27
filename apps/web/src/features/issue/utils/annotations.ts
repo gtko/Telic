@@ -1,3 +1,5 @@
+import { AURORA } from '@/utils/auroraColors';
+
 // Marks drawn over an image: a highlighter stroke, a rectangle or an ellipse.
 // Coordinates are in the image's own pixels, so what is drawn survives the
 // scaling the canvas is displayed at.
@@ -11,7 +13,7 @@ export type Annotation = {
   points: { x: number; y: number }[];
 };
 
-export const ANNOTATION_COLORS = ['#ef4444', '#eab308', '#22c55e', '#3b82f6'];
+export const ANNOTATION_COLORS: string[] = [AURORA.red, AURORA.amber, AURORA.mint, AURORA.indigo];
 
 // A mark has to read the same on a phone screenshot and on a 4K one, so the
 // stroke is a fraction of the image rather than a fixed number of pixels.

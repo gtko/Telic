@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import EmptyStateArt from '@/components/common/page/EmptyStateArt';
 import { useSettingsCan } from '../../context/settingsPermission';
 
 export function SettingsEmpty({
@@ -19,6 +20,7 @@ export function SettingsEmpty({
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg p-6 text-center">
       <EmptyHeader className="gap-1">
+        <EmptyStateArt className="mb-2 w-28" />
         <EmptyTitle className="text-sm">{title}</EmptyTitle>
         <EmptyDescription className="text-xs">{description}</EmptyDescription>
       </EmptyHeader>

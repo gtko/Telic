@@ -5,13 +5,16 @@ import { useSession } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 import type { PulseUnit } from '@/lib/api/endpoints/analytics';
 import type { WidgetConfig } from '@/utils/dashboardWidgets';
+import { AURORA } from '@/utils/auroraColors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePulseQuery } from '../../services/analytics.service';
 
-// Green ramp for the four non-empty activity levels (GitHub-style). Empty cells
-// use the theme `muted` surface instead of a bright gray, so they read as a quiet
-// part of the theme (a touch lighter than the background) in light and dark.
-const FILL_COLORS = ['#9be9a8', '#40c463', '#30a14e', '#216e39'];
+// Mint ramp for the four non-empty activity levels, mixed into the theme `muted`
+// surface that empty cells use, so the lowest level stays close to an empty one in
+// light and dark.
+const FILL_COLORS = [30, 55, 80, 100].map(
+  (pct) => `color-mix(in oklab, ${AURORA.mint} ${pct}%, var(--muted))`,
+);
 
 // Per-unit heatmap geometry. `rows` cells stack per column (a day column is 24
 // hours, a week column is 7 days, a week is one cell); cell/gap size the grid,

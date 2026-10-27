@@ -47,7 +47,7 @@ export function SwimlaneCell({
     <div
       ref={setNodeRef}
       className={cn(
-        'min-h-16 shrink-0 rounded-md bg-kanban-column px-3 py-2',
+        'min-h-16 shrink-0 rounded-xl bg-kanban-column px-3 py-2',
         isOverCell && 'bg-kanban-column-raised',
       )}
       style={{ width: COLUMN_WIDTH }}

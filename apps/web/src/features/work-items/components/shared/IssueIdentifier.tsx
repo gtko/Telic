@@ -21,7 +21,7 @@ export function IssueIdentifier({
   const parent = useParentIssue(issue.parentId);
 
   return (
-    <span className={cn('flex shrink-0 items-center gap-0.5', className)}>
+    <span className={cn('flex shrink-0 items-center gap-0.5 font-mono', className)}>
       {parent && (
         <>
           <Tooltip>

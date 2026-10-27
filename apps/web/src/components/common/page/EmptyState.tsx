@@ -6,6 +6,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from '@/components/ui/empty';
+import EmptyStateArt from './EmptyStateArt';
 
 // The "nothing here yet" block. `children` holds the action; pages with no action
 // to offer omit it. It grows to fill the space left over (`flex-1`), so mount it in
@@ -23,6 +24,7 @@ export function EmptyState({
   return (
     <Empty>
       <EmptyHeader>
+        <EmptyStateArt className="mb-2" />
         <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>

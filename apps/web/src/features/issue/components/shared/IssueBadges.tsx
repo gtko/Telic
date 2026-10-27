@@ -11,8 +11,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 // Small issue display badges shared by the project card (KanbanBoard) and the
 // table cells (TableView) so both render the same pill/icon/avatar.
 
-// Outline pill styling shared by the label and date badges.
-const PILL = 'text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px]';
+// Tag styling shared by the label and date badges.
+const PILL = 'text-muted-foreground rounded-md bg-muted px-1.5 py-0.5 text-[10px]';
 
 // Priority glyph with a "<priority> priority" tooltip.
 export function PriorityBadge({

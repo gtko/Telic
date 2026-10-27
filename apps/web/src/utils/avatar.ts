@@ -1,3 +1,5 @@
+import { AURORA, AURORA_ACCENTS } from '@/utils/auroraColors';
+
 // Deterministic avatar helpers: the same name always yields the same initials
 // and background color, used by the Avatar component and anywhere a person is
 // shown.
@@ -12,12 +14,15 @@ export function initials(name: string): string {
   return base.slice(0, 2).toUpperCase();
 }
 
+const AVATAR_COLORS = AURORA_ACCENTS.filter((c) => c !== AURORA.slate);
+
 // Deterministic avatar background from a seed (the initials): the same letters
-// always map to the same hue. Fixed saturation/lightness keep white text
-// readable on the swatch in both themes.
+// always map to the same Aurora accent. The accents are light enough to carry
+// near-black initials in both themes.
 export function avatarColor(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-  const hue = ((hash % 360) + 360) % 360;
-  return `hsl(${hue} 52% 45%)`;
+  return AVATAR_COLORS[
+    ((hash % AVATAR_COLORS.length) + AVATAR_COLORS.length) % AVATAR_COLORS.length
+  ];
 }

@@ -52,7 +52,7 @@ export default function ReadOnlyIssueDetail({
               {t('archived')}
             </span>
           )}
-          <span className="text-xs text-muted-foreground tabular-nums">{issue.identifier}</span>
+          <span className="font-mono text-xs text-muted-foreground">{issue.identifier}</span>
         </div>
         <h1 className="mt-1 text-lg font-semibold">{issue.title}</h1>
 

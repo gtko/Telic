@@ -25,7 +25,7 @@ export default function IssueRefChip({
       {preview?.status && (
         <span className="issue-ref-dot" style={{ backgroundColor: preview.status.color }} />
       )}
-      <span className="issue-ref-id">{`${splitProjectRef(projectRef).key}-${sequence}`}</span>
+      <span className="issue-ref-id font-mono">{`${splitProjectRef(projectRef).key}-${sequence}`}</span>
       {preview?.issueTitle && <span className="issue-ref-title">{preview.issueTitle}</span>}
     </a>
   );

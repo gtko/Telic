@@ -56,9 +56,7 @@ export default function InitiativeActiveWork({
                     className="size-3.5 shrink-0"
                   />
                 )}
-                <span className="shrink-0 text-muted-foreground tabular-nums">
-                  {issue.identifier}
-                </span>
+                <span className="shrink-0 font-mono text-muted-foreground">{issue.identifier}</span>
                 <span className="min-w-0 flex-1 truncate">{issue.title}</span>
                 {owner && (
                   <Avatar

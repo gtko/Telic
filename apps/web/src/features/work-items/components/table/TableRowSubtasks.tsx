@@ -46,7 +46,7 @@ export function TableRowSubtasks({
                 className="size-3.5 shrink-0"
               />
             )}
-            <span className="shrink-0 tabular-nums">{subtask.identifier}</span>
+            <span className="shrink-0 font-mono">{subtask.identifier}</span>
             <span className={cn('truncate', done && 'text-muted-foreground/60 line-through')}>
               {subtask.title}
             </span>

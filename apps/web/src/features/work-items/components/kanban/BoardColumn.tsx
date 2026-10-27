@@ -116,7 +116,7 @@ export function BoardColumn({
   return (
     <div
       className={cn(
-        'group/column flex h-full shrink-0 flex-col rounded-md bg-kanban-column px-3 py-2',
+        'group/column flex h-full shrink-0 flex-col rounded-xl bg-kanban-column px-3 py-2',
         pinned && PINNED_COLUMN,
         wip?.full && WIP_FULL_TINT[wipFullColor(wip)],
       )}
