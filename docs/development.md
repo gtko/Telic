@@ -38,7 +38,7 @@ Run everything from the repository root through Turborepo. Use `bun`, never npm,
 | `bun run db:migrate:local`  | apply migrations to the local D1                |
 | `bun run db:migrate:remote` | apply migrations to the deployed D1             |
 | `bun run test`              | all test suites                                 |
-| `bun run deploy`            | deploy the four Workers                         |
+| `bun run deploy`            | deploy the five Workers                         |
 
 ## Tests
 
@@ -58,6 +58,9 @@ It needs the `CLOUDFLARE_API_TOKEN` repository secret (Workers Scripts, D1, Queu
 permissions). To deploy by hand, set `CLOUDFLARE_API_TOKEN` and run `bun run db:migrate:remote`, then
 `bun run deploy`. First-time setup creates the D1 database `telic`, the R2 bucket `telic-attachments` and
 the queues `telic-agent-runs`, `telic-agent-runs-dlq` and `telic-jobs`.
+
+`apps/site` deploys the `telic-site` Worker. It serves `apps/site/public/` as static assets only, with no code
+and no bindings. `bun run deploy` deploys it with the other Workers.
 
 The mechanisms that span several apps — the revision engine, the interface languages, the D1 specifics —
 are described in [`docs/dev/`](dev/).
