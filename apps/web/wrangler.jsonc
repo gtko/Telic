@@ -19,4 +19,5 @@
     "API_URL": "https://telic-api.gtux-prog.workers.dev",
   },
   "upload_source_maps": false,
+  "keep_names": false,
 }
