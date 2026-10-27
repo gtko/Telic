@@ -19,5 +19,6 @@
     "API_URL": "https://telic-api.gtux-prog.workers.dev",
   },
   "upload_source_maps": false,
+  // keep_names makes esbuild inject __name(), which breaks the inline theme script of next-themes.
   "keep_names": false,
 }
