@@ -55,7 +55,7 @@
   --color-status-in-progress: var(--status-in-progress);
   --color-status-in-review: var(--status-in-review);
   --color-status-done: var(--status-done);
-  --color-status-cancelled: var(--status-cancelled);
+  --color-status-canceled: var(--status-canceled);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -124,7 +124,7 @@
   --status-in-progress: oklch(0.821 0.149 72.1);
   --status-in-review: oklch(0.709 0.153 276.8);
   --status-done: oklch(0.797 0.164 159.7);
-  --status-cancelled: oklch(0.467 0.015 266.6);
+  --status-canceled: oklch(0.467 0.015 266.6);
   --duration-1: 120ms;
   --duration-2: 200ms;
   --duration-3: 360ms;
@@ -176,7 +176,7 @@
   --secondary: oklch(0.235 0.012 264.3);
   --secondary-foreground: oklch(0.97 0.003 264.5);
   --muted: oklch(0.2 0.01 268.2);
-  --muted-foreground: oklch(0.718 0.014 266.7);
+  --muted-foreground: oklch(0.86 0.01 266);
   --accent: oklch(0.2 0.01 268.2);
   --accent-foreground: oklch(0.97 0.003 264.5);
   --destructive: oklch(0.694 0.198 18.3);
@@ -205,33 +205,13 @@
   --kanban-column-raised: oklch(0.185 0.008 268);
   --kanban-column-wip-destructive: oklch(0.18 0.01 18);
   --kanban-column-wip-warning: oklch(0.182 0.008 72);
-  --kanban-card: oklch(0.172 0.007 258.4);
-  --kanban-card-hover: oklch(0.2 0.01 268.2);
-  --kanban-card-blocked: oklch(0.19 0.014 18);
-  --kanban-card-blocked-hover: oklch(0.215 0.018 18);
+  --kanban-card: oklch(0.185 0.008 262);
+  --kanban-card-hover: oklch(0.215 0.011 268);
+  --kanban-card-blocked: oklch(0.2 0.014 18);
+  --kanban-card-blocked-hover: oklch(0.225 0.018 18);
   --row-blocked: oklch(0.15 0.012 18);
   --row-blocked-hover: oklch(0.185 0.016 18);
   --kanban-card-selected: oklch(0.27 0.07 275);
-  --brand-arc-1: oklch(0.602 0.217 273);
-  --brand-arc-2: oklch(0.656 0.189 351.9);
-  --brand-arc-3: oklch(0.821 0.149 72.1);
-  --brand-arc: linear-gradient(
-    100deg,
-    var(--brand-arc-1) 0%,
-    var(--brand-arc-2) 55%,
-    var(--brand-arc-3) 100%
-  );
-  --status-backlog: oklch(0.544 0.014 259.8);
-  --status-todo: oklch(0.718 0.014 266.7);
-  --status-in-progress: oklch(0.821 0.149 72.1);
-  --status-in-review: oklch(0.709 0.153 276.8);
-  --status-done: oklch(0.797 0.164 159.7);
-  --status-cancelled: oklch(0.467 0.015 266.6);
-  --duration-1: 120ms;
-  --duration-2: 200ms;
-  --duration-3: 360ms;
-  --duration-4: 640ms;
-  --duration-5: 1100ms;
   --overlay-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.7), 0 6px 16px -6px rgb(0 0 0 / 0.55);
   --pinned-column-shadow: 0 0 20px 4px rgb(0 0 0 / 0.6);
   --side-panel-shadow: 0 0 28px 8px rgb(0 0 0 / 0.65);

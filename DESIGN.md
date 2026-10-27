@@ -21,12 +21,13 @@ signature:
 - At most 8% of the visible surface.
 - Never behind long text.
 
-Only the dark theme is Aurora. The light theme keeps its earlier neutral values and is not
-yet redefined; it shares the new tokens below.
+Only the dark theme is Aurora. The light theme is not yet redefined; it shares the brand,
+status and motion tokens below.
 
 ## Tokens (intent-named; values live in `globals.css`)
 
-Colors are OKLCH. The light theme is a neutral grayscale ramp with no brand hue. The dark
+Colors are OKLCH. The light theme uses a neutral grayscale ramp and shares the brand, status
+and motion tokens. The dark
 theme is the Aurora ramp: `background` is `oklch(0.122 0.006 261.6)` (#050608), and the surfaces
 step up from it (`sidebar` 0.150, `card` 0.172, `popover`/`muted`/`accent` 0.200,
 `secondary` 0.235). No surface in the light theme sits on pure white or pure black. Light and
@@ -35,7 +36,8 @@ dark are both first-class (`.dark` class toggles; the app ships a theme switch).
 - `background` / `foreground` — page base and primary text.
 - `card` / `card-foreground` — a raised surface (modals, popovers, kanban detail).
   Only a few percent off `background`; use a background shift, not a border, to raise.
-- `muted` / `muted-foreground` — quiet fills and secondary text.
+- `muted` / `muted-foreground` — quiet fills and secondary text. In dark, `muted-foreground`
+  is `oklch(0.86 0.01 266)` (Lc ≈ 78 on `background` and `card`, ≈ 77 on `secondary`).
 - `secondary` — the active/selected chip fill (tabs, toggles).
 - `accent` / `accent-foreground` — hover fill for interactive rows/buttons.
 - `border` — hairline; in dark it is `white / 7%`, i.e. a tint, never flat gray. `input` is
@@ -59,13 +61,15 @@ dark are both first-class (`.dark` class toggles; the app ships a theme switch).
 - `brand-arc-1|2|3` — indigo, magenta, amber. `brand-arc` is the gradient
   `linear-gradient(100deg, arc-1 0%, arc-2 55%, arc-3 100%)`. Same value in both themes.
   Tailwind utilities: `text-brand-arc-1`, `bg-brand-arc-3`, and so on.
-- `status-backlog|todo|in-progress|in-review|done|cancelled` — the issue state colours:
+- `status-backlog|todo|in-progress|in-review|done|canceled` — the issue state colours:
   gray, light gray, amber, periwinkle, mint, dim gray. Same value in both themes. Tailwind
   utilities: `text-status-done`. The light theme still needs darker values for the
   amber and mint states before these are used on a light page.
+  The names are not the `stateType` values of the schema, and `triage` has no status token yet.
+  Write the mapping when the tokens are wired to the components.
 - `--ease-out` `cubic-bezier(.16,1,.3,1)`, `--ease-in-out` `cubic-bezier(.65,0,.35,1)`,
-  `--ease-spring` `cubic-bezier(.34,1.56,.64,1)` — motion curves. `--ease-out` replaces
-  Tailwind's default `ease-out`.
+  `--ease-spring` `cubic-bezier(.34,1.56,.64,1)` — motion curves. `--ease-out` and
+  `--ease-in-out` replace Tailwind's defaults `ease-out` and `ease-in-out`.
 - `--duration-1…5` — 120, 200, 360, 640, 1100 ms. Hover 120–200, panel open 360, section
   entrance 640, signature sequences 1100.
 
