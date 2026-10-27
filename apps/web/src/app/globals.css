@@ -202,9 +202,9 @@
   --priority-high: oklch(0.753 0.155 42);
   --priority-urgent: oklch(0.694 0.198 18.3);
   --kanban-column: oklch(0.15 0.007 271);
-  --kanban-column-raised: oklch(0.185 0.008 268);
-  --kanban-column-wip-destructive: oklch(0.18 0.01 18);
-  --kanban-column-wip-warning: oklch(0.182 0.008 72);
+  --kanban-column-raised: oklch(0.165 0.008 268);
+  --kanban-column-wip-destructive: oklch(0.163 0.012 18);
+  --kanban-column-wip-warning: oklch(0.165 0.01 72);
   --kanban-card: oklch(0.185 0.008 262);
   --kanban-card-hover: oklch(0.215 0.011 268);
   --kanban-card-blocked: oklch(0.2 0.014 18);
