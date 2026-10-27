@@ -8,17 +8,29 @@ change.
 
 ## Direction
 
-Neutral, product-grade UI in the Linear / Vercel / Raycast register: monochrome
-surfaces, borderless-first layout, hierarchy carried by type weight, spacing, and
-subtle background shifts rather than boxes and lines. Calm and dense, not decorated.
-This is an **app/tool** register — clarity over cleverness; no decoration that does
-not aid comprehension.
+Aurora: a deep-black, calm, precise product UI. Surfaces are near-black steps with a faint
+cool tint (OKLCH hue 258–271, chroma ≤ 0.012). Hierarchy is carried by type weight, spacing,
+and small background shifts rather than boxes and lines. Colour is kept for the moments that
+matter: state, priority, focus, and the Arc gradient. This is an **app/tool** register —
+clarity over cleverness; no decoration that does not aid comprehension.
+
+The Arc is a gradient from indigo through magenta to amber (`brand-arc`). It is a rare
+signature:
+
+- One large gradient per screen.
+- At most 8% of the visible surface.
+- Never behind long text.
+
+Only the dark theme is Aurora. The light theme keeps its earlier neutral values and is not
+yet redefined; it shares the new tokens below.
 
 ## Tokens (intent-named; values live in `globals.css`)
 
-Colors are OKLCH grayscale ramps with no brand hue; no surface sits on pure white or pure
-black. Light and dark are both first-class (`.dark` class toggles; the app ships a theme
-switch).
+Colors are OKLCH. The light theme is a neutral grayscale ramp with no brand hue. The dark
+theme is the Aurora ramp: `background` is `oklch(0.122 0.006 261.6)` (#050608), and the surfaces
+step up from it (`sidebar` 0.150, `card` 0.172, `popover`/`muted`/`accent` 0.200,
+`secondary` 0.235). No surface in the light theme sits on pure white or pure black. Light and
+dark are both first-class (`.dark` class toggles; the app ships a theme switch).
 
 - `background` / `foreground` — page base and primary text.
 - `card` / `card-foreground` — a raised surface (modals, popovers, kanban detail).
@@ -26,7 +38,8 @@ switch).
 - `muted` / `muted-foreground` — quiet fills and secondary text.
 - `secondary` — the active/selected chip fill (tabs, toggles).
 - `accent` / `accent-foreground` — hover fill for interactive rows/buttons.
-- `border` — hairline; in dark it is `white / 10%`, i.e. a tint, never flat gray.
+- `border` — hairline; in dark it is `white / 7%`, i.e. a tint, never flat gray. `input` is
+  `white / 12%`.
 - `primary` — high-contrast solid (primary buttons); near-black in light, near-white
   in dark.
 - `destructive` — error / overdue / delete only. It serves two roles at once: `text-destructive`
@@ -36,12 +49,25 @@ switch).
   and low-opacity tint only; there is no warning button, so it is tuned for the page background
   alone. An amber rather than a bright yellow — yellow at a legible chroma has to drop this far
   in lightness to hold contrast against the light page.
-- `ring` — focus ring (keyboard a11y).
-- `chart-1…5` — a neutral grayscale ramp for charts. For categorical series that need
-  to be told apart (priority, assignee), widgets use their own small hue palette; for
-  entity series (status, type) the entity's own color is used.
-- `priority-low|medium|high|urgent` — fixed hues for the priority field.
+- `ring` — focus ring (keyboard a11y). Indigo in dark.
+- `chart-1…5` — in dark: indigo, magenta, amber, mint, sky. In light: a neutral grayscale
+  ramp. For categorical series that need to be told apart (priority, assignee), widgets use
+  their own small hue palette; for entity series (status, type) the entity's own color is used.
+- `priority-low|medium|high|urgent` — fixed hues for the priority field. In dark they are
+  sky, yellow, orange and red; `priority-urgent` equals `destructive`.
 - `sidebar-*` — the app sidebar surface (slightly off the page background).
+- `brand-arc-1|2|3` — indigo, magenta, amber. `brand-arc` is the gradient
+  `linear-gradient(100deg, arc-1 0%, arc-2 55%, arc-3 100%)`. Same value in both themes.
+  Tailwind utilities: `text-brand-arc-1`, `bg-brand-arc-3`, and so on.
+- `status-backlog|todo|in-progress|in-review|done|cancelled` — the issue state colours:
+  gray, light gray, amber, periwinkle, mint, dim gray. Same value in both themes. Tailwind
+  utilities: `text-status-done`. The light theme still needs darker values for the
+  amber and mint states before these are used on a light page.
+- `--ease-out` `cubic-bezier(.16,1,.3,1)`, `--ease-in-out` `cubic-bezier(.65,0,.35,1)`,
+  `--ease-spring` `cubic-bezier(.34,1.56,.64,1)` — motion curves. `--ease-out` replaces
+  Tailwind's default `ease-out`.
+- `--duration-1…5` — 120, 200, 360, 640, 1100 ms. Hover 120–200, panel open 360, section
+  entrance 640, signature sequences 1100.
 
 ## Scale & shape
 
@@ -51,7 +77,8 @@ switch).
   defaults, which are tuned for 16px prose and leave `text-xs`/`text-sm` cramped. Body sizes
   run 1.5–1.6; headings tighten as they grow (1.25 at `2xl` down to 1.1 at `4xl`) and take
   negative tracking from `2xl` up.
-- **Radius:** base `--radius: 0.625rem`; scale `sm .6 · md .8 · lg 1 · xl 1.4 · 2xl 1.8`.
+- **Radius:** base `--radius: 0.75rem`; scale `sm .6 · md .8 · lg 1 · xl 1.4 · 2xl 1.8`
+  (about 7 · 10 · 12 · 17 · 22 px). Cards 16–22 px, buttons and fields 10–12 px.
   Radius scales with element size; keep `padding ≥ radius`.
 - **Spacing:** 8pt grid (4 as half-step). Proximity encodes relationship: inside a group
   < between groups < between sections.
@@ -66,12 +93,14 @@ switch).
 - **Depth over lines.** Raise a surface with a 3–5% background shift and a soft shadow,
   not a 1px border.
 - **Contrast is measured, not eyeballed** — APCA: body `Lc ≥ 75`, large/bold `≥ 45`,
-  non-text UI `≥ 30`. `destructive` in dark reaches only ~53 in each of its two roles: as it
-  lightens it reads better as text on the near-black page and worse under the white label of
-  a destructive button, so it sits where those two curves cross. Both roles are above the
-  large/bold threshold; red at that chroma cannot do better without splitting the token.
-- **Motion is restrained.** Hover 120–200ms, entrance 250–400ms; animate only
-  `transform`/`opacity`; honor `prefers-reduced-motion`.
+  non-text UI `≥ 30`. `destructive` in dark reaches ~46 as text on the page and ~61 under the
+  white label of a destructive button. Both roles are above the large/bold threshold. The
+  label stays white: by APCA it measures Lc 61, against 48 for a near-black label.
+- **Motion is restrained.** Use the `--duration-*` and `--ease-*` tokens: hover 120–200 ms,
+  panel open 360 ms, entrance 640 ms. Animate `transform`, `opacity`, light `filter` and
+  `stroke-dashoffset`; honor `prefers-reduced-motion`.
+- **The Arc is rare.** One large gradient per screen, at most 8% of the visible surface,
+  never behind long text.
 
 ## Settings pages (account, project, god)
 
