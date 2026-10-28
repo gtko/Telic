@@ -59,7 +59,8 @@
     "noAssignee": "Sem responsável",
     "noInitiative": "Sem iniciativa",
     "noCycle": "Sem ciclo",
-    "copyFailed": "Não foi possível copiar"
+    "copyFailed": "Não foi possível copiar",
+    "copyLink": "Copiar link"
   },
   "commands": {
     "preview": "Visualizar issue",

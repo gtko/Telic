@@ -163,5 +163,7 @@
     "loadFailed": "No se han podido cargar los documentos enlazados. Reintenta.",
     "untitled": "Sin título",
     "remove": "Desenlazar {title}"
-  }
+  },
+  "copyLink": "Copiar enlace",
+  "copyFailed": "No se pudo copiar al portapapeles"
 }

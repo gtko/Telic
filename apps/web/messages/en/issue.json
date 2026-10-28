@@ -59,7 +59,8 @@
     "noAssignee": "No assignee",
     "noInitiative": "No initiative",
     "noCycle": "No cycle",
-    "copyFailed": "Could not copy to clipboard"
+    "copyFailed": "Could not copy to clipboard",
+    "copyLink": "Copy link"
   },
   "commands": {
     "preview": "Preview issue",

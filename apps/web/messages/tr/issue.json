@@ -59,7 +59,8 @@
     "noAssignee": "Sorumlu atanmamış",
     "noInitiative": "Girişim yok",
     "noCycle": "Döngü yok",
-    "copyFailed": "Panoya kopyalanamadı"
+    "copyFailed": "Panoya kopyalanamadı",
+    "copyLink": "Bağlantıyı kopyala"
   },
   "commands": {
     "preview": "İşi önizle",

@@ -59,7 +59,8 @@
     "noAssignee": "无负责人",
     "noInitiative": "无计划",
     "noCycle": "无周期",
-    "copyFailed": "无法复制到剪贴板"
+    "copyFailed": "无法复制到剪贴板",
+    "copyLink": "复制链接"
   },
   "commands": {
     "preview": "预览工作项",

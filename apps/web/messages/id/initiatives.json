@@ -163,5 +163,7 @@
     "loadFailed": "Gagal memuat Dokumen yang ditautkan. Coba lagi.",
     "untitled": "Tanpa judul",
     "remove": "Putuskan tautan {title}"
-  }
+  },
+  "copyLink": "Salin tautan",
+  "copyFailed": "Gagal menyalin ke papan klip"
 }

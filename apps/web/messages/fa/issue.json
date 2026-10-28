@@ -59,7 +59,8 @@
     "noAssignee": "بدون مسئول",
     "noInitiative": "بدون ابتکار",
     "noCycle": "بدون سیکل",
-    "copyFailed": "کپی در کلیپ‌بورد ممکن نشد"
+    "copyFailed": "کپی در کلیپ‌بورد ممکن نشد",
+    "copyLink": "کپی پیوند"
   },
   "commands": {
     "preview": "پیش‌نمایش تسک",

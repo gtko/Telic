@@ -59,7 +59,8 @@
     "noAssignee": "Tanpa penerima tugas",
     "noInitiative": "Tanpa inisiatif",
     "noCycle": "Tanpa cycle",
-    "copyFailed": "Gagal menyalin ke papan klip"
+    "copyFailed": "Gagal menyalin ke papan klip",
+    "copyLink": "Salin tautan"
   },
   "commands": {
     "preview": "Pratinjau issue",

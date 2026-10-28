@@ -59,7 +59,8 @@
     "noAssignee": "Sin asignar",
     "noInitiative": "Sin iniciativa",
     "noCycle": "Sin ciclo",
-    "copyFailed": "No se pudo copiar al portapapeles"
+    "copyFailed": "No se pudo copiar al portapapeles",
+    "copyLink": "Copiar enlace"
   },
   "commands": {
     "preview": "Previsualizar el ticket",
