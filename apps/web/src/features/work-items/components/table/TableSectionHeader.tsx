@@ -43,14 +43,14 @@ export function TableSectionHeader({
       id={dropId}
       disabled={disabled}
       onDrop={onDrop}
-      className="flex items-center justify-between bg-muted/40 px-4 py-1.5"
+      className="flex items-center justify-between border-b bg-sidebar px-4 py-1.5"
     >
       <div className="flex items-center gap-2">
         {selectIds && <TableSelectAll ids={selectIds} />}
         <button
           type="button"
           onClick={onToggle}
-          className="flex items-center gap-2 text-sm font-medium text-foreground"
+          className="flex items-center gap-2 text-[13px] font-semibold text-foreground"
         >
           {collapsed ? (
             <ChevronRight className="size-3.5 text-muted-foreground" />
@@ -59,7 +59,7 @@ export function TableSectionHeader({
           )}
           <GroupDot group={group} />
           {group.name}
-          <span className="text-muted-foreground">{count}</span>
+          <span className="font-normal text-muted-foreground">{count}</span>
         </button>
       </div>
       {canCreateIssue && (

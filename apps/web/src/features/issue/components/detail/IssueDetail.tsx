@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Maximize2, X } from 'lucide-react';
+import { ChevronRight, Maximize2, X } from 'lucide-react';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 import type { IssueDetail as IssueDetailRow } from '@/lib/api/endpoints/issues';
 import IssueDetailContent from './IssueDetailContent';
@@ -35,18 +35,22 @@ export default function IssueDetail({
   useIssueTitle(issueId, 'panel');
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-50 flex">
+    <div className="pointer-events-none fixed inset-0 z-50 flex sm:p-2">
       {/* No padding at the top: the sticky header carries it, so it can sit flush
           against the panel edge with nothing showing above it. */}
       <div
         ref={panelRef}
-        className="pointer-events-auto ms-auto flex h-full w-full flex-col overflow-y-auto border-s bg-card px-5 pt-0 pb-5 sm:w-[720px] sm:max-w-[92vw] sm:px-8"
+        className="pointer-events-auto ms-auto flex h-full w-full animate-in flex-col overflow-y-auto border-s bg-card px-5 pt-0 pb-5 shadow-(--side-panel-shadow) duration-(--duration-3) ease-out slide-in-from-end-8 fade-in sm:w-[960px] sm:max-w-[94vw] sm:rounded-2xl sm:border sm:px-8"
       >
         {/* The header stays at the top while the body scrolls under it. Negative
             margins cancel the panel padding so its translucent, blurred backdrop
             spans the full panel width. */}
-        <div className="sticky top-0 z-10 -mx-5 mb-3 flex items-center justify-between gap-2 bg-card/85 px-5 pt-5 pb-3 backdrop-blur-md sm:-mx-8 sm:px-8">
-          <span className="font-mono text-xs text-muted-foreground">{issue?.identifier ?? ''}</span>
+        <div className="sticky top-0 z-10 -mx-5 mb-4 flex items-center justify-between gap-2 border-b bg-card/85 px-5 py-3 backdrop-blur-md sm:-mx-8 sm:px-8">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="truncate">{project.project.name}</span>
+            <ChevronRight className="size-3 shrink-0 rtl:rotate-180" />
+            <span className="font-mono font-medium text-foreground">{issue?.identifier ?? ''}</span>
+          </span>
           <div className="flex items-center gap-1">
             {issue && (
               <>

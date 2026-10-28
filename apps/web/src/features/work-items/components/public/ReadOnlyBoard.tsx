@@ -20,7 +20,7 @@ export default function ReadOnlyBoard({
   onOpenIssue: (id: number) => void;
 }) {
   const project = toPublicProjectDetail(bundle.project, bundle.issues);
-  const layout = bundle.view.display.layout ?? 'kanban';
+  const layout = bundle.view.display.layout ?? 'table';
   const { layout: _omit, ...displaySettings } = bundle.view.display;
   const settings = { ...defaultViewSettings(layout), ...displaySettings };
 

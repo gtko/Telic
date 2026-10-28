@@ -192,7 +192,7 @@ const DEFAULT_PROPERTIES: Record<WorkItemsView, DisplayProperty[]> = {
     'created',
     'updated',
   ],
-  table: ['priority', 'labels', 'startDate', 'dueDate', 'assignee'],
+  table: ['id', 'priority', 'labels', 'dueDate', 'assignee'],
   timeline: [],
   calendar: [],
 };
@@ -384,7 +384,7 @@ export function normalizeSavedDisplay(blob: unknown): SavedViewDisplay {
   const b = (blob && typeof blob === 'object' ? blob : {}) as Partial<SavedViewDisplay>;
   const layout: WorkItemsView = LAYOUTS.includes(b.layout as WorkItemsView)
     ? (b.layout as WorkItemsView)
-    : 'kanban';
+    : 'table';
   return { layout, ...normalizeViewSettings(b, layout) };
 }
 

@@ -79,7 +79,7 @@ export default function IssueWorklogPanel({
           )}
 
           {entries.length === 0 && !adding ? (
-            <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+            <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
               {canLog ? t('emptyHint') : t('empty')}
             </p>
           ) : (

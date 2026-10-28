@@ -25,11 +25,11 @@ const VIEW_KEY = 'planner_view';
 function loadView(): WorkItemsView {
   // Runs in a useState initializer, which also executes during server render —
   // there is no localStorage there, so fall back to the default layout.
-  if (typeof window === 'undefined') return 'kanban';
+  if (typeof window === 'undefined') return 'table';
   const raw = localStorage.getItem(VIEW_KEY);
   return raw === 'kanban' || raw === 'table' || raw === 'timeline' || raw === 'calendar'
     ? raw
-    : 'kanban';
+    : 'table';
 }
 
 // The conditions of a saved view followed by the ad-hoc ones, re-keyed so the two
