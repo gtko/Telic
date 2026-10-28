@@ -10,6 +10,7 @@ import { isBlocked } from '@/utils/issueLinks';
 import { cn } from '@/lib/utils';
 import { MatrixCheckbox } from '@/components/common/inputs/MatrixCheckbox';
 import IssueContextMenu from '@/features/issue/components/actions/IssueContextMenu';
+import { StateIcon } from '@/features/issue/components/shared/IssueIcons';
 import { DropLine } from '../shared/DropLine';
 import { IssueIdentifier } from '../shared/IssueIdentifier';
 import { SubtaskProgress } from '../shared/SubtaskProgress';
@@ -67,6 +68,7 @@ export function TableRow({
   const selection = useSelection();
   const selected = selection.isSelected(issue.id);
   const subtasks = useSubtaskFold();
+  const column = maps.columnById.get(issue.columnId);
   const {
     setNodeRef: dragRef,
     attributes,
@@ -100,10 +102,10 @@ export function TableRow({
           onClick();
         }}
         className={cn(
-          'relative grid cursor-grab gap-3 border-b py-2 pr-4 text-sm transition-colors',
-          isBlocked(issue) ? 'row-blocked' : 'hover:bg-accent/40',
+          'relative grid min-h-10 cursor-grab gap-3 border-b py-1.5 pe-4 text-sm transition-colors',
+          isBlocked(issue) ? 'row-blocked' : 'hover:bg-accent',
           alignTop ? 'items-start' : 'items-center',
-          indented ? 'pl-9' : 'pl-4',
+          indented ? 'ps-9' : 'ps-4',
           isDragging && 'opacity-40',
           selected && 'kanban-card-selected',
         )}
@@ -123,15 +125,22 @@ export function TableRow({
             }}
           />
         )}
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {column && (
+            <StateIcon
+              stateType={column.stateType}
+              color={column.color}
+              className="size-3.5 shrink-0"
+            />
+          )}
           {showId && (
             <IssueIdentifier
               issue={issue}
-              className="text-xs text-muted-foreground"
+              className="min-w-16 text-xs text-muted-foreground"
               onOpenParent={onOpenIssue}
             />
           )}
-          <span dir="auto" className="truncate text-foreground">
+          <span dir="auto" className="truncate font-medium text-foreground">
             {issue.title}
           </span>
           <SubtaskProgress

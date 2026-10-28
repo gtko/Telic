@@ -13,6 +13,7 @@ import { PriorityIcon, StateIcon } from '@/features/issue/components/shared/Issu
 import { type TableColumn } from '../../utils/table';
 
 const DASH = <span className="text-muted-foreground/40">—</span>;
+const LABELS_SHOWN = 2;
 
 // One built-in property cell in a table row.
 export function TableBuiltinCell({
@@ -95,18 +96,28 @@ export function TableBuiltinCell({
       return (
         <div className="truncate text-xs text-muted-foreground">{issue.cycle?.name ?? DASH}</div>
       );
-    case 'labels':
+    case 'labels': {
+      const labels = issue.labelIds.flatMap((id) => maps.labelById.get(id) ?? []);
+      if (labels.length === 0) return DASH;
+      // One line per row: the first labels, then a count of the others, all named
+      // in the tooltip.
+      const shown = labels.slice(0, LABELS_SHOWN);
       return (
-        <div className="flex min-w-0 flex-wrap items-center gap-1 overflow-hidden">
-          {issue.labelIds.length > 0
-            ? issue.labelIds.map((id) => {
-                const label = maps.labelById.get(id);
-                if (!label) return null;
-                return <LabelBadge key={id} color={label.color} name={label.name} />;
-              })
-            : DASH}
+        <div
+          className="flex min-w-0 items-center gap-1 overflow-hidden"
+          title={labels.map((l) => l.name).join(', ')}
+        >
+          {shown.map((label) => (
+            <LabelBadge key={label.id} color={label.color} name={label.name} />
+          ))}
+          {labels.length > shown.length && (
+            <span className="shrink-0 text-[10px] text-muted-foreground">
+              +{labels.length - shown.length}
+            </span>
+          )}
         </div>
       );
+    }
     case 'estimatePoints':
       return <div className="text-xs text-muted-foreground">{issue.estimatePoints ?? DASH}</div>;
     case 'estimateTime':

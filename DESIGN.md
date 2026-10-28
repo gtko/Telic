@@ -119,6 +119,12 @@ dark are both first-class (`.dark` class toggles; the app ships a theme switch).
   brand`) and the 2px progress line of the active cycle.
 - **Empty states are illustrated.** `EmptyState` and `SettingsEmpty` draw `EmptyStateArt`
   (two cards under the arc and its amber dot), one sentence and an action.
+- **Issues open as a list.** The list is the default layout: one 40px line per issue
+  (state icon, mono identifier, title, priority, at most two labels then a count, due date,
+  assignee), group and column headers on the raised `sidebar` surface. An issue opens in a
+  floating panel (22px radius) that slides in from the end edge in 360 ms; a wide panel puts
+  the Properties in a raised sidebar, and pills under the title show state, priority and
+  labels.
 - **Unread is amber.** The sidebar counters and the unread dot of the inbox use `brand-arc-3`.
 
 ## Settings pages (account, project, god)

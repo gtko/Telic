@@ -31,7 +31,7 @@ export function useLocalBoardSettings(storeKey: string, id: number) {
   const key = String(id);
   const [state, setState] = useState<{ view: WorkItemsView; settings: ViewSettings }>(() => {
     const stored = readStore(storeKey)[key];
-    const view: WorkItemsView = stored?.layout ?? 'kanban';
+    const view: WorkItemsView = stored?.layout ?? 'table';
     return { view, settings: normalizeViewSettings(stored, view) };
   });
   const [filters, setFilters] = useState<FilterSet>(EMPTY_FILTER_SET);

@@ -49,7 +49,7 @@ export default function DocumentLinkList({
       <button
         type="button"
         className={cn(
-          'w-full rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground hover:text-foreground',
+          'w-full rounded-lg bg-muted/50 px-3 py-2.5 text-start text-xs text-muted-foreground hover:bg-muted hover:text-foreground',
           className,
         )}
         onClick={() => void links.refetch()}
@@ -63,7 +63,7 @@ export default function DocumentLinkList({
     return (
       <p
         className={cn(
-          'rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground',
+          'rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground',
           className,
         )}
       >

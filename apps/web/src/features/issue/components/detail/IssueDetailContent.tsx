@@ -23,6 +23,7 @@ import IssueStatusTimeline from './IssueStatusTimeline';
 import MarkdownEditor from '@/components/common/editor/MarkdownEditor';
 import IssueCustomFieldBody from '../fields/IssueCustomFieldBody';
 import IssueProperties from './IssueProperties';
+import IssueSummaryPills from './IssueSummaryPills';
 import IssueActionsBar from '../actions/IssueActionsBar';
 import {
   PROPERTIES_MAX_W,
@@ -114,7 +115,7 @@ export default function IssueDetailContent({
             // Laid out by the script the title is written in, not the interface
             // language, so an Arabic title reads correctly in an English session.
             dir="auto"
-            className="field-sizing-content min-w-0 flex-1 resize-none bg-transparent text-lg leading-snug font-semibold outline-none placeholder:text-muted-foreground"
+            className="field-sizing-content min-w-0 flex-1 resize-none bg-transparent text-2xl leading-tight font-bold tracking-tight outline-none placeholder:text-muted-foreground"
             rows={1}
             placeholder={t('titlePlaceholder')}
             defaultValue={issue.title}
@@ -132,11 +133,12 @@ export default function IssueDetailContent({
             }}
           />
         ) : (
-          <h1 dir="auto" className="min-w-0 flex-1 text-lg leading-snug font-semibold">
+          <h1 dir="auto" className="min-w-0 flex-1 text-2xl leading-tight font-bold tracking-tight">
             {issue.title}
           </h1>
         )}
       </div>
+      <IssueSummaryPills project={project} issue={issue} />
 
       {(canEdit || issue.description.trim() !== '') && (
         <MarkdownEditor
@@ -346,15 +348,25 @@ export default function IssueDetailContent({
   }
 
   // The panel renders the actions in its header row (see IssueDetail), so the
-  // panel body omits them. The wrapper is what the bubble sticks inside: without
-  // it the bubble's parent would be the panel's scroll container, which bounds a
+  // panel body omits them. A wide panel puts the Properties in a raised sidebar, as
+  // 'split' does. The content column is what the bubble sticks inside: without it
+  // the bubble's parent would be the panel's scroll container, which bounds a
   // sticky child to the first screen of the scroll.
   return (
-    <div>
-      {heading}
-      {renderProperties()}
-      {sections}
-      {activity}
+    <div className="@container">
+      <div className="flex gap-6">
+        <div className="min-w-0 flex-1">
+          {heading}
+          <div className="@3xl:hidden">{renderProperties()}</div>
+          {sections}
+          {activity}
+        </div>
+        <aside className="hidden w-72 shrink-0 @3xl:block">
+          <div className="sticky top-16 rounded-xl border bg-sidebar px-4 pb-4 shadow-(--surface-highlight)">
+            {renderProperties('mt-0 border-t-0 pt-3')}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
