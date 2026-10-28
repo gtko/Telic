@@ -50,7 +50,7 @@ export function CalendarDayOverflow({
                     className="inline-block size-1.5 shrink-0 rounded-full"
                     style={{ backgroundColor: dot(issue) }}
                   />
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                  <span className="shrink-0 font-mono text-muted-foreground">
                     {issue.identifier}
                   </span>
                   <span className="truncate text-foreground">{issue.title}</span>

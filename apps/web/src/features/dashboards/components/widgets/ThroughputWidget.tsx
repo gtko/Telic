@@ -12,8 +12,9 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { useThroughputQuery } from '../../services/analytics.service';
+import { AURORA } from '@/utils/auroraColors';
 
-const SERIES_COLOR = { created: '#6366f1', closed: '#22c55e' };
+const SERIES_COLOR = { created: AURORA.indigo, closed: AURORA.mint };
 
 // Created vs closed issues per week, as grouped bars. "Closed" is an issue entering
 // the completed state it is still in; see the analytics store. The window is a

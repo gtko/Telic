@@ -21,13 +21,14 @@ signature:
 - At most 8% of the visible surface.
 - Never behind long text.
 
-Only the dark theme is Aurora. The light theme is not yet redefined; it shares the brand,
-status and motion tokens below.
+Both themes are Aurora. The light theme takes the same cool neutrals with the lightness
+inverted (page 0.985, cards 0.998, hover 0.955), and darker state and priority hues that hold
+3:1 on the page. The Arc and the brand mark in color stay on dark surfaces: the amber dot
+measures 1.63:1 on a light one.
 
 ## Tokens (intent-named; values live in `globals.css`)
 
-Colors are OKLCH. The light theme uses a neutral grayscale ramp and shares the brand, status
-and motion tokens. The dark
+Colors are OKLCH. The light theme uses cool neutrals (hue 265, chroma ≤ 0.014). The dark
 theme is the Aurora ramp: `background` is `oklch(0.122 0.006 261.6)` (#050608), and the surfaces
 step up from it (`sidebar` 0.150, `card` 0.172, `popover`/`muted`/`accent` 0.200,
 `secondary` 0.235). No surface in the light theme sits on pure white or pure black. Light and
@@ -52,37 +53,46 @@ dark are both first-class (`.dark` class toggles; the app ships a theme switch).
   alone. An amber rather than a bright yellow — yellow at a legible chroma has to drop this far
   in lightness to hold contrast against the light page.
 - `ring` — focus ring (keyboard a11y). Indigo in dark.
-- `chart-1…5` — in dark: indigo, magenta, amber, mint, sky. In light: a neutral grayscale
-  ramp. For categorical series that need to be told apart (priority, assignee), widgets use
+- `chart-1…5` — indigo, magenta, amber, mint, sky, darker in light. For categorical series that need to be told apart (priority, assignee), widgets use
   their own small hue palette; for entity series (status, type) the entity's own color is used.
-- `priority-low|medium|high|urgent` — fixed hues for the priority field. In dark they are
-  sky, yellow, orange and red; `priority-urgent` equals `destructive`.
+- `priority-low|medium|high|urgent` — fixed hues for the priority field: sky, yellow, orange
+  and red in both themes, darker in light; `priority-urgent` equals `destructive`.
 - `sidebar-*` — the app sidebar surface (slightly off the page background).
 - `brand-arc-1|2|3` — indigo, magenta, amber. `brand-arc` is the gradient
   `linear-gradient(100deg, arc-1 0%, arc-2 55%, arc-3 100%)`. Same value in both themes.
   Tailwind utilities: `text-brand-arc-1`, `bg-brand-arc-3`, and so on.
 - `status-backlog|todo|in-progress|in-review|done|canceled` — the issue state colours:
-  gray, light gray, amber, periwinkle, mint, dim gray. Same value in both themes. Tailwind
-  utilities: `text-status-done`. The light theme still needs darker values for the
-  amber and mint states before these are used on a light page.
-  The names are not the `stateType` values of the schema, and `triage` has no status token yet.
-  Write the mapping when the tokens are wired to the components.
+  gray, light gray, amber, periwinkle, mint, dim gray, darker in light. Tailwind utilities:
+  `text-status-done`. Progress bars and switches use `status-done`. A column's state icon
+  takes the column's stored color; a new project's columns start on the Aurora hex values
+  (`DEFAULT_COLUMNS` in the api).
+- Stored colors and chart series need a literal hex: `utils/auroraColors.ts` holds the
+  Aurora accents (indigo, magenta, amber, mint, sky, coral, red, periwinkle) and the state
+  grays. Avatars, chart series, cycle, initiative and annotation colors, the color picker and
+  the issue type presets take them. Avatars carry near-black initials.
+- `surface-highlight` — the 1px inset light on the top edge of a raised surface (cards,
+  kanban cards, the active sidebar item). `lift-shadow` — the shadow of a kanban card that
+  rises 2px on hover. `ambient-glow` — the indigo light in the top corner of the work area.
 - `--ease-out` `cubic-bezier(.16,1,.3,1)`, `--ease-in-out` `cubic-bezier(.65,0,.35,1)`,
   `--ease-spring` `cubic-bezier(.34,1.56,.64,1)` — motion curves. `--ease-out` and
   `--ease-in-out` replace Tailwind's defaults `ease-out` and `ease-in-out`.
 - `--duration-1…5` — 120, 200, 360, 640, 1100 ms. Hover 120–200, panel open 360, section
-  entrance 640, signature sequences 1100.
+  entrance 640, signature sequences 1100. A `transition` utility without its own timing
+  takes `--duration-1` on `--ease-out`. Buttons scale to 0.97 while pressed.
 
 ## Scale & shape
 
-- **Type:** Inter Variable (`--font-sans`, also `--font-heading`). Weight and size carry
-  hierarchy — do not add display faces. Body ≥ 14px in dense chrome, ≥ 16px for reading.
+- **Type:** Inter Variable (`--font-sans`, also `--font-heading`) for the interface, Geist
+  Mono Variable (`--font-mono`) for issue identifiers, git branches and code. Weight and size
+  carry hierarchy — do not add display faces. Body ≥ 14px in dense chrome, ≥ 16px for
+  reading. Numbers are tabular everywhere; headings balance their lines.
 - **Line-height:** the `--text-*--line-height` tokens in `globals.css` replace Tailwind's
   defaults, which are tuned for 16px prose and leave `text-xs`/`text-sm` cramped. Body sizes
   run 1.5–1.6; headings tighten as they grow (1.25 at `2xl` down to 1.1 at `4xl`) and take
   negative tracking from `2xl` up.
 - **Radius:** base `--radius: 0.75rem`; scale `sm .6 · md .8 · lg 1 · xl 1.4 · 2xl 1.8`
-  (about 7 · 10 · 12 · 17 · 22 px). Cards 16–22 px, buttons and fields 10–12 px.
+  (about 7 · 10 · 12 · 17 · 22 px). Kanban cards and menus 12 px, kanban columns 17 px,
+  dialogs 22 px, tags 10 px, buttons and fields 10–12 px.
   Radius scales with element size; keep `padding ≥ radius`.
 - **Spacing:** 8pt grid (4 as half-step). Proximity encodes relationship: inside a group
   < between groups < between sections.
@@ -104,7 +114,11 @@ dark are both first-class (`.dark` class toggles; the app ships a theme switch).
   panel open 360 ms, entrance 640 ms. Animate `transform`, `opacity`, light `filter` and
   `stroke-dashoffset`; honor `prefers-reduced-motion`.
 - **The Arc is rare.** One large gradient per screen, at most 8% of the visible surface,
-  never behind long text.
+  never behind long text. In the app: the brand mark on the sign-in panel (`TelicMark
+  brand`) and the 2px progress line of the active cycle.
+- **Empty states are illustrated.** `EmptyState` and `SettingsEmpty` draw `EmptyStateArt`
+  (two cards under the arc and its amber dot), one sentence and an action.
+- **Unread is amber.** The sidebar counters and the unread dot of the inbox use `brand-arc-3`.
 
 ## Settings pages (account, project, god)
 

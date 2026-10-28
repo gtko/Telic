@@ -1,3 +1,5 @@
+import { AURORA_ACCENTS } from '@/utils/auroraColors';
+
 // The chart spec: one JSON shape that describes a chart. An agent sends it to the
 // create_chart endpoint, which checks it and answers with it, and then writes it into
 // a ```chart fence in its answer. The shared Markdown component draws that fence with
@@ -54,16 +56,7 @@ export interface ChartSpec {
 }
 
 // Slice and series colors for a spec that names none, by position.
-export const CHART_PALETTE = [
-  '#6366f1',
-  '#22c55e',
-  '#eab308',
-  '#ec4899',
-  '#06b6d4',
-  '#f97316',
-  '#8b5cf6',
-  '#64748b',
-];
+export const CHART_PALETTE = AURORA_ACCENTS;
 
 export function seriesColor(series: ChartSeries, index: number): string {
   return series.color ?? CHART_PALETTE[index % CHART_PALETTE.length];

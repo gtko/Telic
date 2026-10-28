@@ -54,7 +54,7 @@ export function TableRowLinks({
                   className="size-3.5 shrink-0"
                 />
               )}
-              <span className="shrink-0 tabular-nums">{link.issue.identifier}</span>
+              <span className="shrink-0 font-mono">{link.issue.identifier}</span>
               <span className="truncate">{link.issue.title}</span>
             </button>
           </div>

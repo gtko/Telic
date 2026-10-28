@@ -29,14 +29,14 @@ export default function IssueBreadcrumb({
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground rtl:rotate-180" />
           <Link
             href={issuePath(projectKey, parent.sequenceNumber)}
-            className="truncate text-muted-foreground hover:text-foreground"
+            className="truncate font-mono text-muted-foreground hover:text-foreground"
           >
             {parent.identifier}
           </Link>
         </>
       )}
       <ChevronRight className="size-3.5 shrink-0 text-muted-foreground rtl:rotate-180" />
-      <span className="truncate font-medium">{identifier ?? '…'}</span>
+      <span className="truncate font-mono font-medium">{identifier ?? '…'}</span>
     </span>
   );
 }

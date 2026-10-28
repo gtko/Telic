@@ -13,7 +13,7 @@ export function IssueDragOverlay({ issue }: { issue: Issue | null }) {
     <DragOverlay dropAnimation={null}>
       {issue ? (
         <div className="flex max-w-[360px] items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm shadow-lg">
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">
             {issue.identifier}
           </span>
           <span className="truncate text-foreground">{issue.title}</span>

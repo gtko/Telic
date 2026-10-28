@@ -69,7 +69,7 @@ export function TimelineLinkRows({
               {/* Fixed width so the identifiers stay in one column when a row
                   leaves its relation unnamed. */}
               <span className="w-20 shrink-0">{named && relationLabel(link.relation)}</span>
-              <span className="shrink-0 tabular-nums">{link.issue.identifier}</span>
+              <span className="shrink-0 font-mono">{link.issue.identifier}</span>
               <span className="min-w-0 flex-1 truncate">{link.issue.title}</span>
             </div>
             <div className="relative" style={{ width: trackWidth, ...dayLines }}>

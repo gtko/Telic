@@ -127,7 +127,7 @@ export function TableRow({
           {showId && (
             <IssueIdentifier
               issue={issue}
-              className="text-xs text-muted-foreground tabular-nums"
+              className="text-xs text-muted-foreground"
               onOpenParent={onOpenIssue}
             />
           )}

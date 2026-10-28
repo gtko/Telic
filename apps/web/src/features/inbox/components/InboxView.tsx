@@ -9,6 +9,7 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { revScope } from '@/utils/revScopes';
 import { useInboxUnread } from '@/hooks/useInboxUnread';
 import { useIsMobile } from '@/hooks/use-mobile';
+import EmptyStateArt from '@/components/common/page/EmptyStateArt';
 import InboxToolbar from './InboxToolbar';
 import InboxList from './InboxList';
 import InboxDetail from './InboxDetail';
@@ -100,7 +101,8 @@ export default function InboxView({ project }: { project: ProjectDetail }) {
           onDeleted={() => setSelected(null)}
         />
       ) : (
-        <div className="hidden flex-1 items-center justify-center text-sm text-muted-foreground md:flex">
+        <div className="hidden flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground md:flex">
+          <EmptyStateArt />
           {t('selectNotification')}
         </div>
       )}

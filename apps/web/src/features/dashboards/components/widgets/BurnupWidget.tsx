@@ -7,13 +7,14 @@ import type { ChartConfig } from '@/components/ui/chart';
 import { useBurnupQuery } from '../../services/analytics.service';
 import { buildBurnupPoints } from '../../utils/burnupSeries';
 import BurnupChart from './BurnupChart';
+import { AURORA } from '@/utils/auroraColors';
 
 const SERIES_COLOR = {
-  scope: '#94a3b8',
-  started: '#f59e0b',
-  completed: '#22c55e',
-  projection: '#16a34a',
-  band: '#38bdf8',
+  scope: AURORA.gray,
+  started: AURORA.amber,
+  completed: AURORA.mint,
+  projection: AURORA.indigo,
+  band: AURORA.sky,
 };
 
 // Scope, started and completed issues at the end of each day, with a completion

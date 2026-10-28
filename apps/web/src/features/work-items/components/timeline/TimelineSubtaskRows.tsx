@@ -72,7 +72,7 @@ export function TimelineSubtaskRows({
               {/* Marks the row as nested under the issue row above: the sub-rows
                   are otherwise only indented, which reads as a link row. */}
               <CornerDownRight className="size-3 shrink-0 text-muted-foreground/60" />
-              <span className="shrink-0 tabular-nums">{subtask.identifier}</span>
+              <span className="shrink-0 font-mono">{subtask.identifier}</span>
               <span className={cn('truncate', done && 'text-muted-foreground/60 line-through')}>
                 {subtask.title}
               </span>

@@ -34,7 +34,7 @@ export default function CycleHeader({ cycle, projectKey }: { cycle: Cycle; proje
         )}
       </div>
       <div className="flex items-center gap-3">
-        <ProgressBar progress={cycle.progress} />
+        <ProgressBar progress={cycle.progress} arc={cycle.status === 'active'} />
         <CycleActions
           cycle={cycle}
           projectKey={projectKey}

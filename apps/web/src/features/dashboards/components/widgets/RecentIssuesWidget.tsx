@@ -75,7 +75,7 @@ export default function RecentIssuesWidget({
                     style={{ backgroundColor: column?.color ?? '#6b7280' }}
                     title={column?.name}
                   />
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                  <span className="shrink-0 font-mono text-muted-foreground">
                     {issue.identifier}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{issue.title}</span>

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import type { StateType } from '@/lib/api/endpoints/columns';
 import type { ProjectDetail } from '@/lib/api/endpoints/projects';
+import { AURORA } from '@/utils/auroraColors';
 
 // The initiative's linked issues counted per state group. Complements the header
 // progress pill with the full distribution (backlog through canceled).
@@ -12,11 +13,11 @@ import type { ProjectDetail } from '@/lib/api/endpoints/projects';
 // spans several columns with their own colors. The label of a group is a message
 // under `initiatives.stateGroups`.
 const GROUPS: { type: Exclude<StateType, 'triage'>; color: string }[] = [
-  { type: 'backlog', color: '#a1a1aa' },
-  { type: 'unstarted', color: '#64748b' },
-  { type: 'started', color: '#eab308' },
-  { type: 'completed', color: '#22c55e' },
-  { type: 'canceled', color: '#ef4444' },
+  { type: 'backlog', color: AURORA.slate },
+  { type: 'unstarted', color: AURORA.gray },
+  { type: 'started', color: AURORA.amber },
+  { type: 'completed', color: AURORA.mint },
+  { type: 'canceled', color: AURORA.dim },
 ];
 
 export default function InitiativeStateBreakdown({

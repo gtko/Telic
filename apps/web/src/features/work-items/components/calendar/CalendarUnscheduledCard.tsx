@@ -44,7 +44,7 @@ export function CalendarUnscheduledCard({
           className="inline-block size-1.5 shrink-0 rounded-full"
           style={{ backgroundColor: color }}
         />
-        <span className="shrink-0 text-muted-foreground tabular-nums">{issue.identifier}</span>
+        <span className="shrink-0 font-mono text-muted-foreground">{issue.identifier}</span>
         <span className="truncate text-foreground">{issue.title}</span>
       </div>
     </IssueContextMenu>
