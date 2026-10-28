@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.10.0](https://github.com/gtko/Telic/compare/v1.9.0...v1.10.0) (2026-10-28)
+
+
+### Features
+
+* **desktop:** release pipeline for Windows, Linux and Android (TELIC-11) ([#12](https://github.com/gtko/Telic/issues/12)) ([f6b7e51](https://github.com/gtko/Telic/commit/f6b7e51207676be3f4f2027ecf0c09ac31877926))
+* sentry errors land in a triage state (TELIC-4) ([#10](https://github.com/gtko/Telic/issues/10)) ([b69dd91](https://github.com/gtko/Telic/commit/b69dd911d160cce17e87680f133e102dc84249b6))
+* **site:** add the Telic Aurora marketing site as its own Worker (TELIC-14) ([#17](https://github.com/gtko/Telic/issues/17)) ([c37d0c8](https://github.com/gtko/Telic/commit/c37d0c8775ccc1504e1f21f8c738e668640ead92))
+
+
+### Improvements
+
+* **desktop:** Telos arc app icons for Windows, Linux and Android (TELIC-12) ([#14](https://github.com/gtko/Telic/issues/14)) ([fb39287](https://github.com/gtko/Telic/commit/fb39287d75074c0309aaeeca4eeb5e6aa806a76f))
+* **web:** apply Aurora tokens to the dark theme (TELIC-13) ([#16](https://github.com/gtko/Telic/issues/16)) ([ff9b5fb](https://github.com/gtko/Telic/commit/ff9b5fbc626092edf5d4497ad63dd9236e795107))
+* **web:** apply the Aurora identity across the app ([dc73a1b](https://github.com/gtko/Telic/commit/dc73a1b441b24cd5bcb64a4dc17478c725cec054))
+* **web:** Aurora issue list and panel, list as the default layout ([#22](https://github.com/gtko/Telic/issues/22)) ([4a5bcd3](https://github.com/gtko/Telic/commit/4a5bcd39e17078452c15999a690218cdd47967cf))
+* **web:** brand banner and section icons on the release history (TELIC-10) ([#11](https://github.com/gtko/Telic/issues/11)) ([597a7e3](https://github.com/gtko/Telic/commit/597a7e375e9a8601d36fc035b6872aeade6e5158))
+* **web:** bulk-select and edit issues in the table view (TELIC-1) ([#7](https://github.com/gtko/Telic/issues/7)) ([2d43544](https://github.com/gtko/Telic/commit/2d435446c80c49f5e89d6376383b294000881ea7))
+* **web:** copy link entry in issue and initiative menus (TELIC-17) ([#23](https://github.com/gtko/Telic/issues/23)) ([beb90a7](https://github.com/gtko/Telic/commit/beb90a79b26f54016f6151dea792f5793738a4d6))
+* **web:** rebrand to Telic with the Telos arc logo (TELIC-2) ([#8](https://github.com/gtko/Telic/issues/8)) ([b743232](https://github.com/gtko/Telic/commit/b743232117d592dd311188a76425d056a9bbd79d))
+
+
+### Bug Fixes
+
+* **desktop:** install the NDK with the runner's Android SDK (TELIC-11) ([#13](https://github.com/gtko/Telic/issues/13)) ([ea58d2c](https://github.com/gtko/Telic/commit/ea58d2c34589587c34f275b7ea442821f0b86860))
+* **web:** media proxies use redirect 'manual' on Workers (TELIC-3) ([#9](https://github.com/gtko/Telic/issues/9)) ([7d9cf2d](https://github.com/gtko/Telic/commit/7d9cf2ddcfd9a3acec415e51bc0117b835c497f6))
+* **web:** stop wrangler adding __name to the inline theme script (TELIC-15) ([#18](https://github.com/gtko/Telic/issues/18)) ([aa221f8](https://github.com/gtko/Telic/commit/aa221f8389102d6a22cdc1fe31e43e88c20923d0))
+
+
+### Documentation
+
+* add the Aurora brand charter page (TELIC-16) ([#21](https://github.com/gtko/Telic/issues/21)) ([26a490f](https://github.com/gtko/Telic/commit/26a490f848ccc1e867c5d740dacb389d778cadca))
+
+
+### Tests
+
+* **web:** load react-dom/client under a DOM before the test files run ([dceb75f](https://github.com/gtko/Telic/commit/dceb75f2fcc22ba6b08192223c9fbc7b8b8efb65))
+* **web:** load react-dom/client under a DOM before the test files run ([5836dd5](https://github.com/gtko/Telic/commit/5836dd5efb8bb60d17d516cb787603ee2cec82d4))
+
+
+### Chores
+
+* **desktop:** version 0.2.1 (TELIC-12) ([#15](https://github.com/gtko/Telic/issues/15)) ([5192fa9](https://github.com/gtko/Telic/commit/5192fa9dda95b8c8967c51bda026bf837b03f8cf))
+
 ## [1.9.0](https://github.com/gtko/Telic/compare/v1.8.0...v1.9.0) (2026-10-25)
 
 
