@@ -17,3 +17,6 @@ apps/web/next-env.d.ts
 
 # Static HTML page served as-is, not reformatted
 apps/site/public/*.html
+
+# Brand charter page, served as-is, not reformatted
+docs/brand/*.html

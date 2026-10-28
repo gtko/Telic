@@ -4,7 +4,8 @@ Design tokens and principles for the planner web app (`apps/web`). Extracted fro
 the established system in `apps/web/src/app/globals.css` (Tailwind v4 `@theme` +
 `:root`/`.dark` OKLCH variables). Those CSS variables are the source of truth; this
 file mirrors them. When a token changes in `globals.css`, update it here in the same
-change.
+change. The full brand charter (logo, colour rules, motion, components, before and after
+screens) is `docs/brand/aurora-charter.html`.
 
 ## Direction
 
