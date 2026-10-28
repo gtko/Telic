@@ -163,5 +163,7 @@
     "loadFailed": "Bağlı belgeler yüklenemedi. Tekrar deneyin.",
     "untitled": "Başlıksız",
     "remove": "{title} bağlantısını kaldır"
-  }
+  },
+  "copyLink": "Bağlantıyı kopyala",
+  "copyFailed": "Panoya kopyalanamadı"
 }

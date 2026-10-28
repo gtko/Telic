@@ -163,5 +163,7 @@
     "loadFailed": "연결된 문서를 불러올 수 없습니다. 다시 시도해 주세요.",
     "untitled": "제목 없음",
     "remove": "{title} 연결 해제"
-  }
+  },
+  "copyLink": "링크 복사",
+  "copyFailed": "클립보드에 복사할 수 없습니다."
 }

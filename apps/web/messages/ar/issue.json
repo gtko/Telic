@@ -59,7 +59,8 @@
     "noAssignee": "بلا مسؤول",
     "noInitiative": "بلا مبادرة",
     "noCycle": "بلا دورة",
-    "copyFailed": "تعذّر النسخ إلى الحافظة"
+    "copyFailed": "تعذّر النسخ إلى الحافظة",
+    "copyLink": "نسخ الرابط"
   },
   "commands": {
     "preview": "معاينة المهمة",

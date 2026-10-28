@@ -8,6 +8,7 @@ import {
   Check,
   CircleDashed,
   ClipboardCopy,
+  Link,
   PanelRight,
   RefreshCw,
   SquareArrowOutUpRight,
@@ -154,6 +155,10 @@ export default function IssueContextMenu({
           <ContextMenuItem onSelect={() => onOpenIssue(issue.id, 'page')}>
             <SquareArrowOutUpRight />
             {t('goToIssue')}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={copyFullUrl}>
+            <Link />
+            {t('copyLink')}
           </ContextMenuItem>
 
           <ContextMenuSeparator />

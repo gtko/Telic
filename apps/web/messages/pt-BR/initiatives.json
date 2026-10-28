@@ -163,5 +163,7 @@
     "loadFailed": "Não foi possível carregar os documentos vinculados. Tente novamente.",
     "untitled": "Sem título",
     "remove": "Desvincular {title}"
-  }
+  },
+  "copyLink": "Copiar link",
+  "copyFailed": "Não foi possível copiar"
 }

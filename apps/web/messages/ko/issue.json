@@ -59,7 +59,8 @@
     "noAssignee": "담당자 없음",
     "noInitiative": "이니셔티브 없음",
     "noCycle": "사이클 없음",
-    "copyFailed": "클립보드에 복사할 수 없습니다."
+    "copyFailed": "클립보드에 복사할 수 없습니다.",
+    "copyLink": "링크 복사"
   },
   "commands": {
     "preview": "이슈 미리보기",

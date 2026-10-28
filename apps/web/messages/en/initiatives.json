@@ -163,5 +163,7 @@
     "loadFailed": "Could not load the linked Docs. Retry.",
     "untitled": "Untitled",
     "remove": "Unlink {title}"
-  }
+  },
+  "copyLink": "Copy link",
+  "copyFailed": "Could not copy to clipboard"
 }

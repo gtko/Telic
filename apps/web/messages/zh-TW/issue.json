@@ -59,7 +59,8 @@
     "noAssignee": "無負責人",
     "noInitiative": "無計畫",
     "noCycle": "無週期",
-    "copyFailed": "無法複製到剪貼簿"
+    "copyFailed": "無法複製到剪貼簿",
+    "copyLink": "複製連結"
   },
   "commands": {
     "preview": "預覽工作項目",

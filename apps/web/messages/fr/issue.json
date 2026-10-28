@@ -59,7 +59,8 @@
     "noAssignee": "Aucun responsable",
     "noInitiative": "Aucune initiative",
     "noCycle": "Aucun cycle",
-    "copyFailed": "Impossible de copier dans le presse-papiers"
+    "copyFailed": "Impossible de copier dans le presse-papiers",
+    "copyLink": "Copier le lien"
   },
   "commands": {
     "preview": "Aperçu du ticket",

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Link, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Initiative } from '@/lib/api/endpoints/initiatives';
 import { initiativesPath } from '@/utils/paths';
@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import InitiativeDialog from '@/components/common/overlay/InitiativeDialog';
+import { useCopyInitiativeLink } from '../../hooks/useCopyInitiativeLink';
 
 // The initiative's overflow menu. Deleting returns to the initiatives list.
 export default function InitiativeActions({
@@ -29,12 +30,12 @@ export default function InitiativeActions({
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
   const del = useDeleteInitiative(projectKey);
+  const copyLink = useCopyInitiativeLink(projectKey);
   const router = useRouter();
   const [editing, setEditing] = useState(false);
 
   const canEdit = can('initiatives', 'edit');
   const canDelete = can('initiatives', 'delete');
-  if (!canEdit && !canDelete) return null;
 
   const remove = async () => {
     await del.mutateAsync(initiative.id);
@@ -54,13 +55,17 @@ export default function InitiativeActions({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => void copyLink(initiative.id)}>
+            <Link className="size-4" />
+            {t('copyLink')}
+          </DropdownMenuItem>
           {canEdit && (
             <DropdownMenuItem onClick={() => setEditing(true)}>
               <Pencil className="size-4" />
               {tCommon('edit')}
             </DropdownMenuItem>
           )}
-          {canEdit && canDelete && <DropdownMenuSeparator />}
+          {canDelete && <DropdownMenuSeparator />}
           {canDelete && (
             <DropdownMenuItem variant="destructive" onClick={() => void remove()}>
               <Trash2 className="size-4" />

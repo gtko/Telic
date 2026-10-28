@@ -163,5 +163,7 @@
     "loadFailed": "無法載入關聯的文件，請重試。",
     "untitled": "未命名",
     "remove": "取消關聯 {title}"
-  }
+  },
+  "copyLink": "複製連結",
+  "copyFailed": "無法複製到剪貼簿"
 }

@@ -163,5 +163,7 @@
     "loadFailed": "无法加载关联的文档，请重试。",
     "untitled": "未命名",
     "remove": "取消关联 {title}"
-  }
+  },
+  "copyLink": "复制链接",
+  "copyFailed": "无法复制到剪贴板"
 }

@@ -163,5 +163,7 @@
     "loadFailed": "Impossible de charger les docs liés. Réessayer.",
     "untitled": "Sans titre",
     "remove": "Dissocier {title}"
-  }
+  },
+  "copyLink": "Copier le lien",
+  "copyFailed": "Impossible de copier dans le presse-papiers"
 }
