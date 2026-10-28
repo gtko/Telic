@@ -115,7 +115,7 @@ export default function InitiativeRow({
           </TableCell>
         </TableRow>
       </ContextMenuTrigger>
-      <ContextMenuContent onClick={(e) => e.stopPropagation()}>
+      <ContextMenuContent>
         <ContextMenuItem onSelect={() => void copyLink(initiative.id)}>
           <LinkIcon />
           {t('copyLink')}
